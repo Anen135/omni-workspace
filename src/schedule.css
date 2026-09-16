@@ -1,0 +1,23 @@
+.schedule-days { padding: 0 24px 24px; }
+.schedule-day { padding: 18px 0; border-top: 1px solid var(--border); }
+.schedule-day-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.schedule-day-heading h3 { display: flex; flex-wrap: wrap; gap: 12px; margin: 0; font-size: 14px; font-weight: 500; }
+.schedule-day-heading time { color: #888395; font-weight: 400; }
+.schedule-day-heading > span { color: var(--purple); font-size: 11px; }
+.schedule-today .schedule-day-heading h3 { color: var(--purple); }
+.schedule-lessons { list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; }
+.schedule-lesson { display: flex; align-items: flex-start; gap: 22px; padding: 16px; border: 1px solid var(--border); border-radius: 9px; background: #fcfbfe; }
+.schedule-time { flex: 0 0 110px; display: grid; gap: 7px; }
+.schedule-time strong { font-size: 13px; font-weight: 500; white-space: nowrap; }
+.schedule-time span, .schedule-description > div { color: #888395; font-size: 12px; }
+.schedule-description { flex: 1; min-width: 0; }
+.schedule-description h4 { margin: 0 0 9px; font-size: 14px; font-weight: 500; line-height: 1.5; overflow-wrap: anywhere; }
+.schedule-description > div { display: flex; flex-wrap: wrap; gap: 8px 18px; line-height: 1.6; }
+.schedule-planned { color: #888395; font-size: 10px; padding-top: 3px; }
+.schedule-empty-day { margin: 0; color: #888395; font-size: 12px; }
+@media (max-width: 760px) {
+  .schedule-days { padding: 0 14px 18px; }
+  .schedule-lesson { flex-wrap: wrap; gap: 12px; padding: 12px; }
+  .schedule-time { flex-basis: 100%; display: flex; justify-content: space-between; }
+  .schedule-description { flex-basis: 100%; }
+}

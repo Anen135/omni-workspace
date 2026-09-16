@@ -1,0 +1,16 @@
+node_modules/
+dist/
+.env*
+!.env.example
+*.log
+.omni-browser/
+
+# Local exports can contain personal data.
+omni-*.json
+exports/
+playwright-report/
+test-results/
+tmp/
+*.tsbuildinfo
+.DS_Store
+Thumbs.db
