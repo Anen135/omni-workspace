@@ -1,0 +1,29 @@
+.teaching-materials { margin-bottom: 24px; }
+.method-filters { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding: 0 24px 20px; }
+.method-filters label { display: flex; flex-direction: column; gap: 8px; min-width: 0; color: #75618f; font-size: 12px; }
+.method-filters select, .method-filters input { width: 100%; min-width: 0; border: 1px solid var(--border); border-radius: 7px; padding: 11px; background: #faf8fd; color: #514960; font: inherit; }
+.method-package-select { grid-column: 1 / -1; }
+.method-status { display: flex; align-items: center; gap: 8px; padding: 0 24px 20px; font-size: 12px; color: var(--purple); }
+.method-topics { padding: 0 24px 24px; }
+.method-topic { border-top: 1px solid var(--border); }
+.method-topic > summary { display: flex; align-items: center; gap: 12px; padding: 17px 0; cursor: pointer; font-size: 13px; line-height: 1.6; }
+.method-topic > summary::before { content: '▸'; color: var(--purple); }
+.method-topic[open] > summary::before { content: '▾'; }
+.method-topic > summary small { margin-left: auto; flex-shrink: 0; color: #888395; }
+.method-week { color: var(--purple); font-weight: 600; }
+.method-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-bottom: 18px; }
+.method-card { padding: 18px; background: #fcfbfe; border: 1px solid var(--border); border-radius: 9px; overflow-wrap: anywhere; }
+.method-type { font-size: 10px; color: #888395; }
+.method-card h3 { display: flex; align-items: flex-start; gap: 8px; margin: 10px 0; font-size: 14px; line-height: 1.5; font-weight: 500; }
+.method-card h3 svg { flex-shrink: 0; margin-top: 2px; color: var(--purple); }
+.method-card p { font-size: 12px; color: #777080; white-space: pre-wrap; line-height: 1.7; }
+.method-links { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 15px; }
+.method-links a { text-decoration: none; }
+.method-content { margin-top: 16px; font-size: 12px; line-height: 1.7; }
+.method-content summary { cursor: pointer; color: var(--purple); }
+.method-content pre { overflow-x: auto; }
+@media (max-width: 760px) {
+  .method-filters { grid-template-columns: 1fr; padding: 0 14px 18px; }
+  .method-cards { grid-template-columns: 1fr; }
+  .method-topics { padding: 0 14px 18px; }
+}

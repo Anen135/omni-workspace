@@ -1,0 +1,21 @@
+.file-preview { min-width: 0; width: 100%; }
+.file-preview-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.file-preview-actions a { display: inline-flex; align-items: center; gap: 6px; color: var(--purple); font-size: 12px; }
+.file-preview-toggle { display: inline-flex; align-items: center; gap: 5px; padding: 6px 9px; border: 1px solid #ded7ed; border-radius: 6px; background: #f7f4fc; color: #75618f; font: inherit; font-size: 11px; cursor: pointer; }
+.file-preview-toggle:focus-visible { outline: 2px solid var(--purple); outline-offset: 3px; }
+.file-preview-full { margin-top: 12px; border: 1px solid var(--border); border-radius: 8px; padding: 10px; background: #fff; }
+.file-preview-full img { display: block; max-width: 100%; height: auto; margin: auto; }
+.file-preview-full .pdf-preview { max-height: 75vh; overflow-y: auto; }
+.file-preview-full small { display: block; margin-top: 10px; color: #888395; font-size: 11px; }
+.file-preview-hover { position: fixed; z-index: 1000; width: min(320px, calc(100vw - 16px)); height: 230px; padding: 8px; background: white; border: 1px solid #ded7ed; border-radius: 9px; box-shadow: 0 8px 30px #30204430; pointer-events: none; overflow: hidden; }
+.file-preview-hover img { width: 100%; height: 190px; object-fit: contain; border: 0; display: block; }
+.file-preview-hover span { display: block; margin-top: 7px; font-size: 10px; color: #888395; }
+.file-preview-error { font-size: 12px; color: #888395; }
+.remote-attachment { margin: 14px 0; }
+.remote-attachment > span { display: block; margin-bottom: 8px; color: #9a97a5; font-size: 11px; }
+.local-file-preview { padding: 20px; background: white; }
+.pdf-page { min-height: 200px; margin: 8px 0; background: #f4f4f6; }
+.pdf-page canvas { display: block; max-width: 100%; margin: auto; background: white; }
+.pdf-preview-compact { height: 190px; overflow: hidden; }
+.pdf-preview-compact .pdf-page { min-height: 0; margin: 0; }
+.pdf-page-count, .file-preview-loading { color: #888395; font-size: 11px; padding: 8px; }

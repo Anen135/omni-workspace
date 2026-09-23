@@ -1,5 +1,7 @@
 import { chromium } from 'playwright';
 import { resolve } from 'node:path';
+import { loadMaterialsCatalog, loadMethodPackage } from './teaching-materials.mjs';
+import { loadFilePreview } from './file-preview.mjs';
 
 const origin = 'https://omni.top-academy.ru';
 const readPaths = new Set([
@@ -7,6 +9,8 @@ const readPaths = new Set([
   '/students/get-students', '/students/get-details-stud', '/students/get-stud-vizit',
   '/schedule/get-schedule', '/presents/get-presents', '/presents/get-materials',
   '/presents/get-homework', '/homework/get-group-spec', '/homework/get-new-homeworks',
+  '/bind/get-public-form', '/bind/get-public-direction', '/bind/get-public-spec',
+  '/bind/get-materials-type', '/bind/get-materials', '/bind/get-count-week',
 ]);
 
 export class BridgeError extends Error {
@@ -19,8 +23,8 @@ export class BridgeError extends Error {
 
 export function validateInput(action, input) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw new BridgeError('BAD_INPUT', 'Некорректный запрос.', 400);
-  if (!['connect', 'status', 'snapshot', 'lesson', 'student', 'group', 'switch-teacher'].includes(action)) throw new BridgeError('NOT_FOUND', 'Неизвестное действие.', 404);
-  const allowed = { connect: [], status: [], snapshot: ['week'], lesson: ['date', 'group', 'lenta'], student: ['stud'], group: ['group'], 'switch-teacher': ['teacherId', 'accountId'] }[action];
+  if (!['connect', 'status', 'snapshot', 'lesson', 'student', 'group', 'switch-teacher', 'materials-catalog', 'method-package'].includes(action)) throw new BridgeError('NOT_FOUND', 'Неизвестное действие.', 404);
+  const allowed = { connect: [], status: [], snapshot: ['week'], lesson: ['date', 'group', 'lenta'], student: ['stud'], group: ['group'], 'switch-teacher': ['teacherId', 'accountId'], 'materials-catalog': ['form', 'direction'], 'method-package': ['spec'] }[action];
   if (Object.keys(input).some(key => !allowed.includes(key))) throw new BridgeError('BAD_INPUT', 'Неизвестный параметр.', 400);
   if (input.week !== undefined && (!Number.isInteger(input.week) || Math.abs(input.week) > 52)) throw new BridgeError('BAD_INPUT', 'Неделя вне допустимого диапазона.', 400);
   if (action === 'lesson' && (typeof input.date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(input.date) || !Number.isFinite(Date.parse(input.date)) || new Date(input.date).toISOString().slice(0, 10) !== input.date)) throw new BridgeError('BAD_INPUT', 'Некорректная дата.', 400);
@@ -29,6 +33,10 @@ export function validateInput(action, input) {
   }
   if ((action === 'student' && input.stud === undefined) || (action === 'group' && input.group === undefined)) throw new BridgeError('BAD_INPUT', 'Не указан идентификатор.', 400);
   if (action === 'switch-teacher' && !['teacherId', 'accountId'].every(key => typeof input[key] === 'string' && /^[1-9]\d{0,11}$/.test(input[key]))) throw new BridgeError('BAD_INPUT', 'Не указан преподаватель или текущий аккаунт.', 400);
+  for (const key of ['form', 'direction', 'spec']) {
+    if (input[key] !== undefined && !((typeof input[key] === 'string' || Number.isSafeInteger(input[key])) && /^[1-9]\d{0,11}$/.test(String(input[key])))) throw new BridgeError('BAD_INPUT', 'Некорректный идентификатор методпакета.', 400);
+  }
+  if ((action === 'method-package' && input.spec === undefined) || (input.direction !== undefined && input.form === undefined)) throw new BridgeError('BAD_INPUT', 'Не выбрана форма обучения или методпакет.', 400);
   return input;
 }
 
@@ -183,7 +191,9 @@ export function createBridge() {
           materials: group && date && lenta !== undefined ? await section('/presents/get-materials', { group, lenta, date_vizit: date }) : { data: null, error: null },
           homework: group && date && lenta !== undefined ? await section('/presents/get-homework', { group, lenta, date, ospr: 0 }) : { data: null, error: null },
         };
-      } else if (action === 'group') result = { students: await read('/students/get-students', { group: input.group }) };
+      } else if (action === 'materials-catalog') result = await loadMaterialsCatalog(section, input);
+      else if (action === 'method-package') result = await loadMethodPackage(section, input);
+      else if (action === 'group') result = { students: await read('/students/get-students', { group: input.group }) };
       else result = { details: await section('/students/get-details-stud', { stud: input.stud }), attendance: await section('/students/get-stud-vizit', { stud: input.stud }) };
       const finalAccount = await identity();
       if (account.id !== finalAccount.id) throw new BridgeError('ACCOUNT_CHANGED', 'Аккаунт изменился во время загрузки. Обновите подключение.', 409);
@@ -229,6 +239,15 @@ export function createMiddleware(bridge) {
       let input;
       try { input = JSON.parse(body || '{}'); } catch { throw new BridgeError('BAD_INPUT', 'Некорректный JSON.', 400); }
       const action = request.url.slice('/api/omni/'.length);
+      if (action === 'file-preview') {
+        let file;
+        try { file = await loadFilePreview(input?.url); }
+        catch (error) { throw new BridgeError('FILE_PREVIEW', error.name === 'TimeoutError' ? 'Хранилище не ответило вовремя. Повторите загрузку.' : error.message); }
+        response.setHeader('Content-Type', file.type);
+        response.setHeader('Content-Length', file.data.length);
+        response.statusCode = 200;
+        return response.end(file.data);
+      }
       const data = await bridge.dispatch(action, input);
       send(200, data);
     } catch (error) {

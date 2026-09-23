@@ -2,6 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 import { ArrowRight, BookOpen, CalendarDays, CheckCheck, ClipboardCheck, Download, ExternalLink, FolderOpen, GraduationCap, History, LoaderCircle, LogIn, RefreshCw, ShieldCheck, Users, X } from 'lucide-react';
 import { ConnectionError, label, omniRequest, record, rows, type RemoteLesson, type RemoteRecord, type Section, type Snapshot } from './omni-client';
 import { ScheduleView } from './ScheduleView';
+import { FilePreview } from './FilePreview';
+import { materialLink } from './teaching-materials';
+import { TeachingMaterials } from './TeachingMaterials';
 import './live.css';
 
 type Tab = 'lesson' | 'schedule' | 'groups' | 'homework' | 'materials';
@@ -165,7 +168,10 @@ export function LiveWorkspace({ onDemo }: { onDemo: () => void }) {
         {tab === 'schedule' && <section className="panel"><div className="panel-heading"><div><h2>Расписание</h2><p>{label(record(schedule.start_end).monday)} — {label(record(schedule.start_end).sunday)}</p></div><div className="live-week"><button className="button secondary" aria-label="Предыдущая неделя" disabled={busy || week <= -52} onClick={() => void refresh(week - 1)}>←</button><button className="button secondary" disabled={busy} onClick={() => void refresh(0)}>Эта неделя</button><button className="button secondary" aria-label="Следующая неделя" disabled={busy || week >= 52} onClick={() => void refresh(week + 1)}>→</button></div></div>{snapshot.schedule.error ? <SectionView section={snapshot.schedule}/> : <ScheduleView data={schedule} today={today}/>}</section>}
         {tab === 'groups' && <section className="panel"><div className="panel-heading"><div><h2>{groupName || 'Мои группы'}</h2><p>Группы и ученики, доступные вашему аккаунту</p></div></div>{snapshot.groups.error ? <SectionView section={snapshot.groups}/> : groups.length ? <><div className="live-group-buttons">{groups.map((group, index) => <button className="button secondary" disabled={busy || !group.id_tgroups} key={label(group.id_tgroups) || index} onClick={() => void openGroup(group)}>{label(group.name_tgroups) || 'Группа'}</button>)}</div>{groupStudents && (rows(groupStudents.data).length ? studentTable(rows(groupStudents.data)) : <Empty title="В группе нет доступных учеников" text="Omni вернул пустой список."/>)}</> : <Empty title="Omni пока не возвращает группы" text="Подключение работает. Список групп пуст в самом аккаунте академии."/>}</section>}
         {tab === 'homework' && <section className="panel"><div className="panel-heading"><div><h2>Домашние задания</h2><p>Непроверенных ДЗ: {snapshot.counts.homework} · Практических: {snapshot.counts.practice}</p></div></div><SectionView section={snapshot.newHomework} emptyTitle="Новых работ нет"/><details className="live-details"><summary>Группы для проверки домашних заданий</summary><SectionView section={snapshot.homework} emptyTitle="Доступных групп нет"/></details></section>}
-        {tab === 'materials' && <section className="panel"><div className="panel-heading"><div><h2>ДЗ и материалы текущего урока</h2><p>Получаем содержимое по группе, дате и номеру пары</p></div><button className="button secondary" disabled={busy || !selectedDate} onClick={() => void loadLesson(label(presentData.cur_group), label(presentData.cur_lenta))}><RefreshCw size={15}/>Загрузить</button></div>{!presentData.cur_group ? <Empty title="Сначала нужен доступный урок" text="Omni не вернул текущую группу. Материалы появятся после загрузки занятия."/> : <><h3 className="live-section-title">Учебные материалы</h3><SectionView section={lesson?.materials || emptySection} emptyTitle={lesson ? 'Материалов нет' : 'Нажмите «Загрузить»'}/><h3 className="live-section-title">Выданное домашнее задание</h3><SectionView section={lesson?.homework || emptySection} emptyTitle={lesson ? 'ДЗ не выдано' : 'Нажмите «Загрузить»'}/></>}</section>}
+        {tab === 'materials' && <>
+          <TeachingMaterials key={`${snapshot.account.id}:${snapshot.account.branch}`} accountId={snapshot.account.id} disabled={busy} onConnectionError={failed}/>
+          <section className="panel"><div className="panel-heading"><div><h2>Выданные ДЗ и материалы текущего урока</h2><p>Файлы, связанные с текущей группой, датой и парой</p></div><button className="button secondary" disabled={busy || !selectedDate || !presentData.cur_group} onClick={() => void loadLesson(label(presentData.cur_group), label(presentData.cur_lenta))}><RefreshCw size={15}/>Загрузить выданные материалы</button></div>{!presentData.cur_group ? <Empty title="Текущая пара не выбрана" text="Выданные ученикам файлы появятся после загрузки занятия. Методички для подготовки доступны в каталоге выше."/> : <><h3 className="live-section-title">Выданные материалы</h3><SectionView fileFallback="pdf" section={lesson?.materials || emptySection} emptyTitle={lesson ? 'Материалов нет' : 'Нажмите «Загрузить выданные материалы»'}/><h3 className="live-section-title">Выданное домашнее задание</h3><SectionView section={lesson?.homework || emptySection} emptyTitle={lesson ? 'ДЗ не выдано' : 'Нажмите «Загрузить выданные материалы»'}/></>}</section>
+        </>}
         <div className="bottom-actions"><span><ShieldCheck size={17}/>При ошибке данные остаются на экране, страница не перезагружается.</span><button className="button secondary" disabled={busy} onClick={() => void connect()}><ExternalLink size={15}/>Открыть окно Omni</button></div>
       </>}
       <footer className="page-footer"><span>omni workspace</span><span>Больше внимания ученикам.</span><span>Локальное подключение</span></footer>
@@ -185,27 +191,30 @@ const fieldNames: Record<string, string> = {
   mark2: 'Контрольная работа', mark4: 'Работа на уроке', date: 'Дата', date_vizit: 'Дата занятия',
   time: 'Дата выдачи', deadline: 'Срок сдачи', n_lenta: 'Пара', l_start: 'Начало', l_end: 'Окончание',
   average: 'Средний балл', avg_mark: 'Средний балл', count: 'Количество',
-  download_url: 'Файл', download_url_stud: 'Работа ученика', filename: 'Файл', link: 'Ссылка',
+  download_url: 'Файл', download_url_stud: 'Работа ученика', filename: 'Файл', file_url: 'Файл', link: 'Ссылка',
 };
-function SectionView({ section, emptyTitle = 'Данные отсутствуют' }: { section: Section; emptyTitle?: string }) {
+function SectionView({ section, emptyTitle = 'Данные отсутствуют', fileFallback }: { section: Section; emptyTitle?: string; fileFallback?: 'pdf' }) {
   if (section.error) return <div className="warning" role="alert">{section.error}</div>;
   if (!hasData(section.data)) return <Empty title={emptyTitle}/>;
-  return <div className="remote-data"><DataValue value={section.data}/></div>;
+  return <div className="remote-data"><DataValue value={section.data} fileFallback={fileFallback}/></div>;
 }
-function DataValue({ value, depth = 0 }: { value: unknown; depth?: number }) {
+function DataValue({ value, depth = 0, fileFallback }: { value: unknown; depth?: number; fileFallback?: 'pdf' }) {
   if (depth > 6) return <p className="muted">Вложенные данные доступны в экспорте снимка.</p>;
   if (!value || typeof value !== 'object') return <span>{label(value)}</span>;
-  if (Array.isArray(value)) return <>{value.slice(0, 100).map((item, index) => <div className="remote-record" key={index}><DataValue value={item} depth={depth + 1}/></div>)}{value.length > 100 && <p>Показаны первые 100 записей. Полные данные доступны в экспорте.</p>}</>;
+  if (Array.isArray(value)) return <>{value.slice(0, 100).map((item, index) => <div className="remote-record" key={index}><DataValue value={item} depth={depth + 1} fileFallback={fileFallback}/></div>)}{value.length > 100 && <p>Показаны первые 100 записей. Полные данные доступны в экспорте.</p>}</>;
   const entries = Object.entries(value);
   return <>{entries.map(([key, item]) => {
     if (item === null || item === '' || item === undefined) return null;
-    if (typeof item === 'object') return <div className="remote-record" key={key}>{fieldNames[key] && <h3>{fieldNames[key]}</h3>}<DataValue value={item} depth={depth + 1}/></div>;
+    if (typeof item === 'object') return <div className="remote-record" key={key}>{fieldNames[key] && <h3>{fieldNames[key]}</h3>}<DataValue value={item} depth={depth + 1} fileFallback={fileFallback}/></div>;
     if (!fieldNames[key]) return null;
     const text = label(item);
-    let safeLink = false;
-    if (['download_url', 'download_url_stud', 'link', 'filename'].includes(key)) {
-      try { safeLink = new URL(text).protocol === 'https:'; } catch { safeLink = false; }
+    const safeLink = ['download_url', 'download_url_stud', 'file_url', 'link', 'filename'].includes(key) ? materialLink(text) : null;
+    if (safeLink) {
+      // A record often exposes the same file under several aliases.
+      if (entries.slice(0, entries.findIndex(([name]) => name === key)).some(([name, data]) => ['download_url', 'download_url_stud', 'file_url', 'link', 'filename'].includes(name) && materialLink(label(data)) === safeLink)) return null;
+      const itemRecord = record(value);
+      return <div className="remote-attachment" key={key}><span>{fieldNames[key]}</span><FilePreview url={safeLink} filename={label(itemRecord.file_name || itemRecord.original_name || itemRecord.filename)} mime={label(itemRecord.mime_type || itemRecord.content_type || itemRecord.mime)} fallback={fileFallback}/></div>;
     }
-    return <div className="remote-field" key={key}><span>{fieldNames[key]}</span>{safeLink ? <a href={text} target="_blank" rel="noopener noreferrer">Открыть файл <ExternalLink size={13}/></a> : <strong>{text}</strong>}</div>;
+    return <div className="remote-field" key={key}><span>{fieldNames[key]}</span><strong>{text}</strong></div>;
   })}{!entries.some(([key, item]) => fieldNames[key] || (item && typeof item === 'object')) && <p className="muted">Omni вернул запись в неподдерживаемом формате. Её можно сохранить через экспорт снимка.</p>}</>;
 }
