@@ -2,6 +2,7 @@ import { chromium } from 'playwright';
 import { resolve } from 'node:path';
 import { loadMaterialsCatalog, loadMethodPackage } from './teaching-materials.mjs';
 import { loadFilePreview } from './file-preview.mjs';
+import { submitOfficialLogin, loginErrors } from './login.mjs';
 
 const origin = 'https://omni.top-academy.ru';
 const readPaths = new Set([
@@ -23,9 +24,10 @@ export class BridgeError extends Error {
 
 export function validateInput(action, input) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw new BridgeError('BAD_INPUT', 'Некорректный запрос.', 400);
-  if (!['connect', 'status', 'snapshot', 'lesson', 'student', 'group', 'switch-teacher', 'materials-catalog', 'method-package'].includes(action)) throw new BridgeError('NOT_FOUND', 'Неизвестное действие.', 404);
-  const allowed = { connect: [], status: [], snapshot: ['week'], lesson: ['date', 'group', 'lenta'], student: ['stud'], group: ['group'], 'switch-teacher': ['teacherId', 'accountId'], 'materials-catalog': ['form', 'direction'], 'method-package': ['spec'] }[action];
+  if (!['connect', 'login', 'status', 'snapshot', 'lesson', 'student', 'group', 'switch-teacher', 'materials-catalog', 'method-package'].includes(action)) throw new BridgeError('NOT_FOUND', 'Неизвестное действие.', 404);
+  const allowed = { connect: [], login: ['username', 'password'], status: [], snapshot: ['week'], lesson: ['date', 'group', 'lenta'], student: ['stud'], group: ['group'], 'switch-teacher': ['teacherId', 'accountId'], 'materials-catalog': ['form', 'direction'], 'method-package': ['spec'] }[action];
   if (Object.keys(input).some(key => !allowed.includes(key))) throw new BridgeError('BAD_INPUT', 'Неизвестный параметр.', 400);
+  if (action === 'login' && (typeof input.username !== 'string' || !input.username.trim() || input.username.length > 256 || typeof input.password !== 'string' || !input.password || input.password.length > 1024)) throw new BridgeError('BAD_INPUT', 'Введите логин и пароль допустимой длины.', 400);
   if (input.week !== undefined && (!Number.isInteger(input.week) || Math.abs(input.week) > 52)) throw new BridgeError('BAD_INPUT', 'Неделя вне допустимого диапазона.', 400);
   if (action === 'lesson' && (typeof input.date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(input.date) || !Number.isFinite(Date.parse(input.date)) || new Date(input.date).toISOString().slice(0, 10) !== input.date)) throw new BridgeError('BAD_INPUT', 'Некорректная дата.', 400);
   for (const key of ['group', 'stud', 'lenta']) {
@@ -46,8 +48,10 @@ export function createBridge() {
   let page;
   let connecting;
   let owned = false;
+  let background = false;
+  let lastLoginAttempt = 0;
 
-  async function attach() {
+  async function attach(headless = false) {
     if (page && !page.isClosed()) return page;
     if (connecting) return connecting;
     connecting = (async () => {
@@ -65,9 +69,10 @@ export function createBridge() {
         await browser.close();
       } catch { browser = undefined; }
       context = await chromium.launchPersistentContext(resolve('.omni-browser'), {
-        channel: 'msedge', headless: false, viewport: null,
+        channel: 'msedge', headless, viewport: null,
       });
       owned = true;
+      background = headless;
       page = context.pages()[0] || await context.newPage();
       await page.goto(origin, { waitUntil: 'domcontentloaded', timeout: 45000 });
       return page;
@@ -142,12 +147,38 @@ export function createBridge() {
     async dispatch(action, input = {}) {
       validateInput(action, input);
       if (action === 'connect') {
+        // Promote our headless session for a human verification without exposing tokens.
+        let hash;
+        if (owned && background) {
+          if (page && !page.isClosed() && new URL(page.url()).origin === origin) hash = await page.evaluate(() => sessionStorage.getItem('IdLocalHash')).catch(() => null);
+          await context?.close(); page = undefined; context = undefined; owned = false; background = false;
+        }
         const tab = await attach();
+        if (hash && new URL(tab.url()).origin === origin) await tab.evaluate(value => sessionStorage.setItem('IdLocalHash', value), hash);
         if ((await status()).connected || !tab.url().startsWith(origin + '/')) await tab.goto(origin, { waitUntil: 'domcontentloaded', timeout: 45000 });
         await tab.bringToFront();
         return status();
       }
       if (action === 'status') return status();
+      if (action === 'login') {
+        if (Date.now() - lastLoginAttempt < 3000) throw new BridgeError('LOGIN_RATE_LIMIT', loginErrors.LOGIN_RATE_LIMIT, 429);
+        lastLoginAttempt = Date.now();
+        try {
+          const tab = await attach(true);
+          if (!(await status()).connected) {
+            if (new URL(tab.url()).origin !== origin || !new URL(tab.url()).pathname.startsWith('/login')) await tab.goto(`${origin}/login/index`, { waitUntil: 'domcontentloaded', timeout: 45000 });
+            await tab.locator('input[type=password]').waitFor({ timeout: 10000 }).catch(() => {});
+            const result = await tab.evaluate(submitOfficialLogin, { username: input.username.trim(), password: input.password });
+            if (!result.success) throw new BridgeError(result.code, loginErrors[result.code] || loginErrors.LOGIN_UNAVAILABLE, result.code === 'LOGIN_RATE_LIMIT' ? 429 : 401);
+            await tab.goto(`${origin}/#/schedulePage`, { waitUntil: 'domcontentloaded', timeout: 45000 });
+          }
+          await identity();
+          return { connected: true, state: 'ready' };
+        } catch (error) {
+          if (error instanceof BridgeError) throw error;
+          throw new BridgeError('LOGIN_UNAVAILABLE', loginErrors.LOGIN_UNAVAILABLE);
+        } finally { input.password = ''; }
+      }
       const account = await identity();
       if (action === 'switch-teacher') {
         if (account.id !== input.accountId) throw new BridgeError('ACCOUNT_CHANGED', 'Аккаунт изменился. Обновите данные перед переключением.', 409);
