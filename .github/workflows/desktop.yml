@@ -1,0 +1,35 @@
+name: Build Windows desktop prototype
+on:
+  push:
+    branches: [main, develop, experiment/lightweight-desktop]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - run: npm ci
+      - run: npm test
+      - run: npm run build:pages
+      - run: node desktop/build-agent.mjs
+      - run: dotnet restore desktop/Omni.Desktop.csproj --locked-mode
+      - run: dotnet build desktop/Omni.Desktop.csproj -c Release --no-restore
+      - uses: actions/upload-artifact@v4
+        with:
+          name: omni-desktop-windows-x64-prototype
+          path: |
+            desktop/bin/Release/net48/*.exe
+            desktop/bin/Release/net48/*.dll
+            desktop/bin/Release/net48/*.config
+            LICENSE
+            desktop/README.md

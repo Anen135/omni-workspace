@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { ChevronDown, ChevronUp, ExternalLink } from 'lucide-react';
 import { materialLink } from './teaching-materials';
 import './file-preview.css';
+import { desktopRequest, isDesktop } from './desktop-client';
 const PdfPreview = lazy(() => import('./PdfPreview'));
 
 type Kind = 'image' | 'pdf' | 'unknown' | 'unsupported';
@@ -88,6 +89,14 @@ function AcademyPreview({ url, title, compact }: { url: string; title: string; c
     setFile(null); setError('');
     void (async () => {
       try {
+        if (isDesktop()) {
+          const result = await desktopRequest<{ type: string; base64: string }>('file-preview', { url });
+          if (controller.signal.aborted) return;
+          const bytes = Uint8Array.from(atob(result.base64), value => value.charCodeAt(0));
+          objectUrl = URL.createObjectURL(new Blob([bytes], { type: result.type }));
+          setFile({ url: objectUrl, kind: fileKind(objectUrl, '', result.type) });
+          return;
+        }
         const response = await fetch('/api/omni/file-preview', {
           method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Omni-Client': 'workspace' },
           body: JSON.stringify({ url }), signal: controller.signal,

@@ -1,3 +1,4 @@
+import { desktopRequest, isDesktop } from './desktop-client';
 export type RemoteRecord = Record<string, unknown>;
 export type Section = { data: unknown; error: string | null };
 export type Account = { id: string; name: string; branch?: string; timezone?: string };
@@ -12,6 +13,10 @@ export class ConnectionError extends Error {
   constructor(public code: string, message: string) { super(message); }
 }
 export async function omniRequest<Result>(action: string, input = {}): Promise<Result> {
+  if (isDesktop()) {
+    try { return await desktopRequest<Result>(action, input); }
+    catch (error) { throw new ConnectionError((error as { code?: string }).code || 'DESKTOP_ERROR', error instanceof Error ? error.message : 'Ошибка подключения.'); }
+  }
   let response: Response;
   try {
     response = await fetch(`/api/omni/${action}`, {

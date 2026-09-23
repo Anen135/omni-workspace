@@ -1,6 +1,7 @@
 import { useRef, useState, type FormEvent } from 'react';
 import { LoaderCircle, LogIn } from 'lucide-react';
 import './login.css';
+import { isDesktop } from './desktop-client';
 
 export function LoginForm({ busy, onLogin }: { busy: boolean; onLogin: (username: string, password: string) => Promise<void> }) {
   const [username, setUsername] = useState('');
@@ -15,6 +16,7 @@ export function LoginForm({ busy, onLogin }: { busy: boolean; onLogin: (username
     try { await onLogin(username.trim(), secret); }
     finally { secret = ''; submitting.current = false; }
   }
+  if (isDesktop()) return <p>В desktop-прототипе используйте «Открыть официальный вход»: пароль вводится только на сайте академии внутри приложения.</p>;
   return <form className="omni-login-form" onSubmit={event => void submit(event)}>
     <label>Логин Omni<input name="username" autoComplete="username" required maxLength={256} value={username} onChange={event => setUsername(event.target.value)} disabled={busy}/></label>
     <label>Пароль<input ref={password} name="password" type="password" autoComplete="current-password" required maxLength={1024} disabled={busy}/></label>
