@@ -161,6 +161,8 @@ assets/             Публичный скриншот демонстрации
 
 ## Ветки и GitHub Pages
 
+Альтернативный прототип без EXE и локального сервера: [установка браузерного расширения](extension/README.md), ветка `experiment/browser-extension`. Сборка: `npm run build:extension`; интерфейс включён в пакет, вход выполняется во вкладке Omni текущего браузера.
+
 Экспериментальная лёгкая Windows-оболочка: [сборка и ограничения desktop-прототипа](desktop/README.md). Она использует WebView2 и отдельный локальный профиль Omni; в EXE не включены Node.js и Chromium. В этой ветке разработка прототипа идёт в `experiment/lightweight-desktop`, публикация ещё не выполнена.
 
 Основная разработка ведётся в `develop`. Изменения для публикации переносятся в `main` через pull request. Workflow `.github/workflows/pages.yml` запускает тесты и статическую сборку при каждом push в `main`, затем публикует только `dist/`. Push в `develop` не публикуется. Возможен ручной запуск workflow для `main`.

@@ -1,0 +1,16 @@
+{
+  "manifest_version": 3,
+  "name": "Omni Workspace — extension prototype",
+  "version": "0.2.0",
+  "version_name": "0.2.0-extension-prototype",
+  "description": "Локальный интерфейс преподавателя. Вход и данные через официальную вкладку Omni.",
+  "minimum_chrome_version": "120",
+  "permissions": ["scripting", "storage"],
+  "host_permissions": ["https://omni.top-academy.ru/*", "https://fs.top-academy.ru/*", "https://storage.yandexcloud.net/top-academy-services-omni/*"],
+  "background": { "service_worker": "background.js", "type": "module" },
+  "action": { "default_title": "Открыть Omni Workspace", "default_icon": "icon.png" },
+  "icons": { "128": "icon.png" },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'none'; worker-src 'self'; base-uri 'none';"
+  }
+}
