@@ -64,7 +64,9 @@ try {
   // Simulates completion of an official login, without ever sending a password.
   await official.evaluate(() => { document.querySelector('input').remove(); sessionStorage.setItem('IdLocalHash', 'fixture-hash'); });
   signedIn = true;
-  await ui.getByRole('heading', { name: 'Ваше рабочее пространство.' }).waitFor();
+  await ui.getByRole('button', { name: 'Открыть официальный вход', exact: true }).click();
+  await ui.getByText('Подключено', { exact: true }).waitFor();
+  await ui.getByRole('heading', { name: 'Мой урок' }).waitFor();
   assert.ok(paths.includes('/schedule/get-schedule'));
   assert.ok(paths.filter(path => path === '/profile/get-profile').length >= 2);
   await ui.getByRole('button', { name: 'Домашние задания', exact: true }).click();
