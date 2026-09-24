@@ -71,7 +71,7 @@ try {
     await route.fulfill({ json: body });
   });
   await page.goto('http://127.0.0.1:5184/', { waitUntil: 'domcontentloaded' });
-  await page.getByText('Ваше рабочее пространство', { exact: false }).waitFor();
+  await page.getByRole('heading', { name: 'Мой урок' }).waitFor();
   await page.getByRole('button', { name: 'Материалы', exact: true }).click();
   const form = page.getByLabel('Форма обучения', { exact: true });
   const course = page.getByLabel('Методпакет', { exact: true });
@@ -147,7 +147,7 @@ try {
   wrongAccount = false;
   hasLesson = true;
   await page.reload({ waitUntil: 'domcontentloaded' });
-  await page.getByText('Ваше рабочее пространство', { exact: false }).waitFor();
+  await page.getByRole('heading', { name: 'Мой урок' }).waitFor();
   await page.getByRole('button', { name: 'Материалы', exact: true }).click();
   await page.getByRole('button', { name: 'Загрузить выданные материалы', exact: true }).click();
   await page.locator('.remote-attachment').getByRole('button', { name: 'Превью', exact: true }).click();
