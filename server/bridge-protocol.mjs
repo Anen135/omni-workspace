@@ -18,7 +18,11 @@ export function validateInput(action, input) {
     if (input[key] !== undefined && !/^\d{1,12}$/.test(String(input[key]))) throw new BridgeError('BAD_INPUT', 'Некорректный идентификатор.', 400);
   }
   if ((action === 'student' && input.stud === undefined) || (action === 'group' && input.group === undefined)) throw new BridgeError('BAD_INPUT', 'Не указан идентификатор.', 400);
-  if (action === 'switch-teacher' && !['teacherId', 'accountId'].every(key => typeof input[key] === 'string' && /^[1-9]\d{0,11}$/.test(input[key]))) throw new BridgeError('BAD_INPUT', 'Не указан преподаватель или текущий аккаунт.', 400);
+  if (action === 'switch-teacher') {
+    for (const key of ['teacherId', 'accountId']) {
+      if (typeof input[key] !== 'string' || !/^[1-9]\d{0,11}$/.test(input[key])) throw new BridgeError('BAD_INPUT', key === 'teacherId' ? 'Omni вернул неподдерживаемый идентификатор выбранного преподавателя.' : 'Omni вернул неподдерживаемый идентификатор текущего аккаунта.', 400);
+    }
+  }
   for (const key of ['form', 'direction', 'spec']) {
     if (input[key] !== undefined && !((typeof input[key] === 'string' || Number.isSafeInteger(input[key])) && /^[1-9]\d{0,11}$/.test(String(input[key])))) throw new BridgeError('BAD_INPUT', 'Некорректный идентификатор методпакета.', 400);
   }

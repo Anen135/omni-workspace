@@ -1,8 +1,6 @@
-name: Publish beta to GitHub Pages
+name: Publish optional demo to GitHub Pages
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 permissions:

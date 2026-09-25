@@ -31,20 +31,35 @@ try {
   await context.route('https://fonts.googleapis.com/**', route => route.abort());
   const paths = [];
   let signedIn = false;
+  let teacherId = 1;
+  let rejectSwitch = false;
   const empty = {};
   // All Omni responses are fictional: no real login, cookies or academic data.
   await context.route('https://omni.top-academy.ru/**', async route => {
     const request = route.request();
     const path = new URL(request.url()).pathname;
-    if (request.isNavigationRequest()) return route.fulfill({ contentType: 'text/html', body: '<!doctype html><meta name="csrf-token" content="fixture-csrf"><title>Fixture Omni</title><input type="password">' });
+    if (request.isNavigationRequest() && path === '/auth/logout') {
+      signedIn = false;
+      paths.push(path);
+      return route.fulfill({ status: 302, headers: { location: 'https://omni.top-academy.ru/login/index' } });
+    }
+    if (request.isNavigationRequest()) return route.fulfill({ contentType: 'text/html', body: `<!doctype html><meta name="csrf-token" content="fixture-csrf"><title>Fixture Omni</title>${signedIn ? '' : '<input type="password">'}<script>globalThis.angular = { element: () => ({ injector: () => ({ get: () => ({ clearLocalStorage: () => sessionStorage.setItem('switch-cleaned', 'yes') }) }) }) };</script>` });
     if (path === '/favicon.ico') return route.fulfill({ status: 404, body: '' });
     if (request.method() !== 'POST') return route.fulfill({ status: 404, body: '' });
     paths.push(path);
     assert.equal(request.method(), 'POST');
     assert.equal(request.headers()['x-csrf-token'], 'fixture-csrf');
     let data = empty;
-    if (path === '/profile/get-profile') data = { teach_info: { id_teach: 1, fio_teach: 'Тестовый преподаватель' } };
-    if (path === '/auth/get-teach-list') data = [];
+    if (path === '/profile/get-profile') data = { teach_info: { id_teach: teacherId, fio_teach: `Тестовый преподаватель ${teacherId}` } };
+    if (path === '/auth/get-teach-list') data = [1, 2].map(id => ({ id_teach: id, fio_teach: `Тестовый преподаватель ${id}` }));
+    if (path === '/auth/change-user') {
+      assert.equal(request.headers()['id-local-hash'], 'fixture-hash');
+      const input = request.postDataJSON();
+      assert.deepEqual(Object.keys(input), ['id_user']);
+      assert.ok(['1', '2'].includes(input.id_user));
+      if (!rejectSwitch) teacherId = Number(input.id_user);
+      data = { success: !rejectSwitch };
+    }
     if (path === '/auth/get-start-info') data = { branch: { name: 'Тестовая академия' } };
     if (path === '/students/get-groups-list') data = [];
     if (path === '/homework/get-new-homeworks') data = [{ filename: 'fixture.pdf', download_url_stud: 'https://fs.top-academy.ru/api/v1/files/pdf-fixture' }];
@@ -80,11 +95,64 @@ try {
   assert.equal(external.error.code, 'FORBIDDEN');
   const forbidden = await ui.evaluate(() => chrome.runtime.sendMessage({ action: 'eval', input: { code: 'alert(1)' } }));
   assert.equal(forbidden.error.code, 'BAD_INPUT');
+  const actAs = ui.getByLabel('Работаю от имени', { exact: true });
+  assert.equal(await actAs.isEnabled(), true);
+  const capabilities = await ui.evaluate(() => chrome.runtime.sendMessage({ action: 'capabilities', input: {} }));
+  assert.equal(capabilities.data.teacherSwitch, true);
+  assert.equal(capabilities.data.version, '0.3.0');
+  assert.equal(capabilities.data.accountSwitch, true);
+  const malformed = await ui.evaluate(() => chrome.runtime.sendMessage({ action: 'switch-teacher', input: { teacherId: '', accountId: '1' } }));
+  assert.match(malformed.error.message, /идентификатор выбранного преподавателя/);
+  const denied = await ui.evaluate(() => chrome.runtime.sendMessage({ action: 'switch-teacher', input: { teacherId: '999', accountId: '1' } }));
+  assert.equal(denied.error.code, 'TEACHER_NOT_ALLOWED');
+  assert.equal(paths.filter(path => path === '/auth/change-user').length, 0);
+  const stale = await ui.evaluate(() => chrome.runtime.sendMessage({ action: 'switch-teacher', input: { teacherId: '2', accountId: '9' } }));
+  assert.equal(stale.error.code, 'ACCOUNT_CHANGED');
+  // Simulate a new interface talking to the pre-switching background worker.
+  await ui.evaluate(() => {
+    const send = chrome.runtime.sendMessage.bind(chrome.runtime);
+    chrome.runtime.sendMessage = message => message.action === 'capabilities'
+      ? Promise.resolve({ error: { code: 'BAD_INPUT', message: 'Команда или параметры не поддерживаются.' } })
+      : send(message);
+  });
+  await actAs.selectOption('2');
+  await ui.getByRole('alert').filter({ hasText: 'Фоновый обработчик расширения устарел' }).waitFor();
+  assert.equal(paths.filter(path => path === '/auth/change-user').length, 0);
+  await ui.reload();
+  await ui.getByText('Подключено', { exact: true }).waitFor();
+  await actAs.selectOption('2');
+  await ui.getByText('Подключено', { exact: true }).waitFor();
+  assert.equal(await actAs.inputValue(), '2');
+  assert.equal(await official.evaluate(() => sessionStorage.getItem('switch-cleaned')), 'yes');
+  assert.equal(await ui.locator('.file-preview-full').count(), 0);
+  assert.equal(await ui.getByRole('heading', { name: 'Мой урок' }).count(), 1);
+  rejectSwitch = true;
+  await actAs.selectOption('1');
+  await ui.getByRole('alert').filter({ hasText: 'Omni отклонил переключение' }).waitFor();
+  assert.equal(await ui.locator('.lesson-banner').count(), 0);
+  assert.equal(teacherId, 2);
+  await ui.reload();
+  await ui.getByText('Подключено', { exact: true }).waitFor();
+  ui.once('dialog', dialog => dialog.dismiss());
+  await ui.getByRole('button', { name: 'Сменить аккаунт', exact: true }).click();
+  assert.equal(paths.filter(path => path === '/auth/logout').length, 0);
+  assert.equal(await actAs.inputValue(), '2');
+  ui.once('dialog', dialog => dialog.accept());
+  await ui.getByRole('button', { name: 'Сменить аккаунт', exact: true }).click();
+  await official.waitForURL('https://omni.top-academy.ru/login/index');
+  await ui.getByRole('heading', { name: 'Завершите вход в окне Omni' }).waitFor();
+  assert.equal(await ui.locator('.lesson-banner').count(), 0);
+  assert.equal(await ui.locator('input[type=password]').count(), 0);
+  assert.equal(paths.filter(path => path === '/auth/logout').length, 1);
+  teacherId = 3; signedIn = true;
+  await official.goto('https://omni.top-academy.ru/');
+  await ui.getByText('Подключено', { exact: true }).waitFor();
+  assert.equal(await actAs.inputValue(), '3');
   await official.close();
   const status = await ui.evaluate(() => chrome.runtime.sendMessage({ action: 'status', input: {} }));
   assert.equal(status.data.connected, false);
   assert.deepEqual(errors, []);
-  console.log('PASS: actual MV3 installation, bundled UI, official tab, isolated agent, session headers, snapshot, PDF canvas, rejected sender/command and closed-tab recovery. All data fictional.');
+  console.log('PASS: MV3 snapshot/PDF, teacher switching, validation/rejections, stale worker, account change confirmation/cancel/logout/login, old data cleared, automatic new snapshot, sender restrictions and closed-tab recovery. All data fictional.');
 } finally {
   await context?.close();
   // Only the unique temporary test profile created above is removed.

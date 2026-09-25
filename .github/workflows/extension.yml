@@ -1,4 +1,4 @@
-name: Build browser extension prototype
+name: Build beta browser extension
 on:
   push:
     branches: [main, develop, experiment/browser-extension]
@@ -22,5 +22,5 @@ jobs:
       - run: node tests/extension-browser.mjs
       - uses: actions/upload-artifact@v4
         with:
-          name: omni-workspace-extension-prototype
+          name: omni-workspace-extension-beta
           path: dist-extension/

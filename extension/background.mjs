@@ -1,5 +1,6 @@
 import { officialOrigin, officialUrl, trustedSender, validateMessage } from './policy.mjs';
 import { previewFile } from './files.mjs';
+import { switchTeacherInPage } from './switch-teacher.mjs';
 const uiUrl = chrome.runtime.getURL('index.html');
 let busy = false;
 const previews = new Map();
@@ -39,11 +40,26 @@ async function getTab(open) {
 }
 
 async function dispatch({ action, input = {} }) {
+  if (action === 'capabilities') return { version: chrome.runtime.getManifest().version, teacherSwitch: true, accountSwitch: true };
   if (action === 'file-preview') return loadPreview(input.url);
-  const tab = await getTab(action === 'connect');
+  const tab = await getTab(action === 'connect' || action === 'switch-account');
   if (!tab) {
     if (action === 'status') return { connected: false, state: 'disconnected' };
     throw Object.assign(new Error('Нажмите «Открыть официальный вход».'), { code: 'AUTH_REQUIRED' });
+  }
+  if (action === 'switch-account') {
+    previews.clear();
+    // This is Omni's own logout navigation, not cookie deletion or password handling.
+    await new Promise((resolve, reject) => {
+      const finish = error => { clearTimeout(timer); chrome.tabs.onUpdated.removeListener(updated); chrome.tabs.onRemoved.removeListener(removed); error ? reject(error) : resolve(); };
+      const updated = (id, change, current) => { if (id === tab.id && change.status === 'complete' && officialUrl(current.url) && new URL(current.url).pathname.startsWith('/login')) finish(); };
+      const removed = id => { if (id === tab.id) finish(new Error('Вкладка Omni закрыта.')); };
+      const timer = setTimeout(() => finish(Object.assign(new Error('Omni не подтвердил выход. Завершите выход в официальной вкладке и войдите в другой аккаунт.'), { code: 'LOGOUT_UNCONFIRMED' })), 30000);
+      chrome.tabs.onUpdated.addListener(updated);
+      chrome.tabs.onRemoved.addListener(removed);
+      chrome.tabs.update(tab.id, { url: officialOrigin + '/auth/logout', active: true }).catch(finish);
+    });
+    return { connected: false, state: 'login' };
   }
   if (tab.status !== 'complete') {
     if (action === 'status' || action === 'connect') return { connected: false, state: 'loading' };
@@ -52,6 +68,30 @@ async function dispatch({ action, input = {} }) {
   const injections = await chrome.scripting.executeScript({ target: { tabId: tab.id, frameIds: [0] }, world: 'ISOLATED', files: ['agent.js'] });
   const documentId = injections[0]?.documentId;
   if (!documentId) throw new Error('Вкладка Omni изменилась. Повторите запрос.');
+  if (action === 'switch-teacher') {
+    const invoke = async (target, verifyOnly) => {
+      const responses = await chrome.scripting.executeScript({ target, world: 'MAIN', func: switchTeacherInPage, args: [input, verifyOnly] });
+      const response = responses[0]?.result;
+      if (response?.error) throw Object.assign(new Error(response.error.message), { code: response.error.code });
+      if (!response?.data) throw new Error('Omni не подтвердил переключение.');
+      return response.data;
+    };
+    const result = await invoke({ tabId: tab.id, documentIds: [documentId] }, false);
+    if (!result.switched) return result;
+    previews.clear();
+    await new Promise((resolve, reject) => {
+      const finish = (error) => { clearTimeout(timer); chrome.tabs.onUpdated.removeListener(updated); chrome.tabs.onRemoved.removeListener(removed); error ? reject(error) : resolve(); };
+      const updated = (id, change) => { if (id === tab.id && change.status === 'complete') finish(); };
+      const removed = id => { if (id === tab.id) finish(new Error('Вкладка Omni закрыта.')); };
+      const timer = setTimeout(() => finish(new Error('Вкладка Omni не загрузилась.')), 30000);
+      chrome.tabs.onUpdated.addListener(updated);
+      chrome.tabs.onRemoved.addListener(removed);
+      chrome.tabs.reload(tab.id).catch(finish);
+    });
+    const current = await chrome.tabs.get(tab.id);
+    if (!officialUrl(current.url)) throw Object.assign(new Error('Откройте официальный вход Omni.'), { code: 'AUTH_REQUIRED' });
+    return invoke({ tabId: tab.id, frameIds: [0] }, true);
+  }
   const results = await chrome.scripting.executeScript({
     target: { tabId: tab.id, documentIds: [documentId] }, world: 'ISOLATED',
     func: async (action, input) => {
@@ -69,7 +109,7 @@ async function dispatch({ action, input = {} }) {
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (!trustedSender(sender, chrome.runtime.id, uiUrl)) { sendResponse({ error: { code: 'FORBIDDEN', message: 'Источник команды не разрешён.' } }); return false; }
   try { validateMessage(message); }
-  catch { sendResponse({ error: { code: 'BAD_INPUT', message: 'Команда или параметры не поддерживаются.' } }); return false; }
+  catch (error) { sendResponse({ error: { code: 'BAD_INPUT', message: error.message || 'Некорректная команда расширения.' } }); return false; }
   const file = message.action === 'file-preview';
   if (!file && busy) { sendResponse({ error: { code: 'BUSY', message: 'Дождитесь завершения предыдущего запроса.' } }); return false; }
   if (!file) busy = true;

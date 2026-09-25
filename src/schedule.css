@@ -1,1 +1,22 @@
-.schedule-grid-wrap{overflow:auto;padding:0 22px 22px}.schedule-grid{display:grid;grid-template-columns:64px repeat(7,minmax(130px,1fr));grid-template-rows:42px auto;min-width:920px}.schedule-corner{font-size:9px;letter-spacing:.08em;color:#a1a5b1;display:flex;align-items:center}.schedule-day-label{border-left:1px solid #eef0f5;padding:5px 12px;display:flex;align-items:center;gap:8px;color:#687083}.schedule-day-label strong{font-size:12px}.schedule-day-label time{font-size:11px;color:#a1a6b2}.schedule-day-label.today{color:var(--purple);background:#faf8ff}.schedule-hours{display:grid;grid-template-rows:repeat(14,64px);color:#a5a9b4;font-size:10px}.schedule-hours span{transform:translateY(-6px)}.schedule-column{position:relative;min-height:896px;border-left:1px solid #eef0f5;background:linear-gradient(to bottom,transparent 63px,#eef0f5 64px);background-size:100% 64px}.schedule-column.today{background-color:#fcfbff}.schedule-column>i{display:block;height:64px;border-top:1px solid #eef0f5;pointer-events:none}.schedule-card{position:absolute;left:7px;right:7px;padding:9px 10px;border:1px solid #ded5f5;border-left:3px solid var(--purple);border-radius:9px;background:#faf8ff;box-shadow:0 3px 8px #4334700b;display:flex;flex-direction:column;gap:4px;overflow:hidden;transition:transform .15s,box-shadow .15s}.schedule-card:hover{transform:translateY(-2px);box-shadow:0 9px 18px #43347018;z-index:2}.schedule-card strong{font-size:11px;color:#4c4264;line-height:1.35}.schedule-card span{display:flex;align-items:center;gap:5px;font-size:9px;color:#9186a7;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.schedule-card-time{color:var(--purple)!important}.schedule-empty{padding:65px 24px;text-align:center;color:#9ea3af}.schedule-empty svg{color:#b4a1e5;margin-bottom:15px}.schedule-empty h3{color:#626a79;margin-bottom:8px}.schedule-empty p{font-size:12px}@media(max-width:760px){.schedule-grid-wrap{padding-inline:14px}.schedule-grid{min-width:760px;grid-template-columns:52px repeat(7,minmax(100px,1fr))}.schedule-day-label{padding-inline:8px}.schedule-card{left:4px;right:4px;padding:7px}.schedule-card strong{font-size:10px}}
+.schedule-grid-wrap { overflow: auto; padding: 0 16px 20px; }
+.schedule-grid { display: grid; grid-template-rows: 46px auto; min-width: 980px; }
+.schedule-corner { font-size: 11px; color: var(--muted); padding-top: 12px; }
+.schedule-day-label { border-left: 1px solid var(--border); display: flex; gap: 8px; align-items: center; padding: 8px; font-size: 13px; }
+.schedule-day-label time { color: var(--muted); }
+.schedule-hours { display: flex; flex-direction: column; font-size: 11px; color: var(--muted); }
+.schedule-hours span { height: 72px; }
+.schedule-column { position: relative; border-left: 1px solid var(--border); background: repeating-linear-gradient(to bottom, var(--border) 0 1px, transparent 1px 72px); }
+.schedule-grid .today { background-color: #f5f2ff; }
+.schedule-card { position: absolute; padding: 6px 8px; border: 1px solid #ded5f5; border-left: 3px solid var(--purple); border-radius: 8px; background: #f0ebff; display: flex; flex-direction: column; gap: 3px; overflow: hidden; font-size: 12px; box-sizing: border-box; }
+.schedule-card strong { font-size: 13px; line-height: 1.3; }
+.schedule-card span { color: #635877; }
+.schedule-card-time { font-variant-numeric: tabular-nums; }
+.schedule-card:hover, .schedule-card:focus-visible { background: #e9e0ff; outline: 2px solid var(--purple); outline-offset: -2px; z-index: 2; }
+.schedule-unscheduled { border: 1px solid var(--border); padding: 8px; }
+.schedule-unscheduled article, .schedule-list article { display: flex; flex-direction: column; gap: 4px; padding: 12px; border: 1px solid var(--border); border-radius: 8px; margin-bottom: 8px; }
+.schedule-unscheduled small { color: var(--muted); }
+.schedule-list { padding: 0 20px 20px; }
+.schedule-list h3 { margin: 16px 0 12px; }
+.schedule-empty { padding: 40px 20px; text-align: center; color: var(--muted); }
+.schedule-empty h3 { margin: 12px 0; }
+.workspace-table-tools [aria-pressed=true] { background: var(--primary-soft); color: var(--purple); border-color: var(--purple); }

@@ -1,8 +1,5 @@
 name: Build Windows desktop prototype
 on:
-  push:
-    branches: [main, develop, experiment/lightweight-desktop]
-  pull_request:
   workflow_dispatch:
 permissions:
   contents: read
