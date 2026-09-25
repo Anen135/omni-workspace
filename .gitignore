@@ -1,5 +1,6 @@
 node_modules/
 dist/
+dist-extension/
 .env*
 !.env.example
 *.log
@@ -11,6 +12,10 @@ exports/
 playwright-report/
 test-results/
 tmp/
+.agent-notes/
+desktop/bin/
+desktop/obj/
+desktop/generated/
 *.tsbuildinfo
 .DS_Store
 Thumbs.db

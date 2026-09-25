@@ -1,0 +1,100 @@
+import assert from 'node:assert/strict';
+import { chromium } from 'playwright';
+import { createServer } from 'vite';
+
+// Fictional fixtures only. No requests to the actual Omni service.
+const server = await createServer({ configFile: false, server: { host: '127.0.0.1', port: 5187, strictPort: true, watch: { ignored: ['**/.omni-browser/**'] } } });
+let browser;
+try {
+  await server.listen();
+  browser = await chromium.launch({ channel: 'msedge', headless: true });
+  const page = await browser.newPage({ viewport: { width: 1920, height: 1080 } });
+  page.setDefaultTimeout(10000);
+  await page.route('https://fonts.googleapis.com/**', route => route.abort());
+  const errors = [];
+  page.on('pageerror', error => errors.push(error.message));
+  const section = data => ({ data, error: null });
+  const account = { id: '1', name: 'Тестовый преподаватель', branch: 'Тестовый филиал' };
+  const now = new Date(); now.setHours(12, 0, 0, 0); now.setDate(now.getDate() - (now.getDay() + 6) % 7);
+  const dates = Object.fromEntries(Array.from({ length: 7 }, (_, i) => { const date = new Date(now); date.setDate(date.getDate() + i); return [i + 1, `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`]; }));
+  const students = Array.from({ length: 30 }, (_, i) => ({ id_stud: String(i + 1), fio_stud: `Ученик ${String(i + 1).padStart(2, '0')}`, was: i % 3, mark2: i === 0 ? 0 : 10, mark4: 9 }));
+  const lesson = (name, start, end) => ({ name_spec: name, groups: 'Группа A', num_rooms: '101', l_start: start, l_end: end });
+  const weeks = [];
+  await page.route('**/api/omni/**', async route => {
+    const action = route.request().url().split('/').at(-1);
+    const input = route.request().postDataJSON();
+    let body;
+    if (action === 'status') body = { connected: true };
+    else if (action === 'snapshot') {
+      weeks.push(input.week);
+      body = { account, teachers: section([]), presents: section({}), groups: section([{ id_tgroups: '1', name_tgroups: 'Группа A' }]),
+        schedule: section({ dates, daysShort: { 1: 'Пн', 2: 'Вт', 3: 'Ср', 4: 'Чт', 5: 'Пт', 6: 'Сб', 7: 'Вс' }, body: { 1: { 1: lesson('Ранняя пара', '07:00', '08:30') }, 2: { 1: lesson('Пересечение', '08:00', '09:30') }, 3: { 2: lesson('Поздняя пара', '22:00', '23:30') }, 4: { 3: lesson('Без времени', '', '') } } }),
+        newHomework: section([{ fio_stud: 'Ученик 01', theme: 'Тема A', name_spec: 'Предмет A', name_tgroups: 'Группа A', answer_text: 'Ответ A' }, { fio_stud: 'Ученик 02', theme: 'Тема B', name_tgroups: 'Группа B' }]),
+        homework: section([]), counts: { homework: 2, practice: 0 }, fetchedAt: new Date().toISOString() };
+    } else if (action === 'group') body = { account, students };
+    else throw Error(`Unexpected action: ${action}`);
+    await route.fulfill({ json: body });
+  });
+  await page.goto('http://127.0.0.1:5187/');
+  await page.getByText('Подключено', { exact: true }).waitFor();
+  assert.equal(await page.locator('.lesson-banner').count(), 1);
+  await page.getByRole('button', { name: 'Расписание', exact: true }).click();
+  assert.equal(await page.locator('.lesson-banner').count(), 0);
+  assert.equal(await page.getByRole('button', { name: 'Предыдущая неделя', exact: true }).count(), 1);
+  assert.equal(await page.locator('.schedule-day-label').count(), 7);
+  assert.equal(await page.locator('.schedule-card').count(), 3);
+  assert.equal(await page.locator('.schedule-unscheduled article').count(), 1);
+  const boxes = await page.locator('.schedule-card').evaluateAll(items => items.map(item => { const r = item.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height }; }));
+  assert.ok(boxes[0].x + boxes[0].width <= boxes[1].x);
+  assert.ok(boxes[2].height > 0);
+  await page.screenshot({ path: 'tmp/workspace-schedule-1920.png', fullPage: true });
+  const calendar = page.getByRole('button', { name: 'Выбрать дату', exact: true });
+  await calendar.click();
+  await page.getByRole('button', { name: 'Следующий месяц' }).click();
+  await page.keyboard.press('Escape');
+  assert.equal(await calendar.getAttribute('aria-expanded'), 'false');
+  await calendar.click();
+  await page.getByRole('heading', { name: 'Расписание', exact: true }).click();
+  assert.equal(await calendar.getAttribute('aria-expanded'), 'false');
+  await calendar.click();
+  await page.getByRole('button', { name: dates[2], exact: true }).click();
+  await page.waitForFunction(() => !document.querySelector('.workspace-popover-body'));
+  assert.ok(weeks.every(week => Number.isInteger(week) && Math.abs(week) <= 52));
+  const quick = page.getByRole('button', { name: 'Быстрые действия', exact: true });
+  await quick.hover();
+  await page.getByRole('region', { name: 'Быстрые действия' }).waitFor();
+  await quick.click();
+  assert.equal(await quick.getAttribute('aria-expanded'), 'true');
+  await page.keyboard.press('Escape');
+  assert.equal(await quick.getAttribute('aria-expanded'), 'false');
+  await page.getByRole('button', { name: 'Список', exact: true }).click();
+  assert.equal(await page.locator('.schedule-list article').count(), 4);
+  await page.getByRole('button', { name: 'Ученики', exact: true }).click();
+  await page.getByLabel('Выбор группы').selectOption('1');
+  await page.getByRole('button', { name: 'Ученик 01', exact: true }).waitFor();
+  assert.equal(await page.locator('tbody tr').count(), 25);
+  await page.getByRole('button', { name: 'Далее', exact: true }).click();
+  assert.equal(await page.locator('tbody tr').count(), 5);
+  await page.getByLabel('Поиск ученика').fill('Ученик 01');
+  assert.equal(await page.locator('tbody tr').count(), 1);
+  assert.equal(await page.locator('tbody tr td').nth(2).innerText(), '0');
+  await page.getByLabel('Поиск ученика').fill('');
+  await page.getByRole('button', { name: 'Ученик ↑', exact: true }).click();
+  assert.match(await page.locator('tbody tr').first().innerText(), /Ученик 30/);
+  await page.screenshot({ path: 'tmp/workspace-students-1920.png' });
+  await page.getByRole('button', { name: 'Домашние задания', exact: true }).click();
+  await page.getByLabel('Группа домашних заданий').selectOption('Группа B');
+  assert.equal(await page.locator('tbody tr').count(), 1);
+  await page.getByLabel('Поиск домашнего задания').fill('нет совпадений');
+  assert.equal(await page.locator('tbody tr').count(), 0);
+  await page.getByLabel('Поиск домашнего задания').fill('');
+  await page.getByLabel('Группа домашних заданий').selectOption('');
+  await page.screenshot({ path: 'tmp/workspace-homework-1920.png' });
+  await page.setViewportSize({ width: 390, height: 844 });
+  assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+  await page.getByLabel('Раздел', { exact: true }).selectOption('schedule');
+  assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+  await page.screenshot({ path: 'tmp/workspace-mobile.png' });
+  assert.deepEqual(errors, []);
+  console.log('PASS: weekly grid, overlap/missing times, shared header, calendar, drawer, students search/sort/pagination, homework filters, mobile overflow.');
+} finally { await browser?.close(); await server.close(); }

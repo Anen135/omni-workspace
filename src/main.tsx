@@ -4,8 +4,10 @@ import { ArrowRight, BookOpen, Check, CheckCheck, ChevronRight, CircleHelp, Clip
 import { materials, previousLesson, sampleCode, students, type Entry, type Student } from './data';
 import { demoRepository } from './storage';
 import './styles.css';
+import './pages.css';
 import { FilePreview } from './FilePreview';
 import { LiveWorkspace } from './LiveWorkspace';
+import { isDesktop } from './desktop-client';
 
 type View = 'lesson' | 'homework' | 'materials' | 'history';
 const average = (marks: number[]) => marks.reduce((sum, mark) => sum + mark, 0) / marks.length;
@@ -121,6 +123,7 @@ function Workspace() {
     window.addEventListener('hashchange', update);
     return () => window.removeEventListener('hashchange', update);
   }, []);
+  if (import.meta.env.MODE === 'pages' && !isDesktop()) return <><div className="pages-beta-notice" role="note">Бета-тест · демонстрация на вымышленных данных. Вход в Omni доступен в desktop-приложении или при локальном запуске.</div><App/></>;
   return demo ? <><div className="demo-return"><button onClick={() => { location.hash = ''; setDemo(false); }}>← Вернуться к реальному Omni</button></div><App/></> : <LiveWorkspace onDemo={() => { location.hash = 'demo'; setDemo(true); }}/>;
 }
 createRoot(document.getElementById('root')!).render(<React.StrictMode><Workspace/></React.StrictMode>);

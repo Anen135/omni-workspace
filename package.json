@@ -1,6 +1,6 @@
 {
   "name": "omni-workspace",
-  "version": "0.1.0",
+  "version": "0.3.0-beta.1",
   "private": true,
   "description": "Independent local teacher workspace for Omni: weekly schedule, lessons, students and homework.",
   "license": "GPL-3.0-only",
@@ -18,6 +18,12 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "tsc && vite build",
+    "build:pages": "tsc && vite build --mode pages",
+    "build:extension": "tsc && node extension/build.mjs",
+    "test:extension-ui": "node tests/extension-browser.mjs",
+    "test:workspace-ui": "node tests/workspace-browser.mjs",
+    "desktop:build": "node desktop/build-agent.mjs && dotnet build desktop/Omni.Desktop.csproj -c Release",
+    "desktop:dev": "desktop\\bin\\Release\\net48\\Omni.Desktop.exe --dev",
     "preview": "vite preview --host 127.0.0.1",
     "test": "node --experimental-strip-types --test tests/*.test.mjs",
     "test:materials-ui": "node tests/materials-browser.mjs"
@@ -32,6 +38,7 @@
   "devDependencies": {
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "esbuild": "^0.28.2",
     "typescript": "^5.7.0",
     "vite": "^6.0.0"
   }

@@ -1,0 +1,26 @@
+name: Build beta browser extension
+on:
+  push:
+    branches: [main, develop, experiment/browser-extension]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run build:extension
+      - run: npx playwright install chromium
+      - run: node tests/extension-browser.mjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: omni-workspace-extension-beta
+          path: dist-extension/

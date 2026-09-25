@@ -48,7 +48,7 @@ try {
   assert.equal(connectCalls, 1);
   outcome = 'ready';
   await submit();
-  await page.getByRole('heading', { name: 'Ваше рабочее пространство.' }).waitFor();
+  await page.getByText('Подключено', { exact: true }).waitFor();
   assert.equal(loginCalls, 3);
   assert.equal(await page.locator('input[type=password]').count(), 0);
   assert.equal(await page.evaluate(() => JSON.stringify({ ...localStorage, ...sessionStorage }).includes('fixture-password')), false);
