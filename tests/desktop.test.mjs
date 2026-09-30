@@ -38,3 +38,25 @@ test('desktop read uses official session and detects account changes', async () 
     await assert.rejects(dispatch('switch-teacher', { accountId: '1', teacherId: '2' }), { code: 'NOT_SUPPORTED' });
   } finally { globalThis.fetch = originalFetch; delete globalThis.location; delete globalThis.document; delete globalThis.sessionStorage; }
 });
+
+test('attendance transport preserves server validation errors and never retries writes', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.location = { origin: 'https://omni.top-academy.ru', pathname: '/' };
+  globalThis.document = { title: '', querySelector: selector => selector.startsWith('meta') ? { content: 'fixture-csrf' } : null };
+  globalThis.sessionStorage = { getItem: () => 'fixture-hash' };
+  let writes = 0;
+  globalThis.fetch = async (path, options) => {
+    if (path === '/profile/get-profile') return Response.json({ teach_info: { id_teach: 1, fio_teach: 'Fixture' } });
+    if (path === '/presents/get-presents') return Response.json({ cur_date: '2026-09-30', cur_group: 10, cur_lenta: 0, cur_schedule: 50, students: [{ id_stud: 101, id_vizit: null, was: null, theme: '', primary_teach: 0 }] });
+    assert.equal(path, '/presents/set-was');
+    assert.equal(options.headers['X-CSRF-Token'], 'fixture-csrf');
+    assert.equal(options.headers['Id-Local-Hash'], 'fixture-hash');
+    assert.equal(JSON.parse(options.body).visits[0].theme, '');
+    writes++;
+    return Response.json({ message: 'Сначала задайте тему' }, { status: 422 });
+  };
+  try {
+    await assert.rejects(dispatch('set-attendance', { accountId: '1', date: '2026-09-30', group: '10', lenta: '0', schedule: '50', changes: [{ stud: '101', was: 1, previousWas: null, visit: null }] }), error => error.code === 'ATTENDANCE_REJECTED' && /Сначала задайте тему/.test(error.message));
+    assert.equal(writes, 1);
+  } finally { globalThis.fetch = originalFetch; delete globalThis.location; delete globalThis.document; delete globalThis.sessionStorage; }
+});

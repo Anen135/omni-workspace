@@ -154,6 +154,7 @@ export function createBridge() {
           throw new BridgeError('LOGIN_UNAVAILABLE', loginErrors.LOGIN_UNAVAILABLE);
         } finally { input.password = ''; }
       }
+      if (action === 'set-attendance') throw new BridgeError('NOT_SUPPORTED', 'Отмечайте посещаемость через расширение браузера.', 400);
       const account = await identity();
       if (action === 'switch-teacher') {
         if (account.id !== input.accountId) throw new BridgeError('ACCOUNT_CHANGED', 'Аккаунт изменился. Обновите данные перед переключением.', 409);

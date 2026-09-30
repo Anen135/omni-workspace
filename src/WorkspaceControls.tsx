@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { CalendarDays, X, Zap } from 'lucide-react';
+import { attendanceLabels, attendanceStatus, type AttendanceStatus } from './attendance';
 
 export function DismissiblePopover({ label, children, drawer = false }: { label: string; children: ReactNode | ((close: () => void) => ReactNode); drawer?: boolean }) {
   const [open, setOpen] = useState(false);
@@ -36,7 +37,7 @@ function CalendarPicker({ today, value, busy, onPick }: { today: string; value: 
   })}</div><button className="text-button" disabled={busy} onClick={() => onPick(today)}>Перейти к сегодняшнему дню</button></>;
 }
 
-export function StudentTable({ items, busy, onOpen }: { items: Record<string, unknown>[]; busy: boolean; onOpen: (item: Record<string, unknown>) => void }) {
+export function StudentTable({ items, busy, onOpen, attendance }: { items: Record<string, unknown>[]; busy: boolean; onOpen: (item: Record<string, unknown>) => void; attendance?: { unavailable: string; saving: boolean; onChange: (item: Record<string, unknown>, was: AttendanceStatus) => void; onAll: () => void } }) {
   const [query, setQuery] = useState('');
   const [ascending, setAscending] = useState(true);
   const [page, setPage] = useState(0);
@@ -45,5 +46,25 @@ export function StudentTable({ items, busy, onOpen }: { items: Record<string, un
   const last = Math.max(0, Math.ceil(filtered.length / 25) - 1);
   const current = Math.min(page, last);
   const average = items.some(item => item.average !== undefined || item.avg_mark !== undefined);
-  return <><div className="workspace-table-tools"><input type="search" aria-label="Поиск ученика" placeholder="Поиск ученика" value={query} onChange={event => { setQuery(event.target.value); setPage(0); }}/><span>{filtered.length} из {items.length}</span></div><div className="table-scroll"><table><thead><tr><th aria-sort={ascending ? 'ascending' : 'descending'}><button className="text-button" onClick={() => setAscending(!ascending)}>Ученик {ascending ? '↑' : '↓'}</button></th><th>Присутствие</th><th>Контрольная</th><th>Работа на уроке</th>{average && <th>Средняя оценка</th>}</tr></thead><tbody>{filtered.slice(current * 25, (current + 1) * 25).map((student, index) => <tr key={text(student.id_stud) || index}><td><button className="student-name" disabled={busy || !student.id_stud} onClick={() => onOpen(student)}><span className="avatar purple" aria-hidden="true">{text(student.fio_stud).split(' ').slice(0, 2).map(word => word[0]).join('')}</span>{text(student.fio_stud) || 'Имя не получено'}</button></td><td>{({ '0': 'Отсутствует', '1': 'Присутствует', '2': 'Опоздал(а)' } as Record<string, string>)[text(student.was)] || 'Не отмечено'}</td><td>{text(student.mark2) || '—'}</td><td>{text(student.mark4) || '—'}</td>{average && <td>{text(student.average ?? student.avg_mark) || '—'}</td>}</tr>)}</tbody></table></div>{!filtered.length && <div className="empty">Ученики не найдены</div>}{last > 0 && <div className="workspace-table-tools"><button className="button secondary" disabled={!current} onClick={() => setPage(current - 1)}>Назад</button><span>{current + 1} / {last + 1}</span><button className="button secondary" disabled={current === last} onClick={() => setPage(current + 1)}>Далее</button></div>}</>;
+  return <>
+    <div className="workspace-table-tools">
+      <input type="search" aria-label="Поиск ученика" placeholder="Поиск ученика" value={query} onChange={event => { setQuery(event.target.value); setPage(0); }}/><span>{filtered.length} из {items.length}</span>
+      {attendance && <button className="button secondary" title={attendance.unavailable || 'Вся группа, включая скрытых поиском учеников'} disabled={busy || !!attendance.unavailable || items.every(row => attendanceStatus(row.was) === 1)} onClick={attendance.onAll}>Все присутствуют</button>}
+    </div>
+    {attendance?.unavailable && <p className="attendance-help">{attendance.unavailable}</p>}
+    {attendance?.saving && <p className="attendance-help" role="status">Сохраняю посещаемость и проверяю ответ Omni…</p>}
+    <div className="table-scroll"><table><thead><tr><th aria-sort={ascending ? 'ascending' : 'descending'}><button className="text-button" onClick={() => setAscending(!ascending)}>Ученик {ascending ? '↑' : '↓'}</button></th><th>Присутствие</th><th>Контрольная</th><th>Работа на уроке</th>{average && <th>Средняя оценка</th>}</tr></thead><tbody>{filtered.slice(current * 25, (current + 1) * 25).map((student, index) => {
+      const was = attendanceStatus(student.was);
+      return <tr key={text(student.id_stud) || index}>
+        <td><button className="student-name" disabled={busy || !student.id_stud} onClick={() => onOpen(student)}><span className="avatar purple" aria-hidden="true">{text(student.fio_stud).split(' ').slice(0, 2).map(word => word[0]).join('')}</span>{text(student.fio_stud) || 'Имя не получено'}</button></td>
+        <td>{attendance ? <select className={`attendance-select attendance-${was ?? 'unknown'}`} aria-label={`Присутствие: ${text(student.fio_stud)}`} value={was ?? ''} disabled={busy || !!attendance.unavailable || !student.id_stud} onChange={event => attendance.onChange(student, Number(event.target.value) as AttendanceStatus)}>
+          <option value="" disabled>Не отмечено</option>
+          {([1, 2, 0] as const).map(value => <option key={value} value={value}>{attendanceLabels[value]}</option>)}
+        </select> : was === null ? 'Не отмечено' : attendanceLabels[was]}</td>
+        <td>{text(student.mark2) || '—'}</td><td>{text(student.mark4) || '—'}</td>{average && <td>{text(student.average ?? student.avg_mark) || '—'}</td>}
+      </tr>;
+    })}</tbody></table></div>
+    {!filtered.length && <div className="empty">Ученики не найдены</div>}
+    {last > 0 && <div className="workspace-table-tools"><button className="button secondary" disabled={!current} onClick={() => setPage(current - 1)}>Назад</button><span>{current + 1} / {last + 1}</span><button className="button secondary" disabled={current === last} onClick={() => setPage(current + 1)}>Далее</button></div>}
+  </>;
 }

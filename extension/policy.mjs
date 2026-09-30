@@ -1,6 +1,6 @@
 import { validateInput } from '../server/bridge-protocol.mjs';
 export const officialOrigin = 'https://omni.top-academy.ru';
-const actions = new Set(['connect', 'status', 'snapshot', 'lesson', 'student', 'group', 'switch-teacher', 'materials-catalog', 'method-package']);
+const actions = new Set(['connect', 'status', 'snapshot', 'lesson', 'student', 'group', 'switch-teacher', 'materials-catalog', 'method-package', 'set-attendance']);
 export function officialUrl(value) {
   try { const u = new URL(value); return u.origin === officialOrigin && !u.username && !u.password; } catch { return false; }
 }
@@ -10,7 +10,7 @@ export function trustedSender(sender, id, pageUrl) {
 }
 export function validateMessage(message) {
   if (!message || typeof message !== 'object' || Array.isArray(message) || Object.keys(message).some(key => !['action', 'input'].includes(key))) throw new Error('Некорректная команда.');
-  if (JSON.stringify(message).length > 8192) throw new Error('Слишком большой запрос.');
+  if (JSON.stringify(message).length > (message.action === 'set-attendance' ? 16384 : 8192)) throw new Error('Слишком большой запрос.');
   if (message.action === 'capabilities' || message.action === 'switch-account') {
     if (!message.input || typeof message.input !== 'object' || Array.isArray(message.input) || Object.keys(message.input).length) throw new Error('Некорректный запрос возможностей расширения.');
     return;

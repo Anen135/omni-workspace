@@ -1,5 +1,6 @@
 import { validateInput, BridgeError } from '../server/bridge-protocol.mjs';
 import { loadMaterialsCatalog, loadMethodPackage } from '../server/teaching-materials.mjs';
+import { saveAttendance } from '../extension/attendance.mjs';
 
 const origin = 'https://omni.top-academy.ru';
 export async function dispatch(action, input = {}) {
@@ -17,6 +18,11 @@ export async function dispatch(action, input = {}) {
     }, body: JSON.stringify(data) });
     if ([401, 403].includes(response.status) || response.url.includes('/login')) throw new BridgeError('AUTH_REQUIRED', 'Сессия истекла. Войдите снова.');
     if (response.status === 409) throw new BridgeError('ACCOUNT_CHANGED', 'Аккаунт изменился. Обновите данные.');
+    if (path === '/presents/set-was' && [400, 422].includes(response.status)) {
+      const body = await response.json().catch(() => null);
+      const reason = typeof body?.message === 'string' ? body.message : typeof body?.error === 'string' ? body.error : '';
+      throw new BridgeError('ATTENDANCE_REJECTED', `Omni отклонил отметки.${reason ? ' ' + reason.replace(/<[^>]*>/g, '').slice(0, 250) : ''} Загрузите урок перед повторной попыткой.`);
+    }
     if (!response.ok) throw new BridgeError('UPSTREAM_ERROR', 'Omni не вернул данные.');
     try { return await response.json(); } catch { throw new BridgeError('UPSTREAM_ERROR', 'Не удалось прочитать ответ Omni.'); }
   }
@@ -29,6 +35,7 @@ export async function dispatch(action, input = {}) {
     try { return { data: await read(path, params), error: null }; }
     catch (error) { if (['AUTH_REQUIRED', 'ACCOUNT_CHANGED'].includes(error.code)) throw error; return { data: null, error: error.message }; }
   }
+  if (action === 'set-attendance') return saveAttendance(input, { request: read, identity });
   const account = await identity();
   let result;
   if (action === 'snapshot') {

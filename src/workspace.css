@@ -93,3 +93,9 @@
   .live-workspace main { margin: 0; width: 100%; }
   .live-workspace .schedule-grid-wrap { overflow: visible; }
 }
+.live-workspace .attendance-select { min-width: 152px; border: 1px solid var(--border, #e7e9f2); border-radius: 8px; padding: 7px 10px; font: inherit; background: #f7f8fc; color: #596174; }
+.live-workspace .attendance-select.attendance-1 { background: #edf8f1; color: #226941; }
+.live-workspace .attendance-select.attendance-2 { background: #fff5e8; color: #8a590f; }
+.live-workspace .attendance-select.attendance-0 { background: #fff0f1; color: #a43f4c; }
+.live-workspace .attendance-select:disabled { opacity: .65; cursor: not-allowed; }
+.live-workspace .attendance-help { margin: 0; padding: 8px 20px; color: var(--text-secondary, #6b7280); font-size: 13px; }

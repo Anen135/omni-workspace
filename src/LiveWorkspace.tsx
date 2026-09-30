@@ -7,10 +7,11 @@ import { materialLink } from './teaching-materials';
 import { TeachingMaterials } from './TeachingMaterials';
 import { LoginForm } from './LoginForm';
 import { isDesktop } from './desktop-client';
-import { isExtension } from './extension-client';
+import { isExtension, onExtensionSessionChange } from './extension-client';
 import { DatePickerPopover, DismissiblePopover, StudentTable } from './WorkspaceControls';
 import { HomeworkTable } from './HomeworkTable';
 import { scheduleDays } from './schedule';
+import { attendanceStatus, attendanceVisit, attendanceUnavailable, type AttendanceChange, type AttendanceStatus } from './attendance';
 import './live.css';
 import './workspace.css';
 
@@ -39,9 +40,12 @@ export function LiveWorkspace({ onDemo }: { onDemo: () => void }) {
   const [notice, setNotice] = useState('');
   const [switchingTeacher, setSwitchingTeacher] = useState(false);
   const [changingAccount, setChangingAccount] = useState(false);
+  const [attendanceSaving, setAttendanceSaving] = useState(false);
+  const [attendanceNeedsReload, setAttendanceNeedsReload] = useState(false);
   const operation = useRef(false);
   const currentAccount = useRef('');
   const lastBranch = useRef('');
+  const sessionVersion = useRef(0);
   const dialog = useRef<HTMLDialogElement>(null);
   const presentData = record(lesson?.presents ?? snapshot?.presents.data);
   const lessonStudents = rows(presentData.students);
@@ -70,26 +74,30 @@ export function LiveWorkspace({ onDemo }: { onDemo: () => void }) {
   }
   async function refresh(nextWeek = week) {
     if (operation.current || !Number.isInteger(nextWeek) || Math.abs(nextWeek) > 52) return;
+    const version = sessionVersion.current;
     operation.current = true; setBusy(true); setError('');
     try {
       const result = await omniRequest<Snapshot>('snapshot', { week: nextWeek });
+      if (version !== sessionVersion.current) return;
       if (currentAccount.current !== result.account.id || lastBranch.current !== result.account.branch) {
         setGroupStudents(null); setGroupName(''); setGroupId(''); setDetail(null);
       }
       currentAccount.current = result.account.id; lastBranch.current = result.account.branch || '';
-      setSnapshot(result); setChangingAccount(false); setLesson(null); setWeek(nextWeek); setAuthNeeded(false); setWaiting(false);
-    } catch (reason) { failed(reason); }
+      setSnapshot(result); setChangingAccount(false); setLesson(null); setWeek(nextWeek); setAuthNeeded(false); setWaiting(false); setAttendanceNeedsReload(false);
+    } catch (reason) { if (version === sessionVersion.current) failed(reason); }
     finally { operation.current = false; setBusy(false); }
   }
   async function connect() {
     if (operation.current) return;
+    const version = sessionVersion.current;
     operation.current = true; setBusy(true); setError('');
     try {
       const state = await omniRequest<{ connected: boolean; state: string }>('connect');
+      if (version !== sessionVersion.current) return;
       setConnectionState(state.state);
       if (!state.connected) setWaiting(true);
       else { operation.current = false; await refresh(); }
-    } catch (reason) { failed(reason); }
+    } catch (reason) { if (version === sessionVersion.current) failed(reason); }
     finally { operation.current = false; setBusy(false); }
   }
   async function login(username: string, password: string) {
@@ -128,9 +136,18 @@ export function LiveWorkspace({ onDemo }: { onDemo: () => void }) {
     finally { operation.current = false; setBusy(false); setSwitchingTeacher(false); }
   }
   useEffect(() => {
+    return onExtensionSessionChange(() => {
+      sessionVersion.current++;
+      setSnapshot(null); setLesson(null); setGroupStudents(null); setGroupName(''); setGroupId(''); setDetail(null); setNotice('');
+      currentAccount.current = ''; lastBranch.current = ''; setWeek(0); setTab('lesson');
+      setError(''); setAuthNeeded(true); setWaiting(true); setConnectionState('loading');
+    });
+  }, []);
+  useEffect(() => {
     let cancelled = false;
+    const version = sessionVersion.current;
     void omniRequest<{ connected: boolean }>('status').then(state => {
-      if (!cancelled && state.connected) void refresh();
+      if (!cancelled && version === sessionVersion.current && state.connected) void refresh();
     }).catch(() => {});
     return () => { cancelled = true; };
   }, []);
@@ -138,7 +155,9 @@ export function LiveWorkspace({ onDemo }: { onDemo: () => void }) {
     if (!waiting) return;
     const timer = setInterval(() => {
       if (operation.current) return;
+      const version = sessionVersion.current;
       void omniRequest<{ connected: boolean; state: string }>('status').then(state => {
+        if (version !== sessionVersion.current) return;
         setConnectionState(state.state);
         if (state.connected) { setWaiting(false); void refresh(); }
       }).catch(() => {});
@@ -146,37 +165,49 @@ export function LiveWorkspace({ onDemo }: { onDemo: () => void }) {
     return () => clearInterval(timer);
   }, [waiting]);
   useEffect(() => { if (detail) dialog.current?.showModal(); }, [detail]);
+  useEffect(() => {
+    if (!attendanceSaving) return;
+    const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ''; };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [attendanceSaving]);
 
   async function loadLesson(group?: string, lenta?: string) {
     if (operation.current || !selectedDate) return;
+    const version = sessionVersion.current;
     operation.current = true; setBusy(true); setError('');
     try {
       const result = await omniRequest<RemoteLesson>('lesson', {
         date: selectedDate, ...(group ? { group } : {}), ...(lenta !== undefined && lenta !== '' ? { lenta } : {}),
       });
-      ensureAccount(result.account); setLesson(result);
-    } catch (reason) { failed(reason); }
+      if (version !== sessionVersion.current) return;
+      ensureAccount(result.account); setLesson(result); setAttendanceNeedsReload(false);
+    } catch (reason) { if (version === sessionVersion.current) failed(reason); }
     finally { operation.current = false; setBusy(false); }
   }
   async function openGroup(group: RemoteRecord) {
     const id = label(group.id_tgroups);
     if (!id || operation.current) return;
+    const version = sessionVersion.current;
     operation.current = true; setBusy(true); setError(''); setGroupStudents(null);
     setGroupId(id); setGroupName(label(group.name_tgroups));
     try {
       const result = await omniRequest<{ account: { id: string }; students: unknown }>('group', { group: id });
+      if (version !== sessionVersion.current) return;
       ensureAccount(result.account); setGroupStudents({ data: result.students, error: null }); setGroupName(label(group.name_tgroups));
-    } catch (reason) { failed(reason); }
+    } catch (reason) { if (version === sessionVersion.current) failed(reason); }
     finally { operation.current = false; setBusy(false); }
   }
   async function openStudent(student: RemoteRecord) {
     const id = label(student.id_stud);
     if (!id || operation.current) return;
+    const version = sessionVersion.current;
     operation.current = true; setBusy(true); setError('');
     try {
       const result = await omniRequest<{ account: { id: string }; details: Section; attendance: Section }>('student', { stud: id });
+      if (version !== sessionVersion.current) return;
       ensureAccount(result.account); setDetail({ title: label(student.fio_stud) || 'Ученик', sections: [result.details, result.attendance] });
-    } catch (reason) { failed(reason); }
+    } catch (reason) { if (version === sessionVersion.current) failed(reason); }
     finally { operation.current = false; setBusy(false); }
   }
   function exportSnapshot() {
@@ -186,7 +217,30 @@ export function LiveWorkspace({ onDemo }: { onDemo: () => void }) {
     const anchor = document.createElement('a'); anchor.href = url; anchor.download = `omni-${selectedDate || 'snapshot'}.json`; anchor.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000); setNotice('Снимок реальных данных экспортирован в файл.');
   }
-  const studentTable = (items: RemoteRecord[]) => <StudentTable key={`${tab}:${groupId}`} items={items} busy={busy} onOpen={student => void openStudent(student)}/>;
+  const attendanceReason = attendanceNeedsReload ? 'Перед следующей отметкой загрузите урок заново.' : attendanceUnavailable(presentData);
+  async function markAttendance(items: RemoteRecord[], was: AttendanceStatus, all = false) {
+    if (!snapshot || !isExtension() || operation.current || attendanceReason) return;
+    const changes: AttendanceChange[] = items.filter(student => attendanceStatus(student.was) !== was).map(student => ({ stud: label(student.id_stud), was, previousWas: attendanceStatus(student.was), visit: attendanceVisit(student.id_vizit) }));
+    if (!changes.length) return;
+    if (all && !window.confirm(`Отметить присутствующими всю группу (${items.length} учеников), включая скрытых поиском? Изменятся ${changes.length} отметок в Omni.`)) return;
+    const version = sessionVersion.current;
+    operation.current = true; setBusy(true); setAttendanceSaving(true); setError(''); setNotice('');
+    try {
+      const result = await omniRequest<{ account: { id: string }; presents: unknown }>('set-attendance', {
+        accountId: snapshot.account.id, date: label(presentData.cur_date), group: label(presentData.cur_group),
+        lenta: label(presentData.cur_lenta), schedule: label(presentData.cur_schedule), changes,
+      });
+      if (version !== sessionVersion.current) return;
+      ensureAccount(result.account);
+      setSnapshot(current => current ? { ...current, presents: { data: result.presents, error: null } } : null);
+      setLesson(current => current ? { ...current, presents: result.presents } : null);
+      setGroupStudents(null); setGroupId(''); setGroupName(''); setDetail(null);
+      setNotice('Посещаемость сохранена в Omni.');
+    } catch (reason) {
+      if (version === sessionVersion.current) { setAttendanceNeedsReload(true); failed(reason); }
+    } finally { operation.current = false; setBusy(false); setAttendanceSaving(false); }
+  }
+  const studentTable = (items: RemoteRecord[]) => <StudentTable key={`${tab}:${groupId}`} items={items} busy={busy} onOpen={student => void openStudent(student)} attendance={tab === 'lesson' && isExtension() ? { unavailable: attendanceReason, saving: attendanceSaving, onChange: (student, was) => void markAttendance([student], was), onAll: () => void markAttendance(items, 1, true) } : undefined}/>;
 
   return <div className="app-shell live-workspace">
     <aside className="sidebar"><a className="brand" href="/"><span className="brand-symbol">o<span/></span>omni<span className="brand-dot">.</span></a><div className="workspace"><span className="workspace-icon"><GraduationCap size={20}/></span><div><strong>Академия TOP</strong><small>{snapshot?.account.branch || 'Подключение к Omni'}</small></div></div><div className="nav-label">МОЁ ПРОСТРАНСТВО</div><nav>{([
@@ -209,7 +263,7 @@ export function LiveWorkspace({ onDemo }: { onDemo: () => void }) {
           <TeachingMaterials key={`${snapshot.account.id}:${snapshot.account.branch}`} accountId={snapshot.account.id} disabled={busy} onConnectionError={failed}/>
           <section className="panel"><div className="panel-heading"><div><h2>Выданные ДЗ и материалы текущего урока</h2><p>Файлы, связанные с текущей группой, датой и парой</p></div><button className="button secondary" disabled={busy || !selectedDate || !presentData.cur_group} onClick={() => void loadLesson(label(presentData.cur_group), label(presentData.cur_lenta))}><RefreshCw size={15}/>Загрузить выданные материалы</button></div>{!presentData.cur_group ? <Empty title="Текущая пара не выбрана" text="Выданные ученикам файлы появятся после загрузки занятия. Методички для подготовки доступны в каталоге выше."/> : <><h3 className="live-section-title">Выданные материалы</h3><SectionView fileFallback="pdf" section={lesson?.materials || emptySection} emptyTitle={lesson ? 'Материалов нет' : 'Нажмите «Загрузить выданные материалы»'}/><h3 className="live-section-title">Выданное домашнее задание</h3><SectionView section={lesson?.homework || emptySection} emptyTitle={lesson ? 'ДЗ не выдано' : 'Нажмите «Загрузить выданные материалы»'}/></>}</section>
         </>}
-       <div className="bottom-actions"><span><ShieldCheck size={17}/>Данные загружены из Omni · только чтение</span></div>
+       <div className="bottom-actions"><span><ShieldCheck size={17}/>{isExtension() ? 'Данные Omni · отметки посещаемости сохраняются на сервере' : 'Данные загружены из Omni · только чтение'}</span></div>
       </>}
       <footer className="page-footer"><span>omni workspace</span><span>Больше внимания ученикам.</span><span>Локальное подключение</span></footer>
     </div></main>

@@ -8,12 +8,18 @@ export class BridgeError extends Error {
 
 export function validateInput(action, input) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw new BridgeError('BAD_INPUT', 'Некорректный запрос.', 400);
-  if (!['connect', 'login', 'status', 'snapshot', 'lesson', 'student', 'group', 'switch-teacher', 'materials-catalog', 'method-package'].includes(action)) throw new BridgeError('NOT_FOUND', 'Неизвестное действие.', 404);
-  const allowed = { connect: [], login: ['username', 'password'], status: [], snapshot: ['week'], lesson: ['date', 'group', 'lenta'], student: ['stud'], group: ['group'], 'switch-teacher': ['teacherId', 'accountId'], 'materials-catalog': ['form', 'direction'], 'method-package': ['spec'] }[action];
+  if (!['connect', 'login', 'status', 'snapshot', 'lesson', 'student', 'group', 'switch-teacher', 'materials-catalog', 'method-package', 'set-attendance'].includes(action)) throw new BridgeError('NOT_FOUND', 'Неизвестное действие.', 404);
+  const allowed = { connect: [], login: ['username', 'password'], status: [], snapshot: ['week'], lesson: ['date', 'group', 'lenta'], student: ['stud'], group: ['group'], 'switch-teacher': ['teacherId', 'accountId'], 'materials-catalog': ['form', 'direction'], 'method-package': ['spec'], 'set-attendance': ['accountId', 'date', 'group', 'lenta', 'schedule', 'changes'] }[action];
   if (Object.keys(input).some(key => !allowed.includes(key))) throw new BridgeError('BAD_INPUT', 'Неизвестный параметр.', 400);
   if (action === 'login' && (typeof input.username !== 'string' || !input.username.trim() || input.username.length > 256 || typeof input.password !== 'string' || !input.password || input.password.length > 1024)) throw new BridgeError('BAD_INPUT', 'Введите логин и пароль допустимой длины.', 400);
   if (input.week !== undefined && (!Number.isInteger(input.week) || Math.abs(input.week) > 52)) throw new BridgeError('BAD_INPUT', 'Неделя вне допустимого диапазона.', 400);
-  if (action === 'lesson' && (typeof input.date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(input.date) || !Number.isFinite(Date.parse(input.date)) || new Date(input.date).toISOString().slice(0, 10) !== input.date)) throw new BridgeError('BAD_INPUT', 'Некорректная дата.', 400);
+  if (['lesson', 'set-attendance'].includes(action) && (typeof input.date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(input.date) || !Number.isFinite(Date.parse(input.date)) || new Date(input.date).toISOString().slice(0, 10) !== input.date)) throw new BridgeError('BAD_INPUT', 'Некорректная дата.', 400);
+  if (action === 'set-attendance') {
+    const id = value => typeof value === 'string' && /^[1-9]\d{0,11}$/.test(value);
+    const status = value => value === 0 || value === 1 || value === 2;
+    if (!['accountId', 'group', 'schedule'].every(key => id(input[key])) || typeof input.lenta !== 'string' || !/^\d{1,12}$/.test(input.lenta)) throw new BridgeError('BAD_INPUT', 'Не указан аккаунт или занятие.', 400);
+    if (!Array.isArray(input.changes) || !input.changes.length || input.changes.length > 100 || input.changes.some(row => !row || typeof row !== 'object' || Array.isArray(row) || Object.keys(row).some(key => !['stud', 'was', 'previousWas', 'visit'].includes(key)) || !id(row.stud) || !status(row.was) || !(row.previousWas === null || status(row.previousWas)) || !(row.visit === null || typeof row.visit === 'string' && /^\d{1,12}$/.test(row.visit))) || new Set(input.changes.map(row => row.stud)).size !== input.changes.length) throw new BridgeError('BAD_INPUT', 'Некорректные отметки посещаемости (до 100 учеников).', 400);
+  }
   for (const key of ['group', 'stud', 'lenta']) {
     if (input[key] !== undefined && !/^\d{1,12}$/.test(String(input[key]))) throw new BridgeError('BAD_INPUT', 'Некорректный идентификатор.', 400);
   }

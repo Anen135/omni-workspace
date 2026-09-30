@@ -33,6 +33,9 @@ try {
   let signedIn = false;
   let teacherId = 1;
   let rejectSwitch = false;
+  let rejectAttendance = false;
+  let ignoreAttendance = false;
+  const lessonStudents = [{ id_stud: 101, fio_stud: 'Тестовый ученик А', was: null, id_vizit: null, theme: '', primary_teach: 0 }, { id_stud: 102, fio_stud: 'Тестовый ученик Б', was: 2, id_vizit: 9, theme: '', primary_teach: 0 }];
   const empty = {};
   // All Omni responses are fictional: no real login, cookies or academic data.
   await context.route('https://omni.top-academy.ru/**', async route => {
@@ -62,6 +65,21 @@ try {
     }
     if (path === '/auth/get-start-info') data = { branch: { name: 'Тестовая академия' } };
     if (path === '/students/get-groups-list') data = [];
+    if (path === '/presents/get-presents') data = { cur_date: '2026-09-30', cur_group: 10, cur_lenta: 0, cur_schedule: 50, students: lessonStudents };
+    if (path === '/presents/set-was') {
+      const input = request.postDataJSON();
+      assert.equal(input.schedule, 50);
+      assert.equal(request.headers()['id-local-hash'], 'fixture-hash');
+      for (const visit of Object.values(input.visits)) {
+        assert.equal(visit.theme, ''); // No invented theme, including first visit.
+        assert.equal(visit.id_schedule, 50);
+        if (!rejectAttendance && !ignoreAttendance) {
+          const student = lessonStudents.find(row => row.id_stud === visit.id_stud);
+          student.was = visit.was; student.id_vizit ||= 8;
+        }
+      }
+      data = rejectAttendance ? { error: 'Отметка запрещена сервером' } : { new_id_vizit: { 101: { id_vizit: 8 } } };
+    }
     if (path === '/homework/get-new-homeworks') data = [{ filename: 'fixture.pdf', download_url_stud: 'https://fs.top-academy.ru/api/v1/files/pdf-fixture' }];
     assert.ok(signedIn);
     return route.fulfill({ json: data });
@@ -84,6 +102,46 @@ try {
   await ui.getByRole('heading', { name: 'Мой урок' }).waitFor();
   assert.ok(paths.includes('/schedule/get-schedule'));
   assert.ok(paths.filter(path => path === '/profile/get-profile').length >= 2);
+  const presence = ui.getByLabel('Присутствие: Тестовый ученик А', { exact: true });
+  assert.equal(await presence.isEnabled(), true); // Empty lesson theme must not block attendance.
+  await presence.selectOption('1');
+  await ui.getByRole('status').filter({ hasText: 'Посещаемость сохранена' }).waitFor().catch(async error => {
+    console.error('Attendance fixture failure:', await ui.getByRole('alert').allTextContents(), paths.slice(-10));
+    throw error;
+  });
+  assert.equal(await presence.inputValue(), '1');
+  assert.equal(lessonStudents[0].id_vizit, 8);
+  await presence.selectOption('2');
+  await ui.waitForFunction(() => document.querySelector('.attendance-select')?.value === '2' && !document.querySelector('.attendance-select')?.disabled);
+  await presence.selectOption('0');
+  await ui.waitForFunction(() => document.querySelector('.attendance-select')?.value === '0' && !document.querySelector('.attendance-select')?.disabled);
+  const writesBeforeAll = paths.filter(path => path === '/presents/set-was').length;
+  ui.once('dialog', dialog => dialog.dismiss());
+  await ui.getByRole('button', { name: 'Все присутствуют', exact: true }).click();
+  assert.equal(paths.filter(path => path === '/presents/set-was').length, writesBeforeAll);
+  await ui.getByLabel('Поиск ученика', { exact: true }).fill('ученик А');
+  ui.once('dialog', dialog => { assert.match(dialog.message(), /включая скрытых поиском/); return dialog.accept(); });
+  await ui.getByRole('button', { name: 'Все присутствуют', exact: true }).click();
+  await ui.waitForFunction(() => document.querySelector('.attendance-select')?.value === '1' && !document.querySelector('.attendance-select')?.disabled);
+  assert.deepEqual(lessonStudents.map(row => row.was), [1, 1]);
+  rejectAttendance = true;
+  await presence.selectOption('0');
+  await ui.getByRole('alert').filter({ hasText: 'Отметка запрещена сервером' }).waitFor();
+  assert.equal(await presence.inputValue(), '1');
+  assert.equal(await presence.isDisabled(), true);
+  rejectAttendance = false;
+  await ui.getByRole('button', { name: 'Загрузить урок', exact: true }).click();
+  await presence.waitFor();
+  await ui.waitForFunction(() => !document.querySelector('.attendance-select')?.disabled);
+  assert.equal(await presence.inputValue(), '1');
+  ignoreAttendance = true;
+  await presence.selectOption('0');
+  await ui.getByRole('alert').filter({ hasText: 'Omni не подтвердил все отметки' }).waitFor();
+  assert.equal(await presence.inputValue(), '1');
+  assert.equal(await presence.isDisabled(), true);
+  ignoreAttendance = false;
+  await ui.getByRole('button', { name: 'Загрузить урок', exact: true }).click();
+  await ui.waitForFunction(() => !document.querySelector('.attendance-select')?.disabled);
   await ui.getByRole('button', { name: 'Домашние задания', exact: true }).click();
   await ui.locator('.remote-attachment').getByRole('button', { name: 'Превью', exact: true }).click();
   await ui.locator('.remote-attachment canvas[data-rendered="true"]').waitFor();
@@ -120,9 +178,18 @@ try {
   assert.equal(paths.filter(path => path === '/auth/change-user').length, 0);
   await ui.reload();
   await ui.getByText('Подключено', { exact: true }).waitFor();
+  const secondUi = await context.newPage();
+  await secondUi.goto(`chrome-extension://${id}/index.html`);
+  await secondUi.getByText('Подключено', { exact: true }).waitFor();
+  const secondActAs = secondUi.getByLabel('Работаю от имени', { exact: true });
+  assert.equal(await secondActAs.inputValue(), '1');
   await actAs.selectOption('2');
+  await secondUi.getByRole('heading', { name: 'Завершите вход в окне Omni' }).waitFor();
+  assert.equal(await secondUi.getByText('Подключено', { exact: true }).count(), 0);
   await ui.getByText('Подключено', { exact: true }).waitFor();
   assert.equal(await actAs.inputValue(), '2');
+  await secondUi.getByText('Подключено', { exact: true }).waitFor();
+  assert.equal(await secondActAs.inputValue(), '2');
   assert.equal(await official.evaluate(() => sessionStorage.getItem('switch-cleaned')), 'yes');
   assert.equal(await ui.locator('.file-preview-full').count(), 0);
   assert.equal(await ui.getByRole('heading', { name: 'Мой урок' }).count(), 1);
@@ -140,6 +207,8 @@ try {
   ui.once('dialog', dialog => dialog.accept());
   await ui.getByRole('button', { name: 'Сменить аккаунт', exact: true }).click();
   await official.waitForURL('https://omni.top-academy.ru/login/index');
+  await secondUi.getByRole('heading', { name: 'Завершите вход в окне Omni' }).waitFor();
+  assert.equal(await secondUi.getByText('Подключено', { exact: true }).count(), 0);
   await ui.getByRole('heading', { name: 'Завершите вход в окне Omni' }).waitFor();
   assert.equal(await ui.locator('.lesson-banner').count(), 0);
   assert.equal(await ui.locator('input[type=password]').count(), 0);
@@ -148,11 +217,13 @@ try {
   await official.goto('https://omni.top-academy.ru/');
   await ui.getByText('Подключено', { exact: true }).waitFor();
   assert.equal(await actAs.inputValue(), '3');
+  await secondUi.getByText('Подключено', { exact: true }).waitFor();
+  assert.equal(await secondActAs.inputValue(), '3');
   await official.close();
   const status = await ui.evaluate(() => chrome.runtime.sendMessage({ action: 'status', input: {} }));
   assert.equal(status.data.connected, false);
   assert.deepEqual(errors, []);
-  console.log('PASS: MV3 snapshot/PDF, teacher switching, validation/rejections, stale worker, account change confirmation/cancel/logout/login, old data cleared, automatic new snapshot, sender restrictions and closed-tab recovery. All data fictional.');
+  console.log('PASS: MV3 attendance without theme (null visit/status, three states, all/cancel/search, rejection, readback mismatch/reload), snapshot/PDF, teacher switching, two-tab session invalidation and refresh, validation/rejections, stale worker, account change confirmation/cancel/logout/login, old data cleared, automatic new snapshot, sender restrictions and closed-tab recovery. All data fictional.');
 } finally {
   await context?.close();
   // Only the unique temporary test profile created above is removed.

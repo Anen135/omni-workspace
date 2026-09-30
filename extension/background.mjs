@@ -5,6 +5,10 @@ const uiUrl = chrome.runtime.getURL('index.html');
 let busy = false;
 const previews = new Map();
 let activePreviews = 0;
+async function invalidateSession() {
+  previews.clear();
+  await chrome.storage.session.set({ sessionRevision: crypto.randomUUID() });
+}
 function loadPreview(url) {
   if (previews.has(url)) return previews.get(url);
   if (activePreviews >= 2) return Promise.reject(Object.assign(new Error('Дождитесь загрузки других превью.'), { code: 'BUSY' }));
@@ -40,7 +44,7 @@ async function getTab(open) {
 }
 
 async function dispatch({ action, input = {} }) {
-  if (action === 'capabilities') return { version: chrome.runtime.getManifest().version, teacherSwitch: true, accountSwitch: true };
+  if (action === 'capabilities') return { version: chrome.runtime.getManifest().version, teacherSwitch: true, accountSwitch: true, attendance: true };
   if (action === 'file-preview') return loadPreview(input.url);
   const tab = await getTab(action === 'connect' || action === 'switch-account');
   if (!tab) {
@@ -48,7 +52,7 @@ async function dispatch({ action, input = {} }) {
     throw Object.assign(new Error('Нажмите «Открыть официальный вход».'), { code: 'AUTH_REQUIRED' });
   }
   if (action === 'switch-account') {
-    previews.clear();
+    await invalidateSession();
     // This is Omni's own logout navigation, not cookie deletion or password handling.
     await new Promise((resolve, reject) => {
       const finish = error => { clearTimeout(timer); chrome.tabs.onUpdated.removeListener(updated); chrome.tabs.onRemoved.removeListener(removed); error ? reject(error) : resolve(); };
@@ -78,7 +82,7 @@ async function dispatch({ action, input = {} }) {
     };
     const result = await invoke({ tabId: tab.id, documentIds: [documentId] }, false);
     if (!result.switched) return result;
-    previews.clear();
+    await invalidateSession();
     await new Promise((resolve, reject) => {
       const finish = (error) => { clearTimeout(timer); chrome.tabs.onUpdated.removeListener(updated); chrome.tabs.onRemoved.removeListener(removed); error ? reject(error) : resolve(); };
       const updated = (id, change) => { if (id === tab.id && change.status === 'complete') finish(); };
@@ -94,11 +98,13 @@ async function dispatch({ action, input = {} }) {
   }
   const results = await chrome.scripting.executeScript({
     target: { tabId: tab.id, documentIds: [documentId] }, world: 'ISOLATED',
-    func: async (action, input) => {
+    func: async (action, inputJson) => {
       if (location.origin !== 'https://omni.top-academy.ru') return { error: { code: 'AUTH_REQUIRED', message: 'Откройте Omni.' } };
-      try { return { data: await globalThis.OmniDesktopAgent.dispatch(action, input) }; }
+      // executeScript can omit null-valued object fields; preserve explicit
+      // unknown attendance/visit values through a JSON string envelope.
+      try { return { data: await globalThis.OmniDesktopAgent.dispatch(action, JSON.parse(inputJson)) }; }
       catch (error) { return { error: { code: error.code || 'EXTENSION_ERROR', message: error.code ? error.message : 'Не удалось выполнить запрос Omni.' } }; }
-    }, args: [action, input],
+    }, args: [action, JSON.stringify(input)],
   });
   const result = results[0]?.result;
   if (result?.error) throw Object.assign(new Error(result.error.message), { code: result.error.code });
