@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
 import { chromium } from 'playwright';
 import { resolve } from 'node:path';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 
 const profile = await mkdtemp(resolve(tmpdir(), 'omni-extension-test-'));
 const extension = resolve('dist-extension');
+const manifest = JSON.parse(await readFile(resolve(extension, 'manifest.json'), 'utf8'));
 let context;
 try {
   context = await chromium.launchPersistentContext(profile, { channel: 'chromium', headless: true, args: [`--disable-extensions-except=${extension}`, `--load-extension=${extension}`] });
@@ -157,7 +158,7 @@ try {
   assert.equal(await actAs.isEnabled(), true);
   const capabilities = await ui.evaluate(() => chrome.runtime.sendMessage({ action: 'capabilities', input: {} }));
   assert.equal(capabilities.data.teacherSwitch, true);
-  assert.equal(capabilities.data.version, '0.3.0');
+  assert.equal(capabilities.data.version, manifest.version);
   assert.equal(capabilities.data.accountSwitch, true);
   const malformed = await ui.evaluate(() => chrome.runtime.sendMessage({ action: 'switch-teacher', input: { teacherId: '', accountId: '1' } }));
   assert.match(malformed.error.message, /идентификатор выбранного преподавателя/);

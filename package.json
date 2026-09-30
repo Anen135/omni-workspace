@@ -1,6 +1,6 @@
 {
   "name": "omni-workspace",
-  "version": "0.3.0-beta.1",
+  "version": "0.3.0-beta.2",
   "private": true,
   "description": "Independent local teacher workspace for Omni: weekly schedule, lessons, students and homework.",
   "license": "GPL-3.0-only",
