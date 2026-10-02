@@ -8,6 +8,20 @@ export class BridgeError extends Error {
 
 export function validateInput(action, input) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw new BridgeError('BAD_INPUT', 'Некорректный запрос.', 400);
+  if (action === 'set-lesson-mark') {
+    const fields = ['accountId', 'date', 'group', 'lenta', 'schedule', 'stud', 'visit', 'type', 'mark', 'previousMark'];
+    if (Object.keys(input).some(key => !fields.includes(key)) || !['accountId', 'group', 'schedule', 'stud', 'visit'].every(key => typeof input[key] === 'string' && /^[1-9]\d{0,11}$/.test(input[key])) || typeof input.lenta !== 'string' || !/^\d{1,12}$/.test(input.lenta) || ![2, 4].includes(input.type) || !Number.isInteger(input.mark) || input.mark < 1 || input.mark > 100 || !(input.previousMark === null || typeof input.previousMark === 'string' && input.previousMark.length <= 16)) throw new BridgeError('BAD_INPUT', 'Некорректная оценка или занятие.', 400);
+    validateInput('lesson', { date: input.date, group: input.group, lenta: input.lenta });
+    return input;
+  }
+  if (action === 'lesson-themes' || action === 'set-lesson-theme') {
+    const common = ['accountId', 'date', 'group', 'lenta', 'schedule'];
+    const fields = action === 'lesson-themes' ? common : [...common, 'theme', 'publicWeekId', 'issueHomework', 'issueLabwork', 'previousTheme'];
+    if (Object.keys(input).some(key => !fields.includes(key)) || !['accountId', 'group', 'schedule'].every(key => typeof input[key] === 'string' && /^[1-9]\d{0,11}$/.test(input[key])) || typeof input.lenta !== 'string' || !/^\d{1,12}$/.test(input.lenta)) throw new BridgeError('BAD_INPUT', 'Не указан аккаунт или занятие.', 400);
+    validateInput('lesson', { date: input.date, group: input.group, lenta: input.lenta });
+    if (action === 'set-lesson-theme' && (typeof input.theme !== 'string' || !input.theme.trim() || input.theme.length > 2000 || typeof input.previousTheme !== 'string' || input.previousTheme.length > 2000 || !(input.publicWeekId === null || typeof input.publicWeekId === 'string' && /^[1-9]\d{0,11}$/.test(input.publicWeekId)) || typeof input.issueHomework !== 'boolean' || typeof input.issueLabwork !== 'boolean')) throw new BridgeError('BAD_INPUT', 'Некорректная тема занятия.', 400);
+    return input;
+  }
   if (!['connect', 'login', 'status', 'snapshot', 'lesson', 'student', 'group', 'switch-teacher', 'materials-catalog', 'method-package', 'set-attendance'].includes(action)) throw new BridgeError('NOT_FOUND', 'Неизвестное действие.', 404);
   const allowed = { connect: [], login: ['username', 'password'], status: [], snapshot: ['week'], lesson: ['date', 'group', 'lenta'], student: ['stud'], group: ['group'], 'switch-teacher': ['teacherId', 'accountId'], 'materials-catalog': ['form', 'direction'], 'method-package': ['spec'], 'set-attendance': ['accountId', 'date', 'group', 'lenta', 'schedule', 'changes'] }[action];
   if (Object.keys(input).some(key => !allowed.includes(key))) throw new BridgeError('BAD_INPUT', 'Неизвестный параметр.', 400);

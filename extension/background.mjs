@@ -44,7 +44,7 @@ async function getTab(open) {
 }
 
 async function dispatch({ action, input = {} }) {
-  if (action === 'capabilities') return { version: chrome.runtime.getManifest().version, teacherSwitch: true, accountSwitch: true, attendance: true };
+  if (action === 'capabilities') return { version: chrome.runtime.getManifest().version, teacherSwitch: true, accountSwitch: true, attendance: true, lessonTheme: true, lessonMark: true };
   if (action === 'file-preview') return loadPreview(input.url);
   const tab = await getTab(action === 'connect' || action === 'switch-account');
   if (!tab) {

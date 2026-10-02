@@ -47,11 +47,11 @@ test('attendance transport preserves server validation errors and never retries 
   let writes = 0;
   globalThis.fetch = async (path, options) => {
     if (path === '/profile/get-profile') return Response.json({ teach_info: { id_teach: 1, fio_teach: 'Fixture' } });
-    if (path === '/presents/get-presents') return Response.json({ cur_date: '2026-09-30', cur_group: 10, cur_lenta: 0, cur_schedule: 50, students: [{ id_stud: 101, id_vizit: null, was: null, theme: '', primary_teach: 0 }] });
+    if (path === '/presents/get-presents') return Response.json({ cur_date: '2026-09-30', cur_group: 10, cur_lenta: 0, cur_schedule: 50, students: [{ id_stud: 101, id_vizit: null, was: null, theme: 'Тестовая тема', primary_teach: 0 }] });
     assert.equal(path, '/presents/set-was');
     assert.equal(options.headers['X-CSRF-Token'], 'fixture-csrf');
     assert.equal(options.headers['Id-Local-Hash'], 'fixture-hash');
-    assert.equal(JSON.parse(options.body).visits[0].theme, '');
+    assert.equal(JSON.parse(options.body).visits[0].theme, 'Тестовая тема');
     writes++;
     return Response.json({ message: 'Сначала задайте тему' }, { status: 422 });
   };

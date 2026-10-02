@@ -1,5 +1,5 @@
 import { BridgeError, validateInput } from '../server/bridge-protocol.mjs';
-import { attendanceStudents, attendanceLessonInfo, attendanceUnavailable, attendanceStatus, attendanceVisit } from '../src/attendance.ts';
+import { attendanceStudents, attendanceLessonInfo, attendanceUnavailable, attendanceStatus, attendanceVisit, attendanceHasTheme } from '../src/attendance.ts';
 
 // Fixed official endpoint/payload, verified against presentsCtrl / presents_factory.
 // Never accept visit metadata or an arbitrary endpoint from the UI.
@@ -21,6 +21,7 @@ export async function saveAttendance(input, { request, identity }) {
   if (unavailable) throw new BridgeError('ATTENDANCE_UNAVAILABLE', unavailable);
   const students = attendanceStudents(before.students);
   const info = attendanceLessonInfo(before);
+  if (!attendanceHasTheme(before)) throw new BridgeError('ATTENDANCE_THEME_REQUIRED', 'Тема ещё не сохранена в Omni. Отметки остаются в черновике.');
   const visits = {};
   for (const [index, change] of input.changes.entries()) {
     const matches = students.filter(row => String(row.id_stud) === change.stud);

@@ -1,6 +1,6 @@
 import { validateInput } from '../server/bridge-protocol.mjs';
 export const officialOrigin = 'https://omni.top-academy.ru';
-const actions = new Set(['connect', 'status', 'snapshot', 'lesson', 'student', 'group', 'switch-teacher', 'materials-catalog', 'method-package', 'set-attendance']);
+const actions = new Set(['connect', 'status', 'snapshot', 'lesson', 'student', 'group', 'switch-teacher', 'materials-catalog', 'method-package', 'set-attendance', 'lesson-themes', 'set-lesson-theme', 'set-lesson-mark']);
 export function officialUrl(value) {
   try { const u = new URL(value); return u.origin === officialOrigin && !u.username && !u.password; } catch { return false; }
 }

@@ -7,6 +7,7 @@ import { attendanceStatus, attendanceUnavailable } from '../src/attendance.ts';
 const input = () => ({ accountId: '1', date: '2026-09-30', group: '10', lenta: '0', schedule: '50', changes: [{ stud: '101', was: 1, previousWas: 0, visit: null }] });
 const fixture = (options = {}) => {
   let presents = { cur_date: '2026-09-30', cur_group: 10, cur_lenta: 0, cur_schedule: 50, students: [{ id_stud: 101, id_vizit: null, was: 0, theme: '', primary_teach: 0 }, { id_stud: 102, id_vizit: 9, was: 2, theme: '', primary_teach: 0 }] };
+  presents.students.forEach(student => { student.theme = 'Тестовая тема'; });
   Object.assign(presents, options.presents);
   const writes = [];
   let identities = 0;
@@ -39,10 +40,10 @@ test('attendance schema accepts only bounded explicit student changes and known 
   }
   for (const patch of [{ accountId: '0' }, { group: undefined }, { schedule: null }, { date: '2026-02-30' }, { lenta: {} }, { url: '/presents/set-mark' }]) assert.throws(() => validateMessage({ action: 'set-attendance', input: { ...input(), ...patch } }));
 });
-test('attendance permits an empty theme, derives metadata from server and confirms newly created visits', async () => {
+test('attendance derives saved theme from server and confirms newly created visits', async () => {
   const { deps, writes } = fixture();
   const result = await saveAttendance(input(), deps);
-  assert.deepEqual(writes, [{ schedule: 50, visits: { 0: { was: 1, vizit: null, id_stud: 101, id_schedule: 50, primary_teach: 0, theme: '' } } }]);
+  assert.deepEqual(writes, [{ schedule: 50, visits: { 0: { was: 1, vizit: null, id_stud: 101, id_schedule: 50, primary_teach: 0, theme: 'Тестовая тема' } } }]);
   assert.equal(result.presents.students[0].was, 1);
   assert.equal(result.presents.students[0].id_vizit, 8);
   assert.equal(attendanceUnavailable(result.presents), '');
@@ -65,8 +66,16 @@ test('attendance rejects changed account before reading or before writing', asyn
 });
 test('attendance refuses a different lesson, missing student and stale visit/state', async () => {
   for (const [patch, code] of [[{ cur_schedule: 51 }, 'LESSON_CHANGED'], [{ cur_lenta: 1 }, 'LESSON_CHANGED'], [{ students: [] }, 'ATTENDANCE_UNAVAILABLE'], [{ students: [{ id_stud: 200, theme: '' }] }, 'LESSON_CHANGED'], [{ students: [{ id_stud: 101, was: 2 }] }, 'ATTENDANCE_CONFLICT'], [{ students: [{ id_stud: 101, was: 0, id_vizit: 88 }] }, 'ATTENDANCE_CONFLICT']]) {
+    if (patch.students) patch.students.forEach(student => { student.theme = 'Тестовая тема'; });
     const { deps, writes } = fixture({ presents: patch });
     await assert.rejects(saveAttendance(input(), deps), { code });
+    assert.equal(writes.length, 0);
+  }
+});
+test('attendance never writes before a nonempty topic has been saved', async () => {
+  for (const theme of ['', '   ', null, undefined]) {
+    const { deps, writes } = fixture({ presents: { students: [{ id_stud: 101, was: 0, id_vizit: null, theme }] } });
+    await assert.rejects(saveAttendance(input(), deps), { code: 'ATTENDANCE_THEME_REQUIRED' });
     assert.equal(writes.length, 0);
   }
 });

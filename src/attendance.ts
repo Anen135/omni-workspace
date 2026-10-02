@@ -16,6 +16,13 @@ export function attendanceLessonInfo(presents: Record<string, unknown>) {
   const students = attendanceStudents(presents.students);
   return students.filter(row => Number(row.id_vizit) > 0).at(-1) || students[0];
 }
+export function attendanceHasTheme(presents: Record<string, unknown>): boolean {
+  const theme = attendanceLessonInfo(presents)?.theme;
+  return typeof theme === 'string' && theme.trim().length > 0;
+}
+export function attendanceDraftKey(account: string, branch: string, presents: Record<string, unknown>): string {
+  return JSON.stringify([account, branch, presents.cur_date, String(presents.cur_group), String(presents.cur_lenta), String(presents.cur_schedule)]);
+}
 export function attendanceUnavailable(presents: Record<string, unknown>): string {
   if (!/^[1-9]\d{0,11}$/.test(String(presents.cur_schedule)) || !/^[1-9]\d{0,11}$/.test(String(presents.cur_group)) || !/^\d{1,12}$/.test(String(presents.cur_lenta)) || !/^\d{4}-\d{2}-\d{2}$/.test(String(presents.cur_date))) return 'Выберите доступное занятие в Omni и загрузите урок.';
   const info = attendanceLessonInfo(presents);

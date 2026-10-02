@@ -10,8 +10,10 @@ import { isDesktop } from './desktop-client';
 import { isExtension, onExtensionSessionChange } from './extension-client';
 import { DatePickerPopover, DismissiblePopover, StudentTable } from './WorkspaceControls';
 import { HomeworkTable } from './HomeworkTable';
+import { LessonThemeEditor, type ThemeChoice, type ThemeData } from './LessonThemeEditor';
 import { scheduleDays } from './schedule';
-import { attendanceStatus, attendanceVisit, attendanceUnavailable, type AttendanceChange, type AttendanceStatus } from './attendance';
+import { presentLessons } from './present-lessons';
+import { attendanceStatus, attendanceVisit, attendanceUnavailable, attendanceHasTheme, attendanceDraftKey, type AttendanceChange, type AttendanceStatus } from './attendance';
 import './live.css';
 import './workspace.css';
 
@@ -41,14 +43,22 @@ export function LiveWorkspace({ onDemo }: { onDemo: () => void }) {
   const [switchingTeacher, setSwitchingTeacher] = useState(false);
   const [changingAccount, setChangingAccount] = useState(false);
   const [attendanceSaving, setAttendanceSaving] = useState(false);
+  const [themeSaving, setThemeSaving] = useState(false);
   const [attendanceNeedsReload, setAttendanceNeedsReload] = useState(false);
+  const [attendanceDrafts, setAttendanceDrafts] = useState<Record<string, Record<string, AttendanceStatus>>>({});
+  const [draftPaused, setDraftPaused] = useState(false);
   const operation = useRef(false);
   const currentAccount = useRef('');
   const lastBranch = useRef('');
   const sessionVersion = useRef(0);
   const dialog = useRef<HTMLDialogElement>(null);
   const presentData = record(lesson?.presents ?? snapshot?.presents.data);
+  const draftKey = attendanceDraftKey(snapshot?.account.id || '', snapshot?.account.branch || '', presentData);
+  const draft = attendanceDrafts[draftKey];
+  const hasDrafts = Object.keys(attendanceDrafts).length > 0;
+  const hasTheme = attendanceHasTheme(presentData);
   const lessonStudents = rows(presentData.students);
+  const dayLessons = presentLessons(presentData.schedule);
   const groups = rows(snapshot?.groups.data);
   const teachers = rows(snapshot?.teachers?.data);
   const selectedDate = label(presentData.cur_date || presentData.today);
@@ -65,6 +75,7 @@ export function LiveWorkspace({ onDemo }: { onDemo: () => void }) {
   function failed(reason: unknown) {
     setError(reason instanceof Error ? reason.message : 'Не удалось загрузить данные.');
     if (reason instanceof ConnectionError && ['AUTH_REQUIRED', 'ACCOUNT_CHANGED', 'CHALLENGE'].includes(reason.code)) {
+      setAttendanceDrafts({});
       setAuthNeeded(true); setSnapshot(null); setLesson(null); setGroupStudents(null); setDetail(null);
       currentAccount.current = ''; lastBranch.current = '';
     }
@@ -80,6 +91,7 @@ export function LiveWorkspace({ onDemo }: { onDemo: () => void }) {
       const result = await omniRequest<Snapshot>('snapshot', { week: nextWeek });
       if (version !== sessionVersion.current) return;
       if (currentAccount.current !== result.account.id || lastBranch.current !== result.account.branch) {
+        setAttendanceDrafts({});
         setGroupStudents(null); setGroupName(''); setGroupId(''); setDetail(null);
       }
       currentAccount.current = result.account.id; lastBranch.current = result.account.branch || '';
@@ -111,8 +123,9 @@ export function LiveWorkspace({ onDemo }: { onDemo: () => void }) {
     finally { password = ''; operation.current = false; setBusy(false); }
   }
   async function changeAccount() {
-    if (operation.current || !window.confirm('Выйти из текущего аккаунта Omni и войти в другой? Это изменит общую сессию Omni в этом профиле браузера.')) return;
+    if (operation.current || !window.confirm(`Выйти из текущего аккаунта Omni и войти в другой? Это изменит общую сессию Omni в этом профиле браузера.${hasDrafts ? ' Локальные черновики посещаемости будут удалены.' : ''}`)) return;
     operation.current = true; setBusy(true); setError(''); setWaiting(false); setChangingAccount(true);
+    setAttendanceDrafts({});
     setSnapshot(null); setLesson(null); setGroupStudents(null); setGroupName(''); setGroupId(''); setDetail(null); setNotice('');
     currentAccount.current = ''; lastBranch.current = ''; setWeek(0); setTab('lesson');
     try {
@@ -123,6 +136,8 @@ export function LiveWorkspace({ onDemo }: { onDemo: () => void }) {
   }
   async function switchTeacher(teacherId: string) {
     if (!snapshot || operation.current || teacherId === snapshot.account.id) return;
+    if (hasDrafts && !window.confirm('При смене преподавателя локальные отметки будут удалены. Продолжить?')) return;
+    setAttendanceDrafts({});
     const accountId = snapshot.account.id;
     operation.current = true; setBusy(true); setSwitchingTeacher(true); setError('');
     setSnapshot(null); setLesson(null); setGroupStudents(null); setGroupName(''); setGroupId(''); setDetail(null); setNotice('');
@@ -137,6 +152,7 @@ export function LiveWorkspace({ onDemo }: { onDemo: () => void }) {
   }
   useEffect(() => {
     return onExtensionSessionChange(() => {
+      setAttendanceDrafts({});
       sessionVersion.current++;
       setSnapshot(null); setLesson(null); setGroupStudents(null); setGroupName(''); setGroupId(''); setDetail(null); setNotice('');
       currentAccount.current = ''; lastBranch.current = ''; setWeek(0); setTab('lesson');
@@ -166,22 +182,29 @@ export function LiveWorkspace({ onDemo }: { onDemo: () => void }) {
   }, [waiting]);
   useEffect(() => { if (detail) dialog.current?.showModal(); }, [detail]);
   useEffect(() => {
-    if (!attendanceSaving) return;
+    if (!attendanceSaving && !themeSaving && !hasDrafts) return;
     const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ''; };
     window.addEventListener('beforeunload', warn);
     return () => window.removeEventListener('beforeunload', warn);
-  }, [attendanceSaving]);
+  }, [attendanceSaving, themeSaving, hasDrafts]);
 
-  async function loadLesson(group?: string, lenta?: string) {
-    if (operation.current || !selectedDate) return;
+  useEffect(() => {
+    if (draft && hasTheme && !draftPaused && !busy && !attendanceNeedsReload) void sendAttendanceDraft();
+  }, [draftKey, draft, hasTheme, draftPaused, busy, attendanceNeedsReload]);
+
+  async function loadLesson(group?: string, lenta?: string, date = selectedDate) {
+    if (operation.current || !date) return;
     const version = sessionVersion.current;
     operation.current = true; setBusy(true); setError('');
     try {
       const result = await omniRequest<RemoteLesson>('lesson', {
-        date: selectedDate, ...(group ? { group } : {}), ...(lenta !== undefined && lenta !== '' ? { lenta } : {}),
+        date, ...(group ? { group } : {}), ...(lenta !== undefined && lenta !== '' ? { lenta } : {}),
       });
       if (version !== sessionVersion.current) return;
-      ensureAccount(result.account); setLesson(result); setAttendanceNeedsReload(false);
+      ensureAccount(result.account);
+      const loaded = record(result.presents);
+      if (loaded.cur_date !== date || group && String(loaded.cur_group) !== group || lenta !== undefined && lenta !== '' && String(loaded.cur_lenta) !== lenta) throw new Error('Omni вернул другое занятие. Выбранный урок не открыт — старые данные сохранены.');
+      setLesson(result); setAttendanceNeedsReload(false); if (tab === 'schedule' || date !== selectedDate) setTab('lesson');
     } catch (reason) { if (version === sessionVersion.current) failed(reason); }
     finally { operation.current = false; setBusy(false); }
   }
@@ -218,11 +241,75 @@ export function LiveWorkspace({ onDemo }: { onDemo: () => void }) {
     setTimeout(() => URL.revokeObjectURL(url), 1000); setNotice('Снимок реальных данных экспортирован в файл.');
   }
   const attendanceReason = attendanceNeedsReload ? 'Перед следующей отметкой загрузите урок заново.' : attendanceUnavailable(presentData);
+  async function saveMark(student: RemoteRecord, type: 2 | 4, mark: number) {
+    if (!snapshot || operation.current || attendanceReason) return;
+    const version = sessionVersion.current;
+    operation.current = true; setBusy(true); setAttendanceSaving(true); setError(''); setNotice('');
+    try {
+      const previous = student[`mark${type}`];
+      const result = await omniRequest<{ account: { id: string }; presents: unknown }>('set-lesson-mark', {
+        accountId: snapshot.account.id, date: label(presentData.cur_date), group: label(presentData.cur_group), lenta: label(presentData.cur_lenta), schedule: label(presentData.cur_schedule),
+        stud: label(student.id_stud), visit: label(student.id_vizit), type, mark, previousMark: previous === null || previous === undefined || previous === '' ? null : String(previous),
+      });
+      if (version !== sessionVersion.current) return;
+      ensureAccount(result.account);
+      setSnapshot(current => current ? { ...current, presents: { data: result.presents, error: null } } : null);
+      setLesson(current => current ? { ...current, presents: result.presents } : null);
+      setGroupStudents(null); setGroupId(''); setGroupName(''); setDetail(null); setNotice('Оценка сохранена в Omni.');
+    } catch (reason) { if (version === sessionVersion.current) { setAttendanceNeedsReload(true); setDraftPaused(true); failed(reason); } }
+    finally { operation.current = false; setBusy(false); setAttendanceSaving(false); }
+  }
+  async function editLessonTheme(choice?: ThemeChoice): Promise<ThemeData> {
+    if (!snapshot || operation.current) throw new Error('Дождитесь завершения операции.');
+    const version = sessionVersion.current;
+    operation.current = true; setBusy(true); setError('');
+    if (choice) { setDraftPaused(true); setThemeSaving(true); }
+    try {
+      const result = await omniRequest<ThemeData & { account: { id: string }; warning?: string }>(choice ? 'set-lesson-theme' : 'lesson-themes', {
+        accountId: snapshot.account.id, date: label(presentData.cur_date), group: label(presentData.cur_group),
+        lenta: label(presentData.cur_lenta), schedule: label(presentData.cur_schedule), ...choice,
+      });
+      if (version !== sessionVersion.current) throw new Error('Сессия изменилась.');
+      ensureAccount(result.account);
+      setSnapshot(current => current ? { ...current, presents: { data: result.presents, error: null } } : null);
+      setLesson(current => current ? { ...current, presents: result.presents, ...(choice ? { materials: emptySection, homework: emptySection } : {}) } : null);
+      if (choice) { setDraftPaused(false); setAttendanceNeedsReload(false); setNotice('Тема сохранена в Omni.'); if (result.warning) setError(result.warning); }
+      return result;
+    } catch (reason) {
+      if (version === sessionVersion.current) { if (choice) { setDraftPaused(true); setAttendanceNeedsReload(true); } failed(reason); }
+      throw reason;
+    } finally { operation.current = false; setBusy(false); setThemeSaving(false); }
+  }
   async function markAttendance(items: RemoteRecord[], was: AttendanceStatus, all = false) {
     if (!snapshot || !isExtension() || operation.current || attendanceReason) return;
     const changes: AttendanceChange[] = items.filter(student => attendanceStatus(student.was) !== was).map(student => ({ stud: label(student.id_stud), was, previousWas: attendanceStatus(student.was), visit: attendanceVisit(student.id_vizit) }));
     if (!changes.length) return;
-    if (all && !window.confirm(`Отметить присутствующими всю группу (${items.length} учеников), включая скрытых поиском? Изменятся ${changes.length} отметок в Omni.`)) return;
+    if (all && !window.confirm(`Отметить присутствующими всю группу (${items.length} учеников), включая скрытых поиском? ${!hasTheme || draft ? 'Отметки останутся в черновике до сохранения темы.' : `Изменятся ${changes.length} отметок в Omni.`}`)) return;
+    if (!hasTheme || draft) {
+      setAttendanceDrafts(current => ({ ...current, [draftKey]: { ...current[draftKey], ...Object.fromEntries(changes.map(change => [change.stud, change.was])) } }));
+      setNotice('Отметки в локальном черновике — ещё не отправлены в Omni.');
+      return;
+    }
+    await saveAttendanceChanges(changes);
+  }
+  async function sendAttendanceDraft() {
+    if (!snapshot || !draft || !hasTheme || operation.current || attendanceReason) return;
+    const changes: AttendanceChange[] = [];
+    for (const [stud, was] of Object.entries(draft)) {
+      const matches = lessonStudents.filter(student => label(student.id_stud) === stud);
+      if (matches.length !== 1) { setDraftPaused(true); setError('Список учеников изменился. Проверьте урок и отмените черновик, если он больше не актуален.'); return; }
+      const student = matches[0];
+      if (attendanceStatus(student.was) !== was) changes.push({ stud, was, previousWas: attendanceStatus(student.was), visit: attendanceVisit(student.id_vizit) });
+    }
+    if (!changes.length) { clearAttendanceDraft(); setNotice('Omni уже содержит выбранные отметки.'); return; }
+    await saveAttendanceChanges(changes, true);
+  }
+  function clearAttendanceDraft() {
+    setAttendanceDrafts(current => { const next = { ...current }; delete next[draftKey]; return next; });
+    setDraftPaused(false);
+  }
+  async function saveAttendanceChanges(changes: AttendanceChange[], fromDraft = false) {
+    if (!snapshot) return;
     const version = sessionVersion.current;
     operation.current = true; setBusy(true); setAttendanceSaving(true); setError(''); setNotice('');
     try {
@@ -235,12 +322,22 @@ export function LiveWorkspace({ onDemo }: { onDemo: () => void }) {
       setSnapshot(current => current ? { ...current, presents: { data: result.presents, error: null } } : null);
       setLesson(current => current ? { ...current, presents: result.presents } : null);
       setGroupStudents(null); setGroupId(''); setGroupName(''); setDetail(null);
+      if (fromDraft) clearAttendanceDraft();
       setNotice('Посещаемость сохранена в Omni.');
     } catch (reason) {
-      if (version === sessionVersion.current) { setAttendanceNeedsReload(true); failed(reason); }
+      if (version === sessionVersion.current) { setDraftPaused(true); setAttendanceNeedsReload(true); failed(reason); }
     } finally { operation.current = false; setBusy(false); setAttendanceSaving(false); }
   }
-  const studentTable = (items: RemoteRecord[]) => <StudentTable key={`${tab}:${groupId}`} items={items} busy={busy} onOpen={student => void openStudent(student)} attendance={tab === 'lesson' && isExtension() ? { unavailable: attendanceReason, saving: attendanceSaving, onChange: (student, was) => void markAttendance([student], was), onAll: () => void markAttendance(items, 1, true) } : undefined}/>;
+  const studentTable = (items: RemoteRecord[]) => {
+    const displayed = tab === 'lesson' && draft ? items.map(student => Object.hasOwn(draft, label(student.id_stud)) ? { ...student, was: draft[label(student.id_stud)] } : student) : items;
+    return <>{tab === 'lesson' && isExtension() && (!hasTheme || draft) && <div className="attendance-help" role="status">
+      {draft ? `Черновик: ${Object.keys(draft).length} отметок. В Omni ещё не сохранён. ` : 'Можно отметить учеников заранее. '}
+      {hasTheme ? 'Тема сохранена.' : 'Выберите и сохраните тему выше — после подтверждения Omni отметки отправятся автоматически.'}
+      {hasDrafts && ' Черновики хранятся только до закрытия или перезагрузки страницы.'}
+      {draft && <button className="text-button" disabled={busy} onClick={() => { if (window.confirm('Удалить локальные отметки этого урока?')) clearAttendanceDraft(); }}>Отменить черновик</button>}
+      {draft && draftPaused && <button className="text-button" disabled={busy || attendanceNeedsReload} onClick={() => setDraftPaused(false)}>Возобновить отправку</button>}
+    </div>}<StudentTable key={`${tab}:${groupId}:${draftKey}`} items={displayed} busy={busy} onOpen={student => void openStudent(student)} marks={tab === 'lesson' && isExtension() ? { unavailable: attendanceReason, onChange: (student, type, mark) => void saveMark(student, type, mark) } : undefined} attendance={tab === 'lesson' && isExtension() ? { unavailable: attendanceReason, saving: attendanceSaving, onChange: (student, was) => void markAttendance([student], was), onAll: () => void markAttendance(displayed, 1, true) } : undefined}/></>;
+  };
 
   return <div className="app-shell live-workspace">
     <aside className="sidebar"><a className="brand" href="/"><span className="brand-symbol">o<span/></span>omni<span className="brand-dot">.</span></a><div className="workspace"><span className="workspace-icon"><GraduationCap size={20}/></span><div><strong>Академия TOP</strong><small>{snapshot?.account.branch || 'Подключение к Omni'}</small></div></div><div className="nav-label">МОЁ ПРОСТРАНСТВО</div><nav>{([
@@ -254,9 +351,12 @@ export function LiveWorkspace({ onDemo }: { onDemo: () => void }) {
       {!snapshot && !switchingTeacher && <section className="panel connection-card"><span className="lesson-icon"><LogIn size={26}/></span><h2>{waiting ? 'Завершите вход в окне Omni' : 'Вход в Omni'}</h2><p>{changingAccount ? "Войдите в другой аккаунт в официальной вкладке Omni. Логин и пароль вводятся только там. После входа данные загрузятся автоматически." : waiting ? connectionState === 'challenge' ? 'Пройдите проверку браузера в официальном окне. Затем можно войти здесь или в официальном окне.' : 'Можно завершить вход в официальном окне или использовать форму ниже.' : 'Введите данные аккаунта академии. Для подключения используйте форму ниже или официальное окно входа.'}</p>{!changingAccount && <LoginForm busy={busy} onLogin={login}/>}<button className="button secondary" disabled={busy} onClick={() => void connect()}><ExternalLink size={17}/>Открыть официальный вход</button><div className="connection-help"><ShieldCheck size={16}/>Сессия остаётся на этом компьютере. Демо-данные не попадают в реальный аккаунт.</div><button className="text-button" onClick={onDemo}>Пока посмотреть демонстрацию<ArrowRight size={15}/></button></section>}
       {snapshot && <>
         {tab === 'lesson' && <section className="lesson-banner"><span className="lesson-icon"><BookOpen size={25}/></span><div className="lesson-description"><div className="lesson-meta"><span>РЕАЛЬНЫЕ ДАННЫЕ</span><span>{selectedDate}</span></div><h2>{label(lessonStudents[0]?.theme) || (lessonStudents.length ? 'Текущее занятие' : 'Omni не вернул текущую пару')}</h2><div className="lesson-time">Обновлено {new Date(snapshot.fetchedAt).toLocaleTimeString('ru-RU')} · {snapshot.account.branch}</div></div></section>}
+        {tab === 'lesson' && isExtension() && <LessonThemeEditor key={draftKey} busy={busy} unavailable={attendanceUnavailable(presentData)} onLoad={() => editLessonTheme()} onSave={async choice => { await editLessonTheme(choice); }}/>}
+        {tab === 'lesson' && <div className="workspace-table-tools"><strong>Дата урока: {selectedDate || 'не выбрана'}</strong><DatePickerPopover unrestricted today={today} value={selectedDate || today} busy={busy} onPick={date => void loadLesson(undefined, undefined, date)}/><button className="button secondary" disabled={busy} onClick={() => setTab('schedule')}>Выбрать пару в расписании</button><span>Группа: {label(rows(presentData.groups).find(group => label(group.id_tgroups) === label(presentData.cur_group))?.name_tgroups) || label(presentData.cur_group) || '—'}</span><span>Пара: {label(presentData.cur_lenta_number) || label(presentData.cur_lenta) || '—'}</span></div>}
+        {tab === 'lesson' && dayLessons.length > 0 && <div className="workspace-table-tools" role="group" aria-label="Пары выбранного дня"><label>Пара <select aria-label="Пара выбранного дня" disabled={busy} value={dayLessons.some(item => item.slot === label(presentData.cur_lenta)) ? label(presentData.cur_lenta) : ''} onChange={event => void loadLesson(undefined, event.target.value)}><option value="" disabled>Выберите пару</option>{dayLessons.map(item => <option key={item.slot} value={item.slot}>{item.title}{item.time ? ` · ${item.time}` : ''}</option>)}</select></label><span>{dayLessons.length} пар · список из раздела «Присутствующие» Omni</span></div>}
         {busy && <div role="status" className="live-loading"><LoaderCircle className="spin" size={17}/>Загружаю данные Omni…</div>}
-        {tab === 'lesson' && <section className="panel"><div className="panel-heading"><div><h2>Присутствующие</h2><p>{lessonStudents.length ? `${lessonStudents.length} учеников · данные академии` : 'Показываем только то, что вернул сервер Omni'}</p></div><button className="button secondary" disabled={busy || !selectedDate} onClick={() => void loadLesson(label(presentData.cur_group), label(presentData.cur_lenta))}><RefreshCw size={15}/>Загрузить урок</button></div>{rows(presentData.groups).length > 0 && <div className="live-group-buttons">{rows(presentData.groups).map(group => <button className="button secondary" disabled={busy} key={label(group.id_tgroups)} onClick={() => void loadLesson(label(group.id_tgroups), label(presentData.cur_lenta))}>{label(group.name_tgroups)}</button>)}</div>}{snapshot.presents.error ? <SectionView section={snapshot.presents}/> : lessonStudents.length ? studentTable(lessonStudents) : <Empty title="Сейчас нет доступного занятия" text="Когда появится пара, нажмите «Загрузить урок»."/>}</section>}
-        {tab === 'schedule' && <section className="panel">{snapshot.schedule.error ? <SectionView section={snapshot.schedule}/> : <ScheduleView data={schedule} today={today}/>}</section>}
+        {tab === 'lesson' && <section className="panel"><div className="panel-heading"><div><h2>Присутствующие</h2><p>{lessonStudents.length ? `${lessonStudents.length} учеников · данные академии` : 'Показываем только то, что вернул сервер Omni'}</p></div><button className="button secondary" disabled={busy || !selectedDate} onClick={() => void loadLesson(label(presentData.cur_group), label(presentData.cur_lenta))}><RefreshCw size={15}/>Загрузить урок</button></div>{rows(presentData.groups).length > 0 && <div className="live-group-buttons">{rows(presentData.groups).map(group => <button className="button secondary" disabled={busy} key={label(group.id_tgroups)} onClick={() => void loadLesson(label(group.id_tgroups), label(presentData.cur_lenta))}>{label(group.name_tgroups)}</button>)}</div>}{!lesson && snapshot.presents.error ? <SectionView section={snapshot.presents}/> : lessonStudents.length ? studentTable(lessonStudents) : <Empty title={dayLessons.length ? "Выберите пару и группу" : "На выбранную дату ученики не загружены"} text={dayLessons.length ? "Список пар доступен выше. Выберите нужное занятие, чтобы загрузить учеников." : "Выберите другую дату или нажмите «Загрузить урок»."}/>}</section>}
+        {tab === 'schedule' && <section className="panel">{snapshot.schedule.error ? <SectionView section={snapshot.schedule}/> : <ScheduleView data={schedule} today={today} busy={busy} onOpen={(date, slot) => void loadLesson(undefined, slot, date)}/>}</section>}
          {tab === 'groups' && <section className="panel"><div className="panel-heading"><div><h2>{groupName || 'Мои группы'}</h2><p>Просмотр учеников и доступных оценок</p></div></div>{snapshot.groups.error ? <SectionView section={snapshot.groups}/> : groups.length ? <><div className="workspace-table-tools"><label>Группа <select aria-label="Выбор группы" disabled={busy} value={groupId} onChange={event => { const group = groups.find(item => label(item.id_tgroups) === event.target.value); if (group) void openGroup(group); }}><option value="" disabled>Выберите группу</option>{groups.map(group => <option key={label(group.id_tgroups)} value={label(group.id_tgroups)}>{label(group.name_tgroups)}</option>)}</select></label></div>{busy && !groupStudents && <TableSkeleton/>}{!busy && !groupStudents && <Empty title="Выберите группу"/>}{groupStudents && (groupStudents.error ? <SectionView section={groupStudents}/> : rows(groupStudents.data).length ? studentTable(rows(groupStudents.data)) : <Empty title="В группе нет доступных учеников" text="Omni вернул пустой список."/>)}</> : <Empty title="Omni пока не возвращает группы" text="Список групп в Omni пуст."/>}</section>}
         {tab === 'homework' && <section className="panel"><div className="panel-heading"><div><h2>На проверку</h2><p>Непроверенных ДЗ: {snapshot.counts.homework} · Практических: {snapshot.counts.practice}</p></div></div><HomeworkTable section={snapshot.newHomework} render={value => hasData(value) ? <DataValue value={value}/> : <span>—</span>}/><details className="live-details"><summary>Группы для проверки домашних заданий</summary><SectionView section={snapshot.homework} emptyTitle="Доступных групп нет"/></details></section>}
         {tab === 'materials' && <>
