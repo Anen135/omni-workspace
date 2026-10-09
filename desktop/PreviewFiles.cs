@@ -8,7 +8,7 @@ using System.Threading.Tasks;
 
 namespace OmniDesktop {
 internal static class PreviewFiles {
-    const int Limit = 8 * 1024 * 1024;
+    const int Limit = 1 * 1024 * 1024 * 1024;
     internal static bool Allowed(Uri uri) => uri.Scheme == "https" && uri.IsDefaultPort && uri.UserInfo == "" && (
         uri.Host == "fs.top-academy.ru" && Regex.IsMatch(uri.AbsolutePath, "^/api/v1/files/[A-Za-z0-9_-]+$") ||
         uri.Host == "storage.yandexcloud.net" && uri.AbsolutePath.StartsWith("/top-academy-services-omni/", StringComparison.Ordinal));
