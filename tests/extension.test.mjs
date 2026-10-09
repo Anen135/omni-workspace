@@ -3,9 +3,21 @@ import assert from 'node:assert/strict';
 import { trustedSender, validateMessage, allowedFile, officialUrl } from '../extension/policy.mjs';
 const id = 'abcdefghijklmnopabcdefghijklmnop';
 const ui = `chrome-extension://${id}/index.html`;
-test('extension only accepts its own top-level bundled interface', () => {
-  assert.equal(trustedSender({ id, url: ui, frameId: 0 }, id, ui), true);
-  for (const sender of [{ id, url: 'https://omni.top-academy.ru/' }, { id: 'other', url: ui }, { id, url: ui, frameId: 2 }, { id, url: `chrome-extension://${id}/other.html` }, { id, url: 'https://evil.test/index.html' }]) assert.equal(trustedSender(sender, id, ui), false);
+const official = 'https://omni.top-academy.ru/';
+test('extension accepts only its own top-level official Omni document and launcher', () => {
+  assert.equal(trustedSender({ id, url: official, tab: { id: 7, url: official }, frameId: 0, documentId: 'fixture-doc' }, id, ui), true);
+  assert.equal(trustedSender({ id, url: ui }, id, ui), true);
+  for (const sender of [
+    { id, url: official, frameId: 0 },
+    { id, url: official, tab: { id: 7, url: official }, frameId: 0 },
+    { id, url: official, tab: { id: 7, url: 'https://omni.top-academy.ru.evil.test/' }, frameId: 0 },
+    { id, url: official, tab: { id: 7, url: official }, frameId: 1 },
+    { id, url: official, tab: { url: official }, frameId: 0 },
+    { id: 'other', url: ui, frameId: 0 },
+    { id, url: ui, frameId: 2 },
+    { id, url: `chrome-extension://${id}/other.html`, frameId: 0 },
+    { id, url: 'https://evil.test/index.html', tab: { id: 7, url: 'https://evil.test/' }, frameId: 0 },
+  ]) assert.equal(trustedSender(sender, id, ui), false);
 });
 test('extension permits bounded teacher switching but no arbitrary URL, script or login', () => {
   assert.doesNotThrow(() => validateMessage({ action: 'capabilities', input: {} }));

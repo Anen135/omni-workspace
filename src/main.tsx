@@ -116,14 +116,17 @@ function Modal({ title, children, onClose }: { title: string; children: React.Re
   useEffect(() => { const node = dialog.current; node?.showModal(); return () => node?.close(); }, []);
   return <dialog ref={dialog} onCancel={onClose} onClick={event => { if (event.target === dialog.current) onClose(); }} aria-label={title}><div className="modal-header"><h2>{title}</h2><button className="icon" aria-label="Закрыть" onClick={onClose}><X size={20}/></button></div><div className="modal-body">{children}</div></dialog>;
 }
-function Workspace() {
-  const [demo, setDemo] = useState(() => location.hash === '#demo');
+export function Workspace() {
+  const [demo, setDemo] = useState(() => import.meta.env.MODE !== 'extension' && location.hash === '#demo');
   useEffect(() => {
+    if (import.meta.env.MODE === 'extension') return;
     const update = () => setDemo(location.hash === '#demo');
     window.addEventListener('hashchange', update);
     return () => window.removeEventListener('hashchange', update);
   }, []);
   if (import.meta.env.MODE === 'pages' && !isDesktop()) return <><div className="pages-beta-notice" role="note">Бета-тест · демонстрация на вымышленных данных. Вход в Omni доступен в desktop-приложении или при локальном запуске.</div><App/></>;
-  return demo ? <><div className="demo-return"><button onClick={() => { location.hash = ''; setDemo(false); }}>← Вернуться к реальному Omni</button></div><App/></> : <LiveWorkspace onDemo={() => { location.hash = 'demo'; setDemo(true); }}/>;
+  return demo ? <><div className="demo-return"><button onClick={() => { if (import.meta.env.MODE !== 'extension') location.hash = ''; setDemo(false); }}>← Вернуться к реальному Omni</button></div><App/></> : <LiveWorkspace onDemo={() => { if (import.meta.env.MODE !== 'extension') location.hash = 'demo'; setDemo(true); }}/>;
 }
-createRoot(document.getElementById('root')!).render(<React.StrictMode><Workspace/></React.StrictMode>);
+if (import.meta.env.MODE !== 'extension') {
+  createRoot(document.getElementById('root')!).render(<React.StrictMode><Workspace/></React.StrictMode>);
+}

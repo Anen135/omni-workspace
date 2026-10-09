@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { getDocument, GlobalWorkerOptions, type PDFDocumentProxy } from 'pdfjs-dist';
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
+import { isExtension } from './extension-client';
 
 GlobalWorkerOptions.workerSrc = workerUrl;
 
@@ -10,7 +11,7 @@ export default function PdfPreview({ url, compact }: { url: string; compact: boo
   useEffect(() => {
     let cancelled = false;
     setDocument(null); setError(false);
-    const task = getDocument({ url });
+    const task = getDocument({ url, ...(isExtension() ? { useWasm: false, isEvalSupported: false, useWorkerFetch: false } : {}) });
     void task.promise.then(result => { if (!cancelled) setDocument(result); }).catch(() => { if (!cancelled) setError(true); });
     return () => { cancelled = true; void task.destroy().catch(() => {}); };
   }, [url]);

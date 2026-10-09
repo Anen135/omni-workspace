@@ -23,6 +23,7 @@ export function FilePreview({ url, filename = '', mime = '', fallback, linkLabel
 }) {
   const safeUrl = localObjectUrl && url.startsWith(`blob:${location.origin}/`) ? url : materialLink(url);
   const id = useId();
+  const container = useRef<HTMLDivElement>(null);
   const [expanded, setExpanded] = useState(false);
   const [hover, setHover] = useState<{ x: number; y: number } | null>(null);
   const point = useRef({ x: 0, y: 0 });
@@ -47,7 +48,7 @@ export function FilePreview({ url, filename = '', mime = '', fallback, linkLabel
   if (!safeUrl) return null;
   const kind = fileKind(safeUrl, filename, mime, fallback);
   const title = filename || 'Вложение';
-  return <div className="file-preview">
+  return <div className="file-preview" ref={container}>
     <div className="file-preview-actions">
       {kind !== 'unsupported' && <button type="button" className="file-preview-toggle" aria-expanded={expanded} aria-controls={id} aria-describedby={hover ? `${id}-hover` : undefined}
         onClick={() => { hide(); setExpanded(value => !value); }}
@@ -71,7 +72,7 @@ export function FilePreview({ url, filename = '', mime = '', fallback, linkLabel
     {hover && !expanded && createPortal(<div className="file-preview-hover" id={`${id}-hover`} role="tooltip" style={{
       left: Math.max(8, Math.min(hover.x + 16, window.innerWidth - 328)),
       top: Math.max(8, hover.y + 246 > window.innerHeight ? hover.y - 246 : hover.y + 16),
-    }}><Preview key={safeUrl} url={safeUrl} kind={kind} title={title} compact/><span>Нажмите «Превью», чтобы раскрыть</span></div>, document.body)}
+    }}><Preview key={safeUrl} url={safeUrl} kind={kind} title={title} compact/><span>Нажмите «Превью», чтобы раскрыть</span></div>, container.current?.getRootNode() instanceof ShadowRoot ? container.current.getRootNode() as ShadowRoot : document.body)}
   </div>;
 }
 

@@ -5,8 +5,11 @@ export function officialUrl(value) {
   try { const u = new URL(value); return u.origin === officialOrigin && !u.username && !u.password; } catch { return false; }
 }
 export function trustedSender(sender, id, pageUrl) {
-  if (sender.id !== id || sender.frameId && sender.frameId !== 0) return false;
-  try { const url = new URL(sender.url); return url.origin === new URL(pageUrl).origin && url.protocol === 'chrome-extension:' && url.host === id && url.pathname === '/index.html'; } catch { return false; }
+  if (sender.id !== id) return false;
+  if (officialUrl(sender.url)) return sender.frameId === 0 && typeof sender.documentId === 'string' && sender.documentId.length > 0 && Number.isInteger(sender.tab?.id) && (!sender.tab.url || officialUrl(sender.tab.url));
+  if (sender.frameId !== undefined && sender.frameId !== 0) return false;
+  // Older extension bookmarks remain launchers; they cannot execute API commands.
+  try { const url = new URL(sender.url); return url.href === pageUrl && url.protocol === 'chrome-extension:' && url.host === id && url.pathname === '/index.html'; } catch { return false; }
 }
 export function validateMessage(message) {
   if (!message || typeof message !== 'object' || Array.isArray(message) || Object.keys(message).some(key => !['action', 'input'].includes(key))) throw new Error('Некорректная команда.');

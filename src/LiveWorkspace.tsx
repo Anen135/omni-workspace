@@ -96,7 +96,13 @@ export function LiveWorkspace({ onDemo }: { onDemo: () => void }) {
       }
       currentAccount.current = result.account.id; lastBranch.current = result.account.branch || '';
       setSnapshot(result); setChangingAccount(false); setLesson(null); setWeek(nextWeek); setAuthNeeded(false); setWaiting(false); setAttendanceNeedsReload(false);
-    } catch (reason) { if (version === sessionVersion.current) failed(reason); }
+    } catch (reason) {
+      if (version === sessionVersion.current) {
+        if (isExtension() && !snapshot && reason instanceof ConnectionError && reason.code === 'BUSY') {
+          setConnectionState('loading'); setWaiting(true);
+        } else failed(reason);
+      }
+    }
     finally { operation.current = false; setBusy(false); }
   }
   async function connect() {
@@ -164,7 +170,11 @@ export function LiveWorkspace({ onDemo }: { onDemo: () => void }) {
     const version = sessionVersion.current;
     void omniRequest<{ connected: boolean }>('status').then(state => {
       if (!cancelled && version === sessionVersion.current && state.connected) void refresh();
-    }).catch(() => {});
+    }).catch(reason => {
+      if (!cancelled && version === sessionVersion.current && isExtension() && reason instanceof ConnectionError && reason.code === 'BUSY') {
+        setConnectionState('loading'); setWaiting(true);
+      }
+    });
     return () => { cancelled = true; };
   }, []);
   useEffect(() => {
@@ -348,7 +358,7 @@ export function LiveWorkspace({ onDemo }: { onDemo: () => void }) {
        <div className="page-heading live-heading compact-heading"><div><div className="eyebrow">{tab === 'lesson' ? 'ТЕКУЩАЯ РАБОТА' : tab === 'schedule' ? 'НЕДЕЛЬНЫЙ ОБЗОР' : tab === 'groups' ? 'УЧЕБНЫЕ ГРУППЫ' : tab === 'homework' ? 'ПРОВЕРКА РАБОТ' : 'БИБЛИОТЕКА'}</div><h1>{({ lesson: 'Мой урок', schedule: 'Расписание', groups: 'Ученики', homework: 'Домашние задания', materials: 'Материалы' } as Record<Tab, string>)[tab]}</h1></div>{tab === 'schedule' && snapshot && <div className="schedule-tools"><button className="button secondary" aria-label="Предыдущая неделя" disabled={busy || week <= -52} onClick={() => void refresh(week - 1)}>←</button><span>{scheduleRange || "Неделя без расписания"}</span><button className="button secondary" aria-label="Следующая неделя" disabled={busy || week >= 52} onClick={() => void refresh(week + 1)}>→</button><button className="button secondary" disabled={busy} onClick={() => void refresh(0)}>Сегодня</button><DatePickerPopover today={today} value={scheduleDates[0] || today} busy={busy} onPick={date => void refresh(weekForDate(date))}/></div>}</div>
       {error && <div className="warning" role="alert">{error}<button className="text-button" disabled={busy} onClick={() => void (authNeeded ? connect() : snapshot ? refresh() : connect())}>{authNeeded ? 'Открыть вход' : 'Повторить'}</button></div>}
       {switchingTeacher && <section className="panel connection-card" role="status"><LoaderCircle className="spin" size={26}/><h2>Переключаю преподавателя…</h2><p>Загружаю его расписание, группы и домашние задания.</p></section>}
-      {!snapshot && !switchingTeacher && <section className="panel connection-card"><span className="lesson-icon"><LogIn size={26}/></span><h2>{waiting ? 'Завершите вход в окне Omni' : 'Вход в Omni'}</h2><p>{changingAccount ? "Войдите в другой аккаунт в официальной вкладке Omni. Логин и пароль вводятся только там. После входа данные загрузятся автоматически." : waiting ? connectionState === 'challenge' ? 'Пройдите проверку браузера в официальном окне. Затем можно войти здесь или в официальном окне.' : 'Можно завершить вход в официальном окне или использовать форму ниже.' : 'Введите данные аккаунта академии. Для подключения используйте форму ниже или официальное окно входа.'}</p>{!changingAccount && <LoginForm busy={busy} onLogin={login}/>}<button className="button secondary" disabled={busy} onClick={() => void connect()}><ExternalLink size={17}/>Открыть официальный вход</button><div className="connection-help"><ShieldCheck size={16}/>Сессия остаётся на этом компьютере. Демо-данные не попадают в реальный аккаунт.</div><button className="text-button" onClick={onDemo}>Пока посмотреть демонстрацию<ArrowRight size={15}/></button></section>}
+      {!snapshot && !switchingTeacher && <section className="panel connection-card"><span className="lesson-icon"><LogIn size={26}/></span><h2>{waiting ? isExtension() ? 'Завершите вход в этой вкладке' : 'Завершите вход в окне Omni' : 'Вход в Omni'}</h2><p>{isExtension() ? "Официальная форма входа откроется в этой вкладке. После входа интерфейс загрузит ваши данные автоматически." : changingAccount ? "Войдите в другой аккаунт в официальной вкладке Omni. Логин и пароль вводятся только там. После входа данные загрузятся автоматически." : waiting ? connectionState === 'challenge' ? 'Пройдите проверку браузера в официальном окне. Затем можно войти здесь или в официальном окне.' : 'Можно завершить вход в официальном окне или использовать форму ниже.' : 'Введите данные аккаунта академии. Для подключения используйте форму ниже или официальное окно входа.'}</p>{!changingAccount && <LoginForm busy={busy} onLogin={login}/>}<button className="button secondary" disabled={busy} onClick={() => void connect()}><ExternalLink size={17}/>Открыть официальный вход</button><div className="connection-help"><ShieldCheck size={16}/>Сессия остаётся на этом компьютере. Демо-данные не попадают в реальный аккаунт.</div><button className="text-button" onClick={onDemo}>Пока посмотреть демонстрацию<ArrowRight size={15}/></button></section>}
       {snapshot && <>
         {tab === 'lesson' && <section className="lesson-banner"><span className="lesson-icon"><BookOpen size={25}/></span><div className="lesson-description"><div className="lesson-meta"><span>РЕАЛЬНЫЕ ДАННЫЕ</span><span>{selectedDate}</span></div><h2>{label(lessonStudents[0]?.theme) || (lessonStudents.length ? 'Текущее занятие' : 'Omni не вернул текущую пару')}</h2><div className="lesson-time">Обновлено {new Date(snapshot.fetchedAt).toLocaleTimeString('ru-RU')} · {snapshot.account.branch}</div></div></section>}
         {tab === 'lesson' && isExtension() && <LessonThemeEditor key={draftKey} busy={busy} unavailable={attendanceUnavailable(presentData)} onLoad={() => editLessonTheme()} onSave={async choice => { await editLessonTheme(choice); }}/>}

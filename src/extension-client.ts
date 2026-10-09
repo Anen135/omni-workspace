@@ -1,16 +1,17 @@
-type ExtensionRuntime = { sendMessage: (message: unknown) => Promise<{ data?: unknown; error?: { code: string; message: string } }> };
-type StorageChange = { newValue?: unknown };
-type ExtensionStorage = {
-  session?: { get: (key: string) => Promise<Record<string, unknown>> };
-  onChanged?: {
-    addListener: (listener: (changes: Record<string, StorageChange>, area: string) => void) => void;
-    removeListener: (listener: (changes: Record<string, StorageChange>, area: string) => void) => void;
+type ExtensionRuntime = {
+  id?: string;
+  sendMessage: (message: unknown) => Promise<{ data?: unknown; error?: { code: string; message: string } }>;
+  onMessage?: {
+    addListener: (listener: (message: { action?: string; revision?: unknown }, sender: { id?: string; tab?: unknown }) => void) => void;
+    removeListener: (listener: (message: { action?: string; revision?: unknown }, sender: { id?: string; tab?: unknown }) => void) => void;
   };
 };
-export const isExtension = () => import.meta.env.MODE === 'extension' && location.protocol === 'chrome-extension:';
+export const isExtension = () => import.meta.env.MODE === 'extension' && location.origin === 'https://omni.top-academy.ru' && !!window.chrome;
+let officialLoginRequired: (() => void) | undefined;
+export function onOfficialLoginRequired(callback: () => void) { officialLoginRequired = callback; }
 export function onExtensionSessionChange(callback: () => void): () => void {
   if (!isExtension()) return () => {};
-  const storage = (window.chrome as unknown as { storage?: ExtensionStorage })?.storage;
+  const runtime = (window.chrome as unknown as { runtime?: ExtensionRuntime })?.runtime;
   let revision: string | null = null;
   let disposed = false;
   let readVersion = 0;
@@ -19,28 +20,28 @@ export function onExtensionSessionChange(callback: () => void): () => void {
     if (revision !== null && revision !== next) callback();
     revision = next;
   };
-  const listener = (changes: Record<string, StorageChange>, area: string) => {
-    if (area === 'session' && Object.hasOwn(changes, 'sessionRevision')) {
+  const listener = (message: { action?: string; revision?: unknown }, sender: { id?: string; tab?: unknown }) => {
+    if (sender.id === runtime?.id && !sender.tab && message.action === 'session-revision') {
       readVersion++;
       // A newly loaded tab has no data to invalidate, but its first event still matters.
       if (revision === null) { revision = ''; }
-      accept(changes.sessionRevision.newValue);
+      accept(message.revision);
     }
   };
   const check = () => {
     const version = ++readVersion;
-    void storage?.session?.get('sessionRevision').then(value => {
-      if (!disposed && version === readVersion) accept(value.sessionRevision);
+    void runtime?.sendMessage({ action: 'capabilities', input: {} }).then(value => {
+      if (!disposed && version === readVersion) accept((value.data as { sessionRevision?: unknown } | undefined)?.sessionRevision);
     }).catch(() => {});
   };
-  storage?.onChanged?.addListener(listener);
+  runtime?.onMessage?.addListener(listener);
   check();
   const checkWhenVisible = () => { if (!document.hidden) check(); };
   window.addEventListener('focus', check);
   document.addEventListener('visibilitychange', checkWhenVisible);
   return () => {
     disposed = true;
-    storage?.onChanged?.removeListener(listener);
+    runtime?.onMessage?.removeListener(listener);
     window.removeEventListener('focus', check);
     document.removeEventListener('visibilitychange', checkWhenVisible);
   };
@@ -52,10 +53,13 @@ export async function extensionRequest<T>(action: string, input: unknown): Promi
     const capabilities = await runtime.sendMessage({ action: 'capabilities', input: {} });
     const supported = capabilities?.data as { teacherSwitch?: boolean; accountSwitch?: boolean; attendance?: boolean; lessonTheme?: boolean; lessonMark?: boolean } | undefined;
     if (capabilities?.error || !(action === 'set-lesson-mark' ? supported?.lessonMark : action === 'lesson-themes' || action === 'set-lesson-theme' ? supported?.lessonTheme : action === 'set-attendance' ? supported?.attendance : action === 'switch-account' ? supported?.accountSwitch : supported?.teacherSwitch)) {
-      throw Object.assign(new Error('Фоновый обработчик расширения устарел. Перезагрузите Omni Workspace на странице управления расширениями браузера, затем закройте старую вкладку интерфейса и откройте его заново через значок расширения. Обновления самой страницы недостаточно.'), { code: 'EXTENSION_UPDATE_REQUIRED' });
+      throw Object.assign(new Error('Фоновый обработчик расширения устарел. Перезагрузите Omni Workspace на странице управления расширениями браузера, затем обновите страницу Omni или нажмите значок расширения.'), { code: 'EXTENSION_UPDATE_REQUIRED' });
     }
   }
   const result = await runtime.sendMessage({ action, input });
-  if (result?.error) throw Object.assign(new Error(result.error.message), { code: result.error.code });
+  if (result?.error) {
+    if (['AUTH_REQUIRED', 'CHALLENGE'].includes(result.error.code)) officialLoginRequired?.();
+    throw Object.assign(new Error(result.error.message), { code: result.error.code });
+  }
   return result.data as T;
 }

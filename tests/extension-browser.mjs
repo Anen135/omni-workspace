@@ -28,7 +28,9 @@ try {
     };
   }, pdf);
   const errors = [];
+  const requests = [];
   context.on('page', page => page.on('pageerror', error => errors.push(error.message)));
+  context.on('request', request => requests.push(request.url()));
   await context.route('https://fonts.googleapis.com/**', route => route.abort());
   const paths = [];
   let signedIn = false;
@@ -50,7 +52,7 @@ try {
       paths.push(path);
       return route.fulfill({ status: 302, headers: { location: 'https://omni.top-academy.ru/login/index' } });
     }
-    if (request.isNavigationRequest()) return route.fulfill({ contentType: 'text/html', body: `<!doctype html><meta name="csrf-token" content="fixture-csrf"><title>Fixture Omni</title>${signedIn ? '' : '<input type="password">'}<script>globalThis.angular = { element: () => ({ injector: () => ({ get: () => ({ clearLocalStorage: () => sessionStorage.setItem('switch-cleaned', 'yes') }) }) }) };</script>` });
+    if (request.isNavigationRequest()) return route.fulfill({ contentType: 'text/html', body: `<!doctype html><meta name="csrf-token" content="fixture-csrf"><title>Fixture Omni</title>${signedIn ? '' : '<form><input type="password"></form><div data-login-challenge="fixture">Complete verification</div>'}<script>globalThis.angular = { element: () => ({ injector: () => ({ get: () => ({ clearLocalStorage: () => sessionStorage.setItem('switch-cleaned', 'yes') }) }) }) };</script>` });
     if (path === '/favicon.ico') return route.fulfill({ status: 404, body: '' });
     if (request.method() !== 'POST') return route.fulfill({ status: 404, body: '' });
     paths.push(path);
@@ -110,24 +112,80 @@ try {
     assert.ok(signedIn);
     return route.fulfill({ json: data });
   });
-  const ui = await context.newPage();
-  ui.setDefaultTimeout(15000);
-  await ui.goto(`chrome-extension://${id}/index.html`);
-  await ui.getByRole('button', { name: 'Открыть официальный вход', exact: true }).waitFor();
-  assert.equal(await ui.locator('input[type=password]').count(), 0);
-  const [official] = await Promise.all([context.waitForEvent('page'), ui.getByRole('button', { name: 'Открыть официальный вход', exact: true }).click()]);
-  await official.waitForURL('https://omni.top-academy.ru/**');
+  for (const page of context.pages()) await page.close();
+  const official = await context.newPage();
+  official.setDefaultTimeout(15000);
+  const ui = official;
+  const extensionMessage = async (message, tab = official) => {
+    await tab.bringToFront();
+    return worker.evaluate(async ({ url, message }) => {
+    const targets = await chrome.tabs.query({ url });
+    const target = targets.find(candidate => candidate.active) || targets[0];
+    if (!target) throw new Error(`No Omni test tab for ${url}`);
+    const results = await chrome.scripting.executeScript({
+      target: { tabId: target.id, frameIds: [0] }, world: 'ISOLATED',
+      func: message => chrome.runtime.sendMessage(message), args: [message],
+    });
+    return results[0]?.result;
+    }, { url: tab.url(), message });
+  };
+  const downgradeCapabilities = async (tab = official) => {
+    await tab.bringToFront();
+    return worker.evaluate(async ({ url }) => {
+    const targets = await chrome.tabs.query({ url });
+    const target = targets.find(candidate => candidate.active) || targets[0];
+    if (!target) throw new Error(`No Omni test tab for ${url}`);
+    const results = await chrome.scripting.executeScript({
+      target: { tabId: target.id, frameIds: [0] }, world: 'ISOLATED',
+      func: () => {
+        const send = chrome.runtime.sendMessage.bind(chrome.runtime);
+        chrome.runtime.sendMessage = message => message.action === 'capabilities'
+          ? Promise.resolve({ error: { code: 'BAD_INPUT', message: 'fixture unsupported capabilities' } })
+          : send(message);
+      },
+    });
+    return results[0]?.result;
+    }, { url: tab.url() });
+  };
+  await official.goto('https://omni.top-academy.ru/');
   await official.waitForLoadState('domcontentloaded');
   assert.equal(new URL(official.url()).origin, 'https://omni.top-academy.ru');
   await official.locator('input[type=password]').waitFor();
-  // Simulates completion of an official login, without ever sending a password.
-  await official.evaluate(() => { document.querySelector('input').remove(); sessionStorage.setItem('IdLocalHash', 'fixture-hash'); });
+  assert.equal(await official.locator('#omni-workspace-root').count(), 0);
+  assert.equal(await official.locator('[data-login-challenge="fixture"]').count(), 1);
+  // Simulates completion of Omni's own login and challenge without a real credential.
+  await official.evaluate(() => { document.querySelector('input[type=password]').closest('form')?.remove(); document.querySelector('[data-login-challenge="fixture"]')?.remove(); sessionStorage.setItem('IdLocalHash', 'fixture-hash'); });
   signedIn = true;
-  await ui.getByRole('button', { name: 'Открыть официальный вход', exact: true }).click();
+  await official.reload();
+  await official.locator('#omni-workspace-root #root').waitFor().catch(async error => { console.error('Injected UI did not mount:', await official.locator('body').innerText(), paths, errors); throw error; });
+  assert.equal(await context.pages().length, 1, 'the extension should mount the interface in the current Omni tab');
+  assert.equal(await official.locator('#omni-workspace-root iframe').count(), 0);
+  const appearance = await official.locator('.live-workspace').evaluate(node => ({
+    font: getComputedStyle(node).fontFamily,
+    purple: getComputedStyle(node).getPropertyValue('--purple').trim(),
+    sidebar: getComputedStyle(node.querySelector('.sidebar')).backgroundColor,
+  }));
+  assert.match(appearance.font, /sans-serif/);
+  assert.equal(appearance.purple, '#6d55d8');
+  assert.equal(appearance.sidebar, 'rgb(255, 255, 255)');
   await ui.getByText('Подключено', { exact: true }).waitFor();
   await ui.getByRole('heading', { name: 'Мой урок' }).waitFor();
   assert.ok(paths.includes('/schedule/get-schedule'));
   assert.ok(paths.filter(path => path === '/profile/get-profile').length >= 2);
+  await ui.locator('nav button').nth(1).click();
+  await ui.locator('.schedule-tools').waitFor();
+  const calendarTrigger = ui.locator('.schedule-tools .workspace-popover > button');
+  await calendarTrigger.click();
+  const calendar = ui.locator('.schedule-tools .workspace-popover-body');
+  const month = calendar.locator('.workspace-calendar-heading strong');
+  const previousMonth = await month.textContent();
+  await calendar.locator('.workspace-calendar-heading button').nth(1).click();
+  assert.notEqual(await month.textContent(), previousMonth, 'a click inside the injected calendar must not dismiss its shadow-root popover');
+  await calendar.locator('button[aria-label="2026-10-05"]').click();
+  await calendar.waitFor({ state: 'detached' });
+  await calendarTrigger.click();
+  await ui.locator('nav button').nth(0).click();
+  await calendar.waitFor({ state: 'detached' });
   const presence = ui.getByLabel('Присутствие: Тестовый ученик А', { exact: true });
   const dayPairs = ui.getByLabel('Пара выбранного дня', { exact: true });
   assert.equal(await dayPairs.locator('option').count(), 3);
@@ -149,7 +207,7 @@ try {
   assert.equal(await presence.inputValue(), '2');
   await presence.selectOption('1');
   await ui.getByRole('button', { name: 'Загрузить урок', exact: true }).click();
-  await ui.waitForFunction(() => !document.querySelector('.attendance-select')?.disabled);
+  await ui.waitForFunction(() => !document.querySelector('#omni-workspace-root')?.shadowRoot?.querySelector('.attendance-select')?.disabled);
   assert.equal(await presence.inputValue(), '1'); // Reload preserves local draft.
   assert.equal(paths.filter(path => path === '/presents/set-was').length, 0);
   await ui.getByRole('button', { name: 'Выбрать тему', exact: true }).click();
@@ -175,9 +233,9 @@ try {
   assert.equal(await presence.inputValue(), '1');
   assert.equal(lessonStudents[0].id_vizit, 80); // Theme-created visit, not old draft metadata.
   await presence.selectOption('2');
-  await ui.waitForFunction(() => document.querySelector('.attendance-select')?.value === '2' && !document.querySelector('.attendance-select')?.disabled);
+  await ui.waitForFunction(() => document.querySelector('#omni-workspace-root')?.shadowRoot?.querySelector('.attendance-select')?.value === '2' && !document.querySelector('#omni-workspace-root')?.shadowRoot?.querySelector('.attendance-select')?.disabled);
   await presence.selectOption('0');
-  await ui.waitForFunction(() => document.querySelector('.attendance-select')?.value === '0' && !document.querySelector('.attendance-select')?.disabled);
+  await ui.waitForFunction(() => document.querySelector('#omni-workspace-root')?.shadowRoot?.querySelector('.attendance-select')?.value === '0' && !document.querySelector('#omni-workspace-root')?.shadowRoot?.querySelector('.attendance-select')?.disabled);
   const writesBeforeAll = paths.filter(path => path === '/presents/set-was').length;
   ui.once('dialog', dialog => dialog.dismiss());
   await ui.getByRole('button', { name: 'Все присутствуют', exact: true }).click();
@@ -185,7 +243,7 @@ try {
   await ui.getByLabel('Поиск ученика', { exact: true }).fill('ученик А');
   ui.once('dialog', dialog => { assert.match(dialog.message(), /включая скрытых поиском/); return dialog.accept(); });
   await ui.getByRole('button', { name: 'Все присутствуют', exact: true }).click();
-  await ui.waitForFunction(() => document.querySelector('.attendance-select')?.value === '1' && !document.querySelector('.attendance-select')?.disabled);
+  await ui.waitForFunction(() => document.querySelector('#omni-workspace-root')?.shadowRoot?.querySelector('.attendance-select')?.value === '1' && !document.querySelector('#omni-workspace-root')?.shadowRoot?.querySelector('.attendance-select')?.disabled);
   assert.deepEqual(lessonStudents.map(row => row.was), [1, 1]);
   rejectAttendance = true;
   await presence.selectOption('0');
@@ -195,7 +253,7 @@ try {
   rejectAttendance = false;
   await ui.getByRole('button', { name: 'Загрузить урок', exact: true }).click();
   await presence.waitFor();
-  await ui.waitForFunction(() => !document.querySelector('.attendance-select')?.disabled);
+  await ui.waitForFunction(() => !document.querySelector('#omni-workspace-root')?.shadowRoot?.querySelector('.attendance-select')?.disabled);
   assert.equal(await presence.inputValue(), '1');
   ignoreAttendance = true;
   await presence.selectOption('0');
@@ -204,7 +262,7 @@ try {
   assert.equal(await presence.isDisabled(), true);
   ignoreAttendance = false;
   await ui.getByRole('button', { name: 'Загрузить урок', exact: true }).click();
-  await ui.waitForFunction(() => !document.querySelector('.attendance-select')?.disabled);
+  await ui.waitForFunction(() => !document.querySelector('#omni-workspace-root')?.shadowRoot?.querySelector('.attendance-select')?.disabled);
   for (const [index, date, type, value] of [[0, '2026-09-29', 'Контрольная', '10'], [1, '2026-10-02', 'Работа на уроке', '11']]) {
     await ui.getByRole('button', { name: 'Расписание', exact: true }).click();
     await ui.getByRole('button', { name: 'Открыть урок', exact: true }).nth(index).click();
@@ -228,50 +286,45 @@ try {
   assert.equal(await ui.getByRole('button', { name: 'Контрольная: Тестовый ученик А', exact: true }).isDisabled(), true);
   rejectMark = false;
   await ui.getByRole('button', { name: 'Загрузить урок', exact: true }).click();
-  await ui.waitForFunction(() => !document.querySelector('.attendance-select')?.disabled);
+  await ui.waitForFunction(() => !document.querySelector('#omni-workspace-root')?.shadowRoot?.querySelector('.attendance-select')?.disabled);
   await ui.getByRole('button', { name: 'Домашние задания', exact: true }).click();
   await ui.locator('.remote-attachment').getByRole('button', { name: 'Превью', exact: true }).click();
   await ui.locator('.remote-attachment canvas[data-rendered="true"]').waitFor();
-  const external = await worker.evaluate(async () => {
-    const { omniTabId } = await chrome.storage.session.get('omniTabId');
-    const result = await chrome.scripting.executeScript({ target: { tabId: omniTabId }, func: () => chrome.runtime.sendMessage({ action: 'status', input: {} }) });
-    return result[0].result;
-  });
-  assert.equal(external.error.code, 'FORBIDDEN');
-  const forbidden = await ui.evaluate(() => chrome.runtime.sendMessage({ action: 'eval', input: { code: 'alert(1)' } }));
+  const external = await extensionMessage({ action: 'status', input: {} });
+  assert.equal(external.data.connected, true);
+  const forbidden = await extensionMessage({ action: 'eval', input: { code: 'alert(1)' } });
   assert.equal(forbidden.error.code, 'BAD_INPUT');
   const actAs = ui.getByLabel('Работаю от имени', { exact: true });
   assert.equal(await actAs.isEnabled(), true);
-  const capabilities = await ui.evaluate(() => chrome.runtime.sendMessage({ action: 'capabilities', input: {} }));
+  const capabilities = await extensionMessage({ action: 'capabilities', input: {} });
   assert.equal(capabilities.data.teacherSwitch, true);
   assert.equal(capabilities.data.version, manifest.version);
   assert.equal(capabilities.data.accountSwitch, true);
-  const malformed = await ui.evaluate(() => chrome.runtime.sendMessage({ action: 'switch-teacher', input: { teacherId: '', accountId: '1' } }));
+  const malformed = await extensionMessage({ action: 'switch-teacher', input: { teacherId: '', accountId: '1' } });
   assert.match(malformed.error.message, /идентификатор выбранного преподавателя/);
-  const denied = await ui.evaluate(() => chrome.runtime.sendMessage({ action: 'switch-teacher', input: { teacherId: '999', accountId: '1' } }));
+  const denied = await extensionMessage({ action: 'switch-teacher', input: { teacherId: '999', accountId: '1' } });
   assert.equal(denied.error.code, 'TEACHER_NOT_ALLOWED');
   assert.equal(paths.filter(path => path === '/auth/change-user').length, 0);
-  const stale = await ui.evaluate(() => chrome.runtime.sendMessage({ action: 'switch-teacher', input: { teacherId: '2', accountId: '9' } }));
+  const stale = await extensionMessage({ action: 'switch-teacher', input: { teacherId: '2', accountId: '9' } });
   assert.equal(stale.error.code, 'ACCOUNT_CHANGED');
-  // Simulate a new interface talking to the pre-switching background worker.
-  await ui.evaluate(() => {
-    const send = chrome.runtime.sendMessage.bind(chrome.runtime);
-    chrome.runtime.sendMessage = message => message.action === 'capabilities'
-      ? Promise.resolve({ error: { code: 'BAD_INPUT', message: 'Команда или параметры не поддерживаются.' } })
-      : send(message);
-  });
+  // Simulate the UI running against a worker that lacks account-switch support.
+  await downgradeCapabilities();
   await actAs.selectOption('2');
   await ui.getByRole('alert').filter({ hasText: 'Фоновый обработчик расширения устарел' }).waitFor();
   assert.equal(paths.filter(path => path === '/auth/change-user').length, 0);
   await ui.reload();
   await ui.getByText('Подключено', { exact: true }).waitFor();
   const secondUi = await context.newPage();
-  await secondUi.goto(`chrome-extension://${id}/index.html`);
+  secondUi.setDefaultTimeout(15000);
+  await secondUi.addInitScript(() => sessionStorage.setItem('IdLocalHash', 'fixture-hash'));
+  await secondUi.goto('https://omni.top-academy.ru/');
+  assert.equal(new URL(secondUi.url()).origin, 'https://omni.top-academy.ru');
+  await secondUi.locator('#omni-workspace-root #root').waitFor();
   await secondUi.getByText('Подключено', { exact: true }).waitFor();
   const secondActAs = secondUi.getByLabel('Работаю от имени', { exact: true });
   assert.equal(await secondActAs.inputValue(), '1');
   await actAs.selectOption('2');
-  await secondUi.getByRole('heading', { name: 'Завершите вход в окне Omni' }).waitFor();
+  await secondUi.getByRole('heading', { name: 'Завершите вход в этой вкладке' }).waitFor();
   assert.equal(await secondUi.getByText('Подключено', { exact: true }).count(), 0);
   await ui.getByText('Подключено', { exact: true }).waitFor();
   assert.equal(await actAs.inputValue(), '2');
@@ -294,11 +347,11 @@ try {
   ui.once('dialog', dialog => dialog.accept());
   await ui.getByRole('button', { name: 'Сменить аккаунт', exact: true }).click();
   await official.waitForURL('https://omni.top-academy.ru/login/index');
-  await secondUi.getByRole('heading', { name: 'Завершите вход в окне Omni' }).waitFor();
+  await secondUi.getByRole('heading', { name: 'Завершите вход в этой вкладке' }).waitFor();
   assert.equal(await secondUi.getByText('Подключено', { exact: true }).count(), 0);
-  await ui.getByRole('heading', { name: 'Завершите вход в окне Omni' }).waitFor();
-  assert.equal(await ui.locator('.lesson-banner').count(), 0);
-  assert.equal(await ui.locator('input[type=password]').count(), 0);
+  await official.locator('#omni-workspace-root').waitFor({ state: 'detached' });
+  await official.locator('input[type=password]').waitFor();
+  assert.equal(await official.locator('[data-login-challenge="fixture"]').count(), 1);
   assert.equal(paths.filter(path => path === '/auth/logout').length, 1);
   teacherId = 3; signedIn = true;
   await official.goto('https://omni.top-academy.ru/');
@@ -307,9 +360,10 @@ try {
   await secondUi.getByText('Подключено', { exact: true }).waitFor();
   assert.equal(await secondActAs.inputValue(), '3');
   await official.close();
-  const status = await ui.evaluate(() => chrome.runtime.sendMessage({ action: 'status', input: {} }));
-  assert.equal(status.data.connected, false);
+  const status = await extensionMessage({ action: 'status', input: {} }, secondUi);
+  assert.equal(status.data.connected, true);
   assert.deepEqual(errors, []);
+  assert.equal(requests.some(url => url.startsWith('chrome-extension://') || /localhost|127\.0\.0\.1/.test(url)), false);
   console.log('PASS: MV3 local attendance drafts (edit/cancel/reload, zero writes), in-app topic catalogue/save/material options, rejected topic keeps draft, successful topic triggers attendance with new visits; three states, all/cancel/search, readback mismatch/reload, snapshot/PDF, teacher switching, two-tab session invalidation, account change and sender restrictions. All data fictional.');
 } finally {
   await context?.close();
