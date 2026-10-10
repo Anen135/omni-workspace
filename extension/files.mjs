@@ -1,18 +1,15 @@
 import { allowedFile } from './policy.mjs';
-const maxSize = 8 * 1024 * 1024;
 export async function previewFile(url) {
   if (!allowedFile(url)) throw new Error('Недопустимый адрес файла.');
   // Browser follows redirects under extension host permissions, without cookies.
   const response = await fetch(url, { credentials: 'omit', signal: AbortSignal.timeout(25000), referrerPolicy: 'no-referrer' });
   if (!response.ok || !allowedFile(response.url)) { await response.body?.cancel(); throw new Error('Хранилище не вернуло доступный файл.'); }
-  if (Number(response.headers.get('content-length')) > maxSize) { await response.body?.cancel(); throw new Error('Лимит превью расширения — 8 МБ.'); }
   const reader = response.body.getReader();
   const chunks = []; let size = 0;
   try {
     while (true) {
       const { done, value } = await reader.read(); if (done) break;
       size += value.length;
-      if (size > maxSize) throw new Error('Лимит превью расширения — 8 МБ.');
       chunks.push(value);
     }
   } finally { await reader.cancel(); }

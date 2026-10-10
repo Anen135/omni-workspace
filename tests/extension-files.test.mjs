@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { previewFile } from '../extension/files.mjs';
 const url = 'https://fs.top-academy.ru/api/v1/files/fixture';
-test('extension previews validate sources, final URLs, content and size without sending credentials', async () => {
+test('extension previews validate sources and content without credentials or a file size limit', async () => {
   const original = globalThis.fetch;
   const response = (body, finalUrl = url, headers = {}) => {
     const result = new Response(body, { headers });
@@ -19,7 +19,11 @@ test('extension previews validate sources, final URLs, content and size without 
     await assert.rejects(previewFile(url), /Хранилище/);
     fixture = response('<html>challenge</html>');
     await assert.rejects(previewFile(url), /Формат/);
-    fixture = response('too large', url, { 'content-length': String(9 * 1024 * 1024) });
-    await assert.rejects(previewFile(url), /8 МБ/);
+    const largePdf = new Uint8Array(9 * 1024 * 1024);
+    largePdf.set(new TextEncoder().encode('%PDF-1.4'));
+    fixture = response(largePdf, url, { 'content-length': String(largePdf.length) });
+    const preview = await previewFile(url);
+    assert.equal(preview.type, 'application/pdf');
+    assert.equal(atob(preview.base64).length, largePdf.length);
   } finally { globalThis.fetch = original; }
 });

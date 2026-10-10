@@ -49,10 +49,10 @@ export function onExtensionSessionChange(callback: () => void): () => void {
 export async function extensionRequest<T>(action: string, input: unknown): Promise<T> {
   const runtime = (window.chrome as unknown as { runtime?: ExtensionRuntime })?.runtime;
   if (!isExtension() || !runtime) throw new Error('Откройте интерфейс через значок установленного расширения.');
-  if (['switch-teacher', 'switch-account', 'set-attendance', 'lesson-themes', 'set-lesson-theme', 'set-lesson-mark'].includes(action)) {
+  if (['switch-teacher', 'switch-account', 'set-attendance', 'lesson-themes', 'set-lesson-theme', 'set-lesson-mark', 'set-homework-marks'].includes(action)) {
     const capabilities = await runtime.sendMessage({ action: 'capabilities', input: {} });
-    const supported = capabilities?.data as { teacherSwitch?: boolean; accountSwitch?: boolean; attendance?: boolean; lessonTheme?: boolean; lessonMark?: boolean } | undefined;
-    if (capabilities?.error || !(action === 'set-lesson-mark' ? supported?.lessonMark : action === 'lesson-themes' || action === 'set-lesson-theme' ? supported?.lessonTheme : action === 'set-attendance' ? supported?.attendance : action === 'switch-account' ? supported?.accountSwitch : supported?.teacherSwitch)) {
+    const supported = capabilities?.data as { teacherSwitch?: boolean; accountSwitch?: boolean; attendance?: boolean; lessonTheme?: boolean; lessonMark?: boolean; homeworkMarks?: boolean } | undefined;
+    if (capabilities?.error || !(action === 'set-homework-marks' ? supported?.homeworkMarks : action === 'set-lesson-mark' ? supported?.lessonMark : action === 'lesson-themes' || action === 'set-lesson-theme' ? supported?.lessonTheme : action === 'set-attendance' ? supported?.attendance : action === 'switch-account' ? supported?.accountSwitch : supported?.teacherSwitch)) {
       throw Object.assign(new Error('Фоновый обработчик расширения устарел. Перезагрузите Omni Workspace на странице управления расширениями браузера, затем обновите страницу Omni или нажмите значок расширения.'), { code: 'EXTENSION_UPDATE_REQUIRED' });
     }
   }

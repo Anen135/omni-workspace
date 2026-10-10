@@ -3,6 +3,7 @@ import { loadMaterialsCatalog, loadMethodPackage } from '../server/teaching-mate
 import { saveAttendance } from '../extension/attendance.mjs';
 import { lessonTheme } from '../extension/lesson-theme.mjs';
 import { saveLessonMark } from '../extension/lesson-mark.mjs';
+import { saveHomeworkMarks } from '../extension/homework.mjs';
 
 const origin = 'https://omni.top-academy.ru';
 export async function dispatch(action, input = {}) {
@@ -20,6 +21,10 @@ export async function dispatch(action, input = {}) {
     }, body: JSON.stringify(data) });
     if ([401, 403].includes(response.status) || response.url.includes('/login')) throw new BridgeError('AUTH_REQUIRED', 'Сессия истекла. Войдите снова.');
     if (response.status === 409) throw new BridgeError('ACCOUNT_CHANGED', 'Аккаунт изменился. Обновите данные.');
+    if (path === '/homework/save-homework' && [400, 422].includes(response.status)) {
+      const body = await response.json().catch(() => null);
+      throw new BridgeError('HOMEWORK_REJECTED', `Omni отклонил оценку. ${typeof body?.message === 'string' ? body.message.replace(/<[^>]*>/g, '').slice(0, 250) : 'Проверьте допустимую оценку и доступ к работе.'}`);
+    }
     if (['/presents/set-was', '/presents/set-theme', '/presents/set-mark'].includes(path) && [400, 422].includes(response.status)) {
       const body = await response.json().catch(() => null);
       const reason = typeof body?.message === 'string' ? body.message : typeof body?.error === 'string' ? body.error : '';
@@ -39,6 +44,7 @@ export async function dispatch(action, input = {}) {
   }
   if (action === 'set-attendance') return saveAttendance(input, { request: read, identity });
   if (action === 'set-lesson-mark') return saveLessonMark(input, { request: read, identity });
+  if (action === 'set-homework-marks') return saveHomeworkMarks(input, { request: read, identity });
   if (action === 'lesson-themes' || action === 'set-lesson-theme') return lessonTheme(action, input, { request: read, identity });
   const account = await identity();
   let result;

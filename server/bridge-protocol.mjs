@@ -8,6 +8,10 @@ export class BridgeError extends Error {
 
 export function validateInput(action, input) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw new BridgeError('BAD_INPUT', 'Некорректный запрос.', 400);
+  if (action === 'set-homework-marks') {
+    if (Object.keys(input).some(key => !['accountId', 'mark', 'items'].includes(key)) || typeof input.accountId !== 'string' || !/^[1-9]\d{0,11}$/.test(input.accountId) || !Number.isInteger(input.mark) || input.mark < 1 || input.mark > 12 || !Array.isArray(input.items) || !input.items.length || input.items.length > 100 || input.items.some(item => !item || typeof item !== 'object' || Array.isArray(item) || Object.keys(item).some(key => !['key', 'previousMark', 'submittedAt'].includes(key)) || typeof item.key !== 'string' || !/^(homework|lab_work):[1-9]\d{0,11}:[1-9]\d{0,11}:[1-9]\d{0,11}$/.test(item.key) || !(item.previousMark === null || Number.isFinite(item.previousMark) && item.previousMark > 0 && item.previousMark <= 100) || typeof item.submittedAt !== 'string' || item.submittedAt.length > 100) || new Set(input.items.map(item => item.key)).size !== input.items.length) throw new BridgeError('BAD_INPUT', 'Выберите до 100 работ и целую оценку от 1 до 12.', 400);
+    return input;
+  }
   if (action === 'set-lesson-mark') {
     const fields = ['accountId', 'date', 'group', 'lenta', 'schedule', 'stud', 'visit', 'type', 'mark', 'previousMark'];
     if (Object.keys(input).some(key => !fields.includes(key)) || !['accountId', 'group', 'schedule', 'stud', 'visit'].every(key => typeof input[key] === 'string' && /^[1-9]\d{0,11}$/.test(input[key])) || typeof input.lenta !== 'string' || !/^\d{1,12}$/.test(input.lenta) || ![2, 4].includes(input.type) || !Number.isInteger(input.mark) || input.mark < 1 || input.mark > 100 || !(input.previousMark === null || typeof input.previousMark === 'string' && input.previousMark.length <= 16)) throw new BridgeError('BAD_INPUT', 'Некорректная оценка или занятие.', 400);

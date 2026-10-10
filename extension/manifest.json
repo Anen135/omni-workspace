@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Omni Workspace — Beta",
-  "version": "0.3.0.3",
-  "version_name": "0.3.0-beta.3",
+  "version": "0.3.0.4",
+  "version_name": "0.3.0-beta.4",
   "description": "Локальный интерфейс преподавателя. Вход и данные через официальную вкладку Omni.",
   "minimum_chrome_version": "120",
   "permissions": ["scripting", "storage"],

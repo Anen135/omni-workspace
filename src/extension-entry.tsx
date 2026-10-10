@@ -10,6 +10,7 @@ import workspace from './workspace.css?inline';
 import login from './login.css?inline';
 import schedule from './schedule.css?inline';
 import materials from './teaching-materials.css?inline';
+import homework from './homework.css?inline';
 // PDF.js uses this handler directly when Workers are unavailable in a content
 // script. Keeping it in the isolated world avoids page CSP and extension URL imports.
 // @ts-expect-error PDF.js does not publish worker module declarations.
@@ -61,7 +62,7 @@ function start() {
     host = document.createElement('div'); host.id = hostId;
     const shadow = host.attachShadow({ mode: 'open' });
     const style = document.createElement('style');
-    style.textContent = `:host{all:initial;display:block;position:fixed;inset:0;z-index:2147483647;overflow:auto;isolation:isolate;color-scheme:light} ${styles}\n${pages}\n${live}\n${workspace}\n${login}\n${schedule}\n${materials}\n${preview}\n@media print{:host{position:static!important;overflow:visible!important;height:auto!important}}`;
+    style.textContent = `:host{all:initial;display:block;position:fixed;inset:0;z-index:2147483647;overflow:auto;isolation:isolate;color-scheme:light} ${styles}\n${pages}\n${live}\n${workspace}\n${login}\n${schedule}\n${materials}\n${homework}\n${preview}\n@media print{:host{position:static!important;overflow:visible!important;height:auto!important}}`;
     const container = document.createElement('div'); container.id = 'root';
     shadow.append(style);
     if (warning) {

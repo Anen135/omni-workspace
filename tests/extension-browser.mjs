@@ -34,6 +34,7 @@ try {
   await context.route('https://fonts.googleapis.com/**', route => route.abort());
   const paths = [];
   let signedIn = false;
+  let retainLogout = false;
   let teacherId = 1;
   let rejectSwitch = false;
   let rejectAttendance = false;
@@ -42,19 +43,24 @@ try {
   let lessonDate = '2026-09-30';
   let rejectMark = false;
   const lessonStudents = [{ id_stud: 101, fio_stud: 'Тестовый ученик А', was: null, id_vizit: null, theme: '', primary_teach: 0 }, { id_stud: 102, fio_stud: 'Тестовый ученик Б', was: 2, id_vizit: 9, theme: '', primary_teach: 0 }];
+  let homeworkQueue = [201, 202, 203].map((id, index) => ({ id, id_domzad_teach: id + 1000, stud_stud: index < 2 ? 101 : 102, fio_stud: index < 2 ? 'Тестовый ученик А' : 'Тестовый ученик Б', name_tgroups: 'Тест', name_spec: 'Веб', theme: `ДЗ ${id}`, stud_date: '2026-10-10 10:00:00', ospr: 0, mark: null, answer_text: 'Вымышленный ответ', comment: 'Не менять', filename: 'fixture.pdf', download_url_stud: 'https://fs.top-academy.ru/api/v1/files/pdf-fixture' }));
+  const homeworkWrites = [];
+  let rejectHomework = false;
   const empty = {};
   // All Omni responses are fictional: no real login, cookies or academic data.
   await context.route('https://omni.top-academy.ru/**', async route => {
     const request = route.request();
     const path = new URL(request.url()).pathname;
     if (request.isNavigationRequest() && path === '/auth/logout') {
-      signedIn = false;
       paths.push(path);
-      return route.fulfill({ status: 302, headers: { location: 'https://omni.top-academy.ru/login/index' } });
+      if (retainLogout) return route.fulfill({ contentType: 'text/html', body: '<!doctype html><script>location.replace("/")</script>' });
+      signedIn = false;
+      return route.fulfill({ contentType: 'text/html', body: '<!doctype html><script>location.replace("/login/index")</script>' });
     }
     if (request.isNavigationRequest()) return route.fulfill({ contentType: 'text/html', body: `<!doctype html><meta name="csrf-token" content="fixture-csrf"><title>Fixture Omni</title>${signedIn ? '' : '<form><input type="password"></form><div data-login-challenge="fixture">Complete verification</div>'}<script>globalThis.angular = { element: () => ({ injector: () => ({ get: () => ({ clearLocalStorage: () => sessionStorage.setItem('switch-cleaned', 'yes') }) }) }) };</script>` });
     if (path === '/favicon.ico') return route.fulfill({ status: 404, body: '' });
     if (request.method() !== 'POST') return route.fulfill({ status: 404, body: '' });
+    if (!signedIn) return route.fulfill({ status: 401, body: '' });
     paths.push(path);
     assert.equal(request.method(), 'POST');
     assert.equal(request.headers()['x-csrf-token'], 'fixture-csrf');
@@ -108,8 +114,16 @@ try {
       }
       data = rejectAttendance ? { error: 'Отметка запрещена сервером' } : { new_id_vizit: { 101: { id_vizit: 8 } } };
     }
-    if (path === '/homework/get-new-homeworks') data = [{ filename: 'fixture.pdf', download_url_stud: 'https://fs.top-academy.ru/api/v1/files/pdf-fixture' }];
-    assert.ok(signedIn);
+    if (path === '/homework/get-new-homeworks') data = { homework: homeworkQueue, lab_work: [], requests: [] };
+    if (path === '/homework/save-homework') {
+      const { HomeworkForm: form } = request.postDataJSON();
+      assert.equal(form.comment, 'Не менять');
+      assert.equal(form.answer_text, 'Вымышленный ответ');
+      assert.deepEqual(form.marks, { 0: { id: form.id_domzad_teach, stud: form.stud_stud, mark: form.mark, ospr: 0 } });
+      homeworkWrites.push({ id: form.id, student: form.stud_stud, mark: form.mark });
+      if (!rejectHomework) homeworkQueue = homeworkQueue.filter(item => item.id !== form.id);
+      data = rejectHomework ? { success: false, message: 'ДЗ отклонено сервером' } : { success: 'Сохранено' };
+    }
     return route.fulfill({ json: data });
   });
   for (const page of context.pages()) await page.close();
@@ -157,7 +171,7 @@ try {
   await official.evaluate(() => { document.querySelector('input[type=password]').closest('form')?.remove(); document.querySelector('[data-login-challenge="fixture"]')?.remove(); sessionStorage.setItem('IdLocalHash', 'fixture-hash'); });
   signedIn = true;
   await official.reload();
-  await official.locator('#omni-workspace-root #root').waitFor().catch(async error => { console.error('Injected UI did not mount:', await official.locator('body').innerText(), paths, errors); throw error; });
+  await official.locator('#omni-workspace-root #root').waitFor();
   assert.equal(await context.pages().length, 1, 'the extension should mount the interface in the current Omni tab');
   assert.equal(await official.locator('#omni-workspace-root iframe').count(), 0);
   const appearance = await official.locator('.live-workspace').evaluate(node => ({
@@ -166,7 +180,7 @@ try {
     sidebar: getComputedStyle(node.querySelector('.sidebar')).backgroundColor,
   }));
   assert.match(appearance.font, /sans-serif/);
-  assert.equal(appearance.purple, '#6d55d8');
+  assert.equal(appearance.purple, '#6c4df6');
   assert.equal(appearance.sidebar, 'rgb(255, 255, 255)');
   await ui.getByText('Подключено', { exact: true }).waitFor();
   await ui.getByRole('heading', { name: 'Мой урок' }).waitFor();
@@ -288,8 +302,35 @@ try {
   await ui.getByRole('button', { name: 'Загрузить урок', exact: true }).click();
   await ui.waitForFunction(() => !document.querySelector('#omni-workspace-root')?.shadowRoot?.querySelector('.attendance-select')?.disabled);
   await ui.getByRole('button', { name: 'Домашние задания', exact: true }).click();
+  assert.equal(await ui.locator('.homework-table tbody tr').count(), 3);
+  assert.equal(await ui.locator('.live-details').count(), 0);
+  await ui.getByRole('button', { name: 'Открыть работу', exact: true }).first().click();
   await ui.locator('.remote-attachment').getByRole('button', { name: 'Превью', exact: true }).click();
   await ui.locator('.remote-attachment canvas[data-rendered="true"]').waitFor();
+  await ui.getByLabel('Студент домашних работ').selectOption('id:101');
+  assert.equal(await ui.locator('.homework-table tbody tr').count(), 2);
+  await ui.getByRole('button', { name: 'Выбрать все найденные (2)', exact: true }).click();
+  ui.once('dialog', dialog => { assert.match(dialog.message(), /12.*2/); return dialog.accept(); });
+  await ui.getByRole('button', { name: 'Поставить оценку (2)', exact: true }).click();
+  await ui.getByRole('status').filter({ hasText: 'Оценка 12 сохранена: 2 из 2' }).waitFor();
+  assert.deepEqual(homeworkWrites, [{ id: 201, student: 101, mark: 12 }, { id: 202, student: 101, mark: 12 }]);
+  assert.deepEqual(homeworkQueue.map(item => item.stud_stud), [102]);
+  assert.deepEqual(await ui.locator('.homework-mark').allTextContents(), ['12', '12']);
+  await ui.getByLabel('Студент домашних работ').selectOption('id:102');
+  rejectHomework = true;
+  await ui.locator('.homework-grade-editor input').fill('11');
+  await ui.locator('.homework-grade-editor input').press('Enter');
+  await ui.getByRole('alert').filter({ hasText: 'ДЗ отклонено сервером' }).waitFor();
+  assert.equal(homeworkQueue[0].mark, null);
+  assert.equal(homeworkWrites.length, 3);
+  rejectHomework = false;
+  await ui.getByRole('button', { name: 'Обновить работы', exact: true }).click();
+  await ui.locator('.homework-grade-editor input').waitFor();
+  await ui.locator('.homework-grade-editor input').fill('10');
+  await ui.locator('.homework-grade-editor input').press('Enter');
+  await ui.getByRole('status').filter({ hasText: 'Оценка 10 сохранена: 1 из 1' }).waitFor();
+  assert.deepEqual(homeworkWrites.at(-1), { id: 203, student: 102, mark: 10 });
+
   const external = await extensionMessage({ action: 'status', input: {} });
   assert.equal(external.data.connected, true);
   const forbidden = await extensionMessage({ action: 'eval', input: { code: 'alert(1)' } });
@@ -344,18 +385,32 @@ try {
   await ui.getByRole('button', { name: 'Сменить аккаунт', exact: true }).click();
   assert.equal(paths.filter(path => path === '/auth/logout').length, 0);
   assert.equal(await actAs.inputValue(), '2');
+  retainLogout = true;
+  ui.once('dialog', dialog => dialog.accept());
+  await ui.getByRole('button', { name: 'Сменить аккаунт', exact: true }).click();
+  const logoutWarning = ui.getByRole('alert').filter({ hasText: 'Omni не подтвердил выход' });
+  await logoutWarning.waitFor();
+  assert.equal(signedIn, true);
+  await ui.reload();
+  await ui.locator('#omni-workspace-root #root').waitFor();
+  await ui.getByRole('alert').filter({ hasText: 'Omni не подтвердил выход' }).waitFor();
+  await ui.getByRole('button', { name: 'Закрыть', exact: true }).click();
+  assert.equal(await ui.getByRole('alert').filter({ hasText: 'Omni не подтвердил выход' }).count(), 0);
+  retainLogout = false;
   ui.once('dialog', dialog => dialog.accept());
   await ui.getByRole('button', { name: 'Сменить аккаунт', exact: true }).click();
   await official.waitForURL('https://omni.top-academy.ru/login/index');
-  await secondUi.getByRole('heading', { name: 'Завершите вход в этой вкладке' }).waitFor();
-  assert.equal(await secondUi.getByText('Подключено', { exact: true }).count(), 0);
+  await secondUi.waitForURL('https://omni.top-academy.ru/login/index');
+  await secondUi.locator('input[type=password]').waitFor();
   await official.locator('#omni-workspace-root').waitFor({ state: 'detached' });
   await official.locator('input[type=password]').waitFor();
   assert.equal(await official.locator('[data-login-challenge="fixture"]').count(), 1);
-  assert.equal(paths.filter(path => path === '/auth/logout').length, 1);
+  assert.equal(paths.filter(path => path === '/auth/logout').length, 2);
   teacherId = 3; signedIn = true;
   await official.goto('https://omni.top-academy.ru/');
+  await secondUi.goto('https://omni.top-academy.ru/');
   await ui.getByText('Подключено', { exact: true }).waitFor();
+  assert.equal(await ui.getByRole('alert').filter({ hasText: 'Omni не подтвердил выход' }).count(), 0);
   assert.equal(await actAs.inputValue(), '3');
   await secondUi.getByText('Подключено', { exact: true }).waitFor();
   assert.equal(await secondActAs.inputValue(), '3');
@@ -364,7 +419,7 @@ try {
   assert.equal(status.data.connected, true);
   assert.deepEqual(errors, []);
   assert.equal(requests.some(url => url.startsWith('chrome-extension://') || /localhost|127\.0\.0\.1/.test(url)), false);
-  console.log('PASS: MV3 local attendance drafts (edit/cancel/reload, zero writes), in-app topic catalogue/save/material options, rejected topic keeps draft, successful topic triggers attendance with new visits; three states, all/cancel/search, readback mismatch/reload, snapshot/PDF, teacher switching, two-tab session invalidation, account change and sender restrictions. All data fictional.');
+  console.log('PASS: same-tab UI mount, native login/challenge preservation, Shadow DOM styling/calendar, attendance drafts, topic save, marks, materials/PDF, teacher/account switching, logout-warning recovery and second-tab invalidation. All data fictional.');
 } finally {
   await context?.close();
   // Only the unique temporary test profile created above is removed.
