@@ -5,6 +5,17 @@ import { homeworkItems } from '../src/homework.ts';
 // POST /homework/save-homework with { HomeworkForm: freshSubmission }, including
 // marks: { key: { id: id_domzad, mark, ospr, stud: id_stud } }.
 // Preserve server-owned answer, comment and attachment fields; never accept them from the UI.
+//
+// Batch semantics (user-facing description: extension/README.md, «Оценки за домашние работы»):
+// - Not atomic. Omni has no transaction, so submissions are written one at a time, in order.
+// - Preflight: the whole selection is checked against a fresh list before the first write; if any
+//   submission is already graded or changed, nothing is written (HOMEWORK_CHANGED).
+// - Cost: 2 requests up front, then 6 per submission (3 profile reads, 2 list reads, 1 write), run
+//   sequentially without pauses: about 600 requests for the maximum of 100 submissions.
+// - Stops at the first failure and never retries a write. The result lists confirmedKeys; the state
+//   of the submission being written when the error happened is unknown (the write may have gone through).
+// - ACCOUNT_CHANGED / AUTH_REQUIRED are thrown only if nothing was confirmed yet; otherwise they come
+//   back in `error` together with confirmedKeys.
 export async function saveHomeworkMarks(input, { request, identity }) {
   validateInput('set-homework-marks', input);
   const checkAccount = async () => {

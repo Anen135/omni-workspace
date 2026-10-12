@@ -50,6 +50,15 @@ export function TeacherDossier({ accountId, accountName, disabled, onConnectionE
   </section>;
 }
 
+/*
+ * Omni does not document the dossier responses, so DossierValue renders any JSON generically, recursively:
+ *  - object  -> «field: value» list (underscores in names become spaces); nested objects become sub-sections;
+ *  - array of objects -> a table whose columns are the union of all keys; other arrays -> a one-column list;
+ *  - empty values show «—», booleans «Да»/«Нет». Field labels are Omni's own keys, not translated names.
+ * Nesting is capped at 12 levels (below that a notice replaces the content). The size of a response is not
+ * limited or paginated, so a very large response is rendered in full. User-facing notes: extension/README.md,
+ * «Досье преподавателя».
+ */
 function hasData(value: unknown): boolean {
   if (Array.isArray(value)) return value.some(hasData);
   if (value && typeof value === 'object') return Object.values(value).some(hasData);
