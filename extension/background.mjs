@@ -2,6 +2,9 @@ import { officialOrigin, officialUrl, trustedSender, validateMessage } from './p
 import { previewFile } from './files.mjs';
 import { switchTeacherInPage } from './switch-teacher.mjs';
 const uiUrl = chrome.runtime.getURL('index.html');
+// Set by extension/build.mjs and stamped on agent.js too. An agent left in a tab's isolated world by
+// an earlier build is never trusted: a mismatch makes the next command inject the bundled one again.
+const agentBuild = typeof __OMNI_BUILD_ID__ === 'undefined' ? 'dev' : __OMNI_BUILD_ID__;
 let busy = false;
 const previews = new Map();
 let activePreviews = 0;
@@ -58,11 +61,11 @@ async function dispatch({ action, input = {} }, sender) {
   const tab = await chrome.tabs.get(sender.tab.id);
   if (!officialUrl(tab.url)) throw Object.assign(new Error('Откройте Omni.'), { code: 'AUTH_REQUIRED' });
   if (action === 'file-preview') return loadPreview(input.url);
-  const target = { tabId: tab.id, documentIds: [sender.documentId] };
-  // Pin every command, including logout, to the document which sent it.
-  const injections = await chrome.scripting.executeScript({ target, world: 'ISOLATED', files: ['agent.js'] });
-  const documentId = injections[0]?.documentId;
-  if (!documentId) throw new Error('Страница Omni изменилась. Повторите запрос.');
+  // Pin every command, including logout, to the document which sent it. The agent bundle is not
+  // injected here: logout, teacher switching and previews do not use it, and the generic path below
+  // injects it only when this document does not have the current build yet.
+  const documentId = sender.documentId;
+  if (typeof documentId !== 'string' || !documentId) throw new Error('Страница Omni изменилась. Повторите запрос.');
   if (action === 'switch-account') {
     await chrome.storage.session.remove(logoutKey);
     await invalidateSession();
@@ -119,10 +122,13 @@ async function dispatch({ action, input = {} }, sender) {
     if (!officialUrl(current.url)) throw Object.assign(new Error('Откройте официальный вход Omni.'), { code: 'AUTH_REQUIRED' });
     return invoke({ tabId: tab.id, frameIds: [0] }, true);
   }
-  const results = await chrome.scripting.executeScript({
-    target: { tabId: tab.id, documentIds: [documentId] }, world: 'ISOLATED',
-    func: async (action, inputJson) => {
+  const pinned = { tabId: tab.id, documentIds: [documentId] };
+  const runAgent = () => chrome.scripting.executeScript({
+    target: pinned, world: 'ISOLATED',
+    func: async (action, inputJson, build) => {
       if (location.origin !== 'https://omni.top-academy.ru') return { error: { code: 'AUTH_REQUIRED', message: 'Откройте Omni.' } };
+      // Nothing has been executed yet when the agent is missing or stale, so the caller may safely inject and retry once.
+      if (typeof globalThis.OmniDesktopAgent?.dispatch !== 'function' || globalThis.OmniDesktopAgent.build !== build) return { missingAgent: true };
       // executeScript can omit null-valued object fields; preserve explicit
       // unknown attendance/visit values through a JSON string envelope.
       try {
@@ -142,8 +148,14 @@ async function dispatch({ action, input = {} }, sender) {
         return { data };
       }
       catch (error) { return { error: { code: error.code || 'EXTENSION_ERROR', message: error.code ? error.message : 'Не удалось выполнить запрос Omni.' } }; }
-    }, args: [action, JSON.stringify(input)],
+    }, args: [action, JSON.stringify(input), agentBuild],
   });
+  let results = await runAgent();
+  if (results[0]?.result?.missingAgent) {
+    await chrome.scripting.executeScript({ target: pinned, world: 'ISOLATED', files: ['agent.js'] });
+    results = await runAgent();
+  }
+  if (results[0]?.result?.missingAgent) throw new Error('Не удалось подготовить обработчик Omni. Обновите страницу.');
   const result = results[0]?.result;
   if (result?.error) throw Object.assign(new Error(result.error.message), { code: result.error.code });
   if (!result || !Object.hasOwn(result, 'data')) throw new Error('Omni не вернул ответ.');
