@@ -1,17 +1,29 @@
 name: Build beta browser extension
+
+# Same triggers as ci.yml. This workflow adds what ci.yml does not: the real extension is loaded into
+# Chromium on Windows (tests/extension-browser.mjs) and the installable package is uploaded as an artifact.
 on:
   push:
-    branches: [main, develop, experiment/browser-extension]
+    branches: [main, develop]
   pull_request:
   workflow_dispatch:
+
 permissions:
   contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: windows-latest
+    timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '24'
           cache: npm
@@ -20,7 +32,7 @@ jobs:
       - run: npm run build:extension
       - run: npx playwright install chromium
       - run: node tests/extension-browser.mjs
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: omni-workspace-extension-beta
           path: dist-extension/

@@ -1,0 +1,19 @@
+# Actions are pinned to commit SHAs (see the version in the trailing comment), so they only move when
+# Dependabot proposes it. npm updates are grouped to keep the pull-request count low.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ['*']
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      npm-minor-and-patch:
+        update-types: [minor, patch]
