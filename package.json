@@ -2,7 +2,7 @@
   "name": "omni-workspace",
   "version": "0.3.0-beta.4",
   "private": true,
-  "description": "Independent local teacher workspace for Omni: weekly schedule, lessons, students and homework.",
+  "description": "Unofficial browser extension for Omni / Academy TOP teachers: schedule, lessons, students, homework and teaching materials.",
   "license": "GPL-3.0-only",
   "repository": {
     "type": "git",
@@ -31,7 +31,6 @@
   "dependencies": {
     "lucide-react": "^0.468.0",
     "pdfjs-dist": "^6.3.289",
-    "playwright": "^1.58.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },
@@ -39,6 +38,7 @@
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "esbuild": "^0.28.2",
+    "playwright": "^1.58.0",
     "typescript": "^5.7.0",
     "vite": "^6.0.0"
   }
