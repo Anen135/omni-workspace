@@ -22,6 +22,7 @@ try {
   let failPackage = false;
   let wrongAccount = false;
   let hasLesson = false;
+  let snapshotGate;
   const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=', 'base64');
   const stream = 'BT /F1 24 Tf 40 700 Td (PDF preview test) Tj ET';
   const objects = ['<< /Type /Catalog /Pages 2 0 R >>', '<< /Type /Pages /Kids [3 0 R] /Count 1 >>', '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>', '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>', `<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`];
@@ -44,6 +45,7 @@ try {
     const action = route.request().url().split('/').at(-1);
     const input = route.request().postDataJSON();
     requests.push({ action, input });
+    if (action === 'snapshot' && snapshotGate) await snapshotGate;
     if (action === 'file-preview') {
       assert.equal(input.url, 'https://fs.top-academy.ru/api/v1/files/test-fixture');
       assert.equal(route.request().headers()['x-omni-client'], 'workspace');
@@ -72,7 +74,17 @@ try {
   });
   await page.goto('http://127.0.0.1:5184/', { waitUntil: 'domcontentloaded' });
   await page.getByRole('heading', { name: 'Мой урок' }).waitFor();
+  let releaseSnapshot;
+  snapshotGate = new Promise(resolve => { releaseSnapshot = resolve; });
+  const refreshRequest = page.waitForRequest(request => request.url().endsWith('/snapshot'));
+  await page.getByRole('button', { name: 'Обновить', exact: true }).click();
+  await refreshRequest;
   await page.getByRole('button', { name: 'Материалы', exact: true }).click();
+  await page.locator('.teaching-materials').waitFor();
+  await page.waitForTimeout(300);
+  assert.equal(requests.filter(request => request.action === 'materials-catalog').length, 0);
+  releaseSnapshot();
+  snapshotGate = undefined;
   const form = page.getByLabel('Форма обучения', { exact: true });
   const course = page.getByLabel('Методпакет', { exact: true });
   const refresh = page.getByRole('button', { name: 'Обновить методички' });
@@ -125,7 +137,15 @@ try {
   await form.selectOption('4');
   // Homework previews use the same controls and do not require a lesson.
   await page.getByRole('button', { name: 'Домашние задания', exact: true }).click();
+  await page.getByRole('button', { name: 'Открыть работу', exact: true }).first().click();
   const imageToggle = page.locator('.file-preview').first().getByRole('button', { name: 'Превью', exact: true });
+  for (const event of ['scroll', 'resize']) {
+    await imageToggle.dispatchEvent('pointerover', { pointerType: 'mouse', clientX: 50, clientY: 50 });
+    await page.evaluate(type => window.dispatchEvent(new Event(type)), event);
+    await page.waitForTimeout(350);
+    assert.equal(await page.getByRole('tooltip').count(), 0, `${event} cancels pending preview`);
+    await imageToggle.dispatchEvent('pointerout', { pointerType: 'mouse' });
+  }
   await imageToggle.hover();
   await page.getByRole('tooltip').waitFor();
   await page.waitForFunction(() => document.querySelector('.file-preview-hover img')?.naturalWidth > 0);

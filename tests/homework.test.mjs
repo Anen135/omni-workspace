@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { homeworkItems } from '../src/homework.ts';
+import { homeworkItems } from '../src/features/homework/homework.ts';
 import { saveHomeworkMarks } from '../extension/homework.mjs';
 import { BridgeError, validateInput } from '../server/bridge-protocol.mjs';
 

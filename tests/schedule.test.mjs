@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { scheduleDays } from '../src/schedule.ts';
+import { scheduleDays } from '../src/features/schedule/schedule.ts';
 
 const lesson = { name_spec: 'Предмет', groups: 'Группа A', num_rooms: 'Аудитория 1', l_start: '16:30', l_end: '17:50', scheduleType: 'planned' };
 const dates = { 1: '2026-09-14', 2: '2026-09-15', 3: '2026-09-16', 4: '2026-09-17', 5: '2026-09-18', 6: '2026-09-19', 7: '2026-09-20' };

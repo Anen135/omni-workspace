@@ -1,5 +1,5 @@
 import { BridgeError, validateInput } from '../server/bridge-protocol.mjs';
-import { attendanceLessonInfo } from '../src/attendance.ts';
+import { attendanceLessonInfo } from '../src/features/lesson/attendance.ts';
 
 // Verified against Omni presentsCtrl.js getMethodpackageThemes / saveTheme.
 export async function lessonTheme(action, input, { request, identity }) {

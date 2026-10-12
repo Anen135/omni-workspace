@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { getDocument, GlobalWorkerOptions, type PDFDocumentProxy } from 'pdfjs-dist';
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
-import { isExtension } from './extension-client';
+import { isExtension } from '../../services/extension-client';
 
 GlobalWorkerOptions.workerSrc = workerUrl;
 

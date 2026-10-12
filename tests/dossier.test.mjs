@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test, mock } from 'node:test';
 import vm from 'node:vm';
 import { chromium } from 'playwright';
-import { dispatch } from '../desktop/omni-agent.mjs';
+import { dispatch } from '../shared/omni-agent.mjs';
 import { createBridge, validateInput } from '../server/omni-bridge.mjs';
 import { validateMessage } from '../extension/policy.mjs';
 

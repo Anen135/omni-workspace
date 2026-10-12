@@ -16,14 +16,14 @@ try {
   await page.setContent('<div id="root" class="live-workspace"></div>');
   await page.evaluate(async () => {
     const style = document.createElement('style');
-    style.textContent = (await import('/src/styles.css?inline')).default
-      + (await import('/src/workspace.css?inline')).default
-      + (await import('/src/homework.css?inline')).default;
+    style.textContent = (await import('/src/styles/styles.css?inline')).default
+      + (await import('/src/app/workspace.css?inline')).default
+      + (await import('/src/features/homework/homework.css?inline')).default;
     document.head.append(style);
     const { default: React } = await import('/node_modules/.vite/deps/react.js');
     const { default: ReactDOM } = await import('/node_modules/.vite/deps/react-dom_client.js');
     const { createRoot } = ReactDOM;
-    const { HomeworkTable } = await import('/src/HomeworkTable.tsx');
+    const { HomeworkTable } = await import('/src/features/homework/HomeworkTable.tsx');
     const make = (key, studentId, studentName, index) => ({
       key, studentId, studentName, groupName: 'Тестовая группа', subject: 'Алгебра',
       theme: `Тема ${index}`, submittedAt: `2026-10-${String(index % 28 + 1).padStart(2, '0')}`,

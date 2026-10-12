@@ -1,5 +1,5 @@
 import { BridgeError, validateInput } from '../server/bridge-protocol.mjs';
-import { homeworkItems } from '../src/homework.ts';
+import { homeworkItems } from '../src/features/homework/homework.ts';
 
 // Official homeWorkCtrl.saveStudHw/updateMarks and homeworks-factory.js:
 // POST /homework/save-homework with { HomeworkForm: freshSubmission }, including

@@ -21,7 +21,7 @@ try {
   await page.evaluate(async url => {
     const { default: React } = await import('/node_modules/.vite/deps/react.js');
     const { default: ReactDOM } = await import('/node_modules/.vite/deps/react-dom_client.js');
-    const { FilePreview } = await import('/src/FilePreview.tsx');
+    const { FilePreview } = await import('/src/components/files/FilePreview.tsx');
     const host = document.createElement('div');
     host.id = 'live-preview-test';
     host.style = 'position:fixed;inset:0;background:white;z-index:99999;overflow:auto;padding:20px';

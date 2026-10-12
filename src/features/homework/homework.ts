@@ -1,4 +1,4 @@
-import type { RemoteRecord } from './omni-client';
+import type { RemoteRecord } from '../../services/omni-client';
 
 export type HomeworkReviewItem = {
   key: string;

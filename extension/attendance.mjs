@@ -1,5 +1,5 @@
 import { BridgeError, validateInput } from '../server/bridge-protocol.mjs';
-import { attendanceStudents, attendanceLessonInfo, attendanceUnavailable, attendanceStatus, attendanceVisit, attendanceHasTheme } from '../src/attendance.ts';
+import { attendanceStudents, attendanceLessonInfo, attendanceUnavailable, attendanceStatus, attendanceVisit, attendanceHasTheme } from '../src/features/lesson/attendance.ts';
 
 // Fixed official endpoint/payload, verified against presentsCtrl / presents_factory.
 // Never accept visit metadata or an arbitrary endpoint from the UI.

@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { saveAttendance } from '../extension/attendance.mjs';
 import { validateMessage } from '../extension/policy.mjs';
-import { attendanceStatus, attendanceUnavailable } from '../src/attendance.ts';
+import { attendanceStatus, attendanceUnavailable } from '../src/features/lesson/attendance.ts';
 
 const input = () => ({ accountId: '1', date: '2026-09-30', group: '10', lenta: '0', schedule: '50', changes: [{ stud: '101', was: 1, previousWas: 0, visit: null }] });
 const fixture = (options = {}) => {

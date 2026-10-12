@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { layoutLessons, timeMinutes } from '../src/schedule-layout.ts';
+import { layoutLessons, timeMinutes } from '../src/features/schedule/schedule-layout.ts';
 
 test('time placement rejects missing/invalid times instead of inventing slot hours', () => {
   for (const value of ['', 'Пара 1', '25:00', '12:80', '12']) assert.equal(timeMinutes(value), null);

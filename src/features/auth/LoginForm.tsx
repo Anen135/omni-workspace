@@ -1,8 +1,8 @@
 import { useRef, useState, type FormEvent } from 'react';
 import { LoaderCircle, LogIn } from 'lucide-react';
 import './login.css';
-import { isDesktop } from './desktop-client';
-import { isExtension } from './extension-client';
+import { isDesktop } from '../../services/desktop-client';
+import { isExtension } from '../../services/extension-client';
 
 export function LoginForm({ busy, onLogin }: { busy: boolean; onLogin: (username: string, password: string) => Promise<void> }) {
   const [username, setUsername] = useState('');

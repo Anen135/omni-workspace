@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
-import { label, rows, type RemoteRecord, type Section } from './omni-client';
+import { label, rows, type RemoteRecord, type Section } from '../../services/omni-client';
 import type { HomeworkReviewItem } from './homework';
-import { materialLink } from './teaching-materials';
+import { materialLink } from '../materials/teaching-materials';
 import './homework.css';
 
 type Grading = {

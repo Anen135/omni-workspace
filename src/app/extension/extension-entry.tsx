@@ -1,18 +1,18 @@
 import React from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { Workspace } from './main';
-import { extensionRequest, onOfficialLoginRequired } from './extension-client';
+import { Workspace } from '../Workspace';
+import { extensionRequest, onOfficialLoginRequired } from '../../services/extension-client';
 import { createPoller, type PollOutcome } from './poller';
-import styles from './styles.css?inline';
-import pages from './pages.css?inline';
-import preview from './file-preview.css?inline';
-import live from './live.css?inline';
-import workspace from './workspace.css?inline';
-import login from './login.css?inline';
-import schedule from './schedule.css?inline';
-import materials from './teaching-materials.css?inline';
-import homework from './homework.css?inline';
-import dossier from './teacher-dossier.css?inline';
+import styles from '../../styles/styles.css?inline';
+import pages from '../../styles/pages.css?inline';
+import preview from '../../components/files/file-preview.css?inline';
+import live from '../live.css?inline';
+import workspace from '../workspace.css?inline';
+import login from '../../features/auth/login.css?inline';
+import schedule from '../../features/schedule/schedule.css?inline';
+import materials from '../../features/materials/teaching-materials.css?inline';
+import homework from '../../features/homework/homework.css?inline';
+import dossier from '../../features/dossier/teacher-dossier.css?inline';
 // PDF.js uses this handler directly when Workers are unavailable in a content
 // script. Keeping it in the isolated world avoids page CSP and extension URL imports.
 // @ts-expect-error PDF.js does not publish worker module declarations.

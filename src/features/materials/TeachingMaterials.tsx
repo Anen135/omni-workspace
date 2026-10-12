@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
-import { BookOpen, ExternalLink, FileText, LoaderCircle, RefreshCw } from 'lucide-react';
-import { ConnectionError, label, omniRequest, record, rows, type Section } from './omni-client';
-import { materialLink, materialTopics } from './teaching-materials';
+import { BookOpen, LoaderCircle, RefreshCw } from 'lucide-react';
+import { ConnectionError, label, omniRequest, rows, type Section } from '../../services/omni-client';
+import { materialTopics } from './teaching-materials';
 import './teaching-materials.css';
-import { FilePreview } from './FilePreview';
+import { MaterialCard } from './MaterialCard';
 
 type Catalog = { account: { id: string }; forms: Section; directions: Section; packages: Section; types: Section };
 type MethodPackage = { account: { id: string }; materials: Section; themes: Section };
@@ -23,6 +23,7 @@ export function TeachingMaterials({ accountId, disabled, onConnectionError }: {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const requestId = useRef(0);
+  const initialRequested = useRef(false);
 
   async function run<Result extends { account: { id: string } }>(action: string, input: object, accept: (result: Result) => void) {
     const id = ++requestId.current;
@@ -47,10 +48,13 @@ export function TeachingMaterials({ accountId, disabled, onConnectionError }: {
     setSpec(nextSpec); setPack(null); setSearch(''); setType('');
     if (nextSpec) return run<MethodPackage>('method-package', { spec: nextSpec }, setPack);
   }
+  useEffect(() => () => { requestId.current++; initialRequested.current = false; }, []);
   useEffect(() => {
-    void loadCatalog({});
-    return () => { requestId.current++; };
-  }, []);
+    if (!disabled && !initialRequested.current) {
+      initialRequested.current = true;
+      void loadCatalog({});
+    }
+  }, [disabled]);
 
   const locked = busy || disabled;
   const packages = rows(catalog?.packages.data);
@@ -77,35 +81,9 @@ export function TeachingMaterials({ accountId, disabled, onConnectionError }: {
       <div className="method-filters method-search"><label>Поиск по темам и материалам<input type="search" value={search} onChange={event => setSearch(event.target.value)} placeholder="Название урока или методички"/></label><label>Тип материала<select aria-label="Тип материала" value={type} onChange={event => setType(event.target.value)}><option value="">Все материалы</option>{types.map(item => <option key={label(item.id)} value={label(item.id)}>{label(item.name)}</option>)}</select></label></div>
       <div className="method-topics">{visible.map((topic, index) => <details className="method-topic" key={topic.week} open={index === 0 || !!query}>
         <summary><span className="method-week">{topic.week}</span><span>{topic.title}</span><small>{topic.materials.length} мат.</small></summary>
-        <div className="method-cards">{topic.materials.map(item => <article className="method-card" key={item.key}>
-          <span className="method-type">{label(types.find(type => label(type.id) === item.type)?.name) || 'Учебный материал'}</span><h3><FileText size={17}/>{item.title}</h3>{item.description && <p>{item.description}</p>}
-          <div className="method-links">{item.file && <FilePreview url={item.file}/ >}{item.url && item.url !== item.file && <a className="button secondary" href={item.url} target="_blank" rel="noopener noreferrer">Открыть материал<ExternalLink size={14}/></a>}</div>
-          {!!item.content && <details className="method-content"><summary>Читать содержимое</summary><MaterialContent value={item.content}/></details>}
-          {!item.file && !item.url && !item.content && <p className="muted">У этого материала нет доступного файла или ссылки.</p>}
-        </article>)}</div>
+        <div className="method-cards">{topic.materials.map(item => <MaterialCard key={item.key} material={item} typeName={label(types.find(type => label(type.id) === item.type)?.name)}/>)}</div>
       </details>)}</div>
       {!visible.length && <div className="empty"><h3>{topics.some(topic => topic.materials.length) ? 'По вашему запросу ничего не найдено' : 'В этом методпакете пока нет материалов'}</h3></div>}
     </>}
   </section>;
-}
-
-function plainText(value: unknown): string {
-  return new DOMParser().parseFromString(label(value), 'text/html').body.textContent || '';
-}
-function MaterialContent({ value }: { value: unknown }) {
-  let content = value;
-  if (typeof content === 'string') {
-    try { content = JSON.parse(content); } catch { return <p>{plainText(content)}</p>; }
-  }
-  if (!content || typeof content !== 'object' || !('blocks' in content) || !Array.isArray(content.blocks)) return <p>Содержимое этого формата доступно в оригинальном Omni.</p>;
-  return <div>{content.blocks.map((block, index) => {
-    const item = record(block);
-    const data = record(item.data);
-    if (item.type === 'header') return <h4 key={index}>{plainText(data.text)}</h4>;
-    if (item.type === 'paragraph' || item.type === 'quote') return <p key={index}>{plainText(data.text)}</p>;
-    if (item.type === 'code') return <pre key={index}>{label(data.code)}</pre>;
-    if (item.type === 'list' && Array.isArray(data.items)) return <ul key={index}>{data.items.map((item: unknown, i: number) => <li key={i}>{plainText(typeof item === 'object' && item && 'content' in item ? item.content : item)}</li>)}</ul>;
-    const url = materialLink(record(data.file).url || data.url || data.link || data.source);
-    return url ? <p key={index}><a href={url} target="_blank" rel="noopener noreferrer">{plainText(data.caption || data.title) || 'Открыть вложение'}</a></p> : <p key={index}>Этот блок доступен в оригинальном Omni.</p>;
-  })}</div>;
 }

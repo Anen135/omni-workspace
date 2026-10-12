@@ -1,5 +1,5 @@
 import { BridgeError, validateInput } from '../server/bridge-protocol.mjs';
-import { attendanceStudents } from '../src/attendance.ts';
+import { attendanceStudents } from '../src/features/lesson/attendance.ts';
 export const markValue = value => value === undefined || value === null || value === '' ? null : String(value);
 // Official presentsCtrl: setMarkSend({ marks: { key: { type, mark, vizit } } }).
 export async function saveLessonMark(input, { request, identity }) {

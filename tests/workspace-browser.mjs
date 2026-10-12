@@ -37,6 +37,18 @@ try {
   });
   await page.goto('http://127.0.0.1:5187/');
   await page.getByText('Подключено', { exact: true }).waitFor();
+  const sidebar = page.locator('.sidebar');
+  const mainLeft = await page.locator('main').evaluate(node => node.getBoundingClientRect().left);
+  assert.equal(await sidebar.evaluate(node => node.getBoundingClientRect().width), 72);
+  await sidebar.hover();
+  await page.waitForFunction(() => document.querySelector('.sidebar').getBoundingClientRect().width === 240);
+  assert.equal(await page.locator('main').evaluate(node => node.getBoundingClientRect().left), mainLeft);
+  await page.mouse.move(500, 200);
+  await page.waitForFunction(() => document.querySelector('.sidebar').getBoundingClientRect().width === 72);
+  await sidebar.getByRole('button', { name: 'Расписание', exact: true }).focus();
+  await page.waitForFunction(() => document.querySelector('.sidebar').getBoundingClientRect().width === 240);
+  await page.evaluate(() => document.activeElement.blur());
+  await page.waitForFunction(() => document.querySelector('.sidebar').getBoundingClientRect().width === 72);
   assert.equal(await page.locator('.lesson-banner').count(), 1);
   await page.getByRole('button', { name: 'Расписание', exact: true }).click();
   assert.equal(await page.locator('.lesson-banner').count(), 0);

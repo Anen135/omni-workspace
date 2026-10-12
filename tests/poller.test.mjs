@@ -1,6 +1,6 @@
 import { test, mock } from 'node:test';
 import assert from 'node:assert/strict';
-import { createPoller, nextPollDelay, POLL_BASE_MS, POLL_MAX_MS } from '../src/poller.ts';
+import { createPoller, nextPollDelay, POLL_BASE_MS, POLL_MAX_MS } from '../src/app/extension/poller.ts';
 
 const flush = () => new Promise(resolve => setImmediate(resolve));
 // Runs the poller with mocked timers; each queued outcome answers one check, then 'local' forever.

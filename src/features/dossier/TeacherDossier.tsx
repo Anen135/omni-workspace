@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { LoaderCircle, RefreshCw, UserRound } from 'lucide-react';
-import { ConnectionError, omniRequest, type Section } from './omni-client';
+import { ConnectionError, omniRequest, type Section } from '../../services/omni-client';
 import './teacher-dossier.css';
 
 type Dossier = { account: { id: string; name: string }; single: Section; graphics: Section; all: Section };

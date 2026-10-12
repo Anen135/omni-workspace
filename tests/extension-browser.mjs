@@ -42,6 +42,7 @@ try {
   let rejectTheme = false;
   let lessonDate = '2026-09-30';
   let rejectMark = false;
+  const lessonWrites = [];
   const lessonStudents = [{ id_stud: 101, fio_stud: 'Тестовый ученик А', was: null, id_vizit: null, theme: '', primary_teach: 0 }, { id_stud: 102, fio_stud: 'Тестовый ученик Б', was: 2, id_vizit: 9, theme: '', primary_teach: 0 }];
   let homeworkQueue = [201, 202, 203].map((id, index) => ({ id, id_domzad_teach: id + 1000, stud_stud: index < 2 ? 101 : 102, fio_stud: index < 2 ? 'Тестовый ученик А' : 'Тестовый ученик Б', name_tgroups: 'Тест', name_spec: 'Веб', theme: `ДЗ ${id}`, stud_date: '2026-10-10 10:00:00', ospr: 0, mark: null, answer_text: 'Вымышленный ответ', comment: 'Не менять', filename: 'fixture.pdf', download_url_stud: 'https://fs.top-academy.ru/api/v1/files/pdf-fixture' }));
   const homeworkWrites = [];
@@ -95,15 +96,17 @@ try {
       data = { cur_date: lessonDate, cur_group: 10, cur_lenta: slot, cur_schedule: slot === 4 ? 54 : 50, students: slot === 4 ? [] : lessonStudents, schedule: { 0: { name_spec: 'Первая пара', l_start: '09:00', l_end: '10:30' }, 4: { name_spec: 'Пара без учеников', l_start: '15:00', l_end: '16:30' } }, scheduleType: 'planned', can_set_theme: true, cur_spec: { id_spec: 3, source: 'fixture', id_base_spec: 4 } };
     }
     if (path === '/presents/set-mark') {
-      assert.ok(['2026-09-29', '2026-10-02'].includes(lessonDate));
+      lessonWrites.push('mark');
+      assert.match(lessonDate, /^2026-\d{2}-\d{2}$/);
       const input = request.postDataJSON();
       const change = input.marks[0];
-      assert.equal(change.vizit, 80);
+      assert.equal(change.vizit, lessonStudents[0].id_vizit);
       if (!rejectMark) lessonStudents[0][`mark${change.type}`] = change.mark;
       data = rejectMark ? { success: false, message: 'Период закрыт' } : { success: true };
     }
     if (path === '/presents/get-methodpackage-themes') data = [{ public_week_id: 7, package_id: 5, week: 1, theme: 'Тестовая тема', has_homework: true, has_labwork: true }];
     if (path === '/presents/set-theme') {
+      lessonWrites.push('theme');
       const input = request.postDataJSON();
       assert.equal(input.schedule, 50); assert.equal(input.theme, 'Тестовая тема');
       assert.equal(input.public_week_id, 7); assert.equal(input.issue_homework, true); assert.equal(input.issue_labwork, false);
@@ -112,6 +115,7 @@ try {
       data = rejectTheme ? { success: false, message: 'Тестовый отказ темы' } : { success: true };
     }
     if (path === '/presents/set-was') {
+      lessonWrites.push('attendance');
       const input = request.postDataJSON();
       assert.equal(input.schedule, 50);
       assert.equal(request.headers()['id-local-hash'], 'fixture-hash');
@@ -216,6 +220,7 @@ try {
   await ui.locator('nav button').nth(0).click();
   await calendar.waitFor({ state: 'detached' });
   const presence = ui.getByLabel('Присутствие: Тестовый ученик А', { exact: true });
+  const lessonSave = ui.getByRole('button', { name: 'Сохранить', exact: true });
   const dayPairs = ui.getByLabel('Пара выбранного дня', { exact: true });
   assert.equal(await dayPairs.locator('option').count(), 3);
   await dayPairs.selectOption('4');
@@ -244,27 +249,38 @@ try {
   await ui.getByRole('checkbox', { name: 'Выдать ДЗ из методпакета' }).check();
   rejectTheme = true;
   ui.once('dialog', dialog => dialog.accept());
-  await ui.getByRole('button', { name: 'Сохранить тему', exact: true }).click();
+  await ui.getByRole('button', { name: 'В черновик', exact: true }).click();
+  assert.deepEqual(lessonWrites, [], 'staging a theme and attendance must not write to Omni');
+  await lessonSave.click();
   await ui.getByRole('alert').filter({ hasText: 'Тестовый отказ темы' }).waitFor();
   assert.equal(paths.filter(path => path === '/presents/set-was').length, 0);
   assert.equal(await presence.inputValue(), '1');
-  assert.equal(await ui.getByRole('button', { name: 'Сохранить тему', exact: true }).isDisabled(), true);
+  assert.equal(await lessonSave.isDisabled(), true);
   rejectTheme = false;
-  await ui.getByRole('button', { name: 'Обновить список тем', exact: true }).click();
+  await ui.getByRole('button', { name: 'Загрузить урок', exact: true }).click();
+  await ui.waitForFunction(() => document.querySelector('#omni-workspace-root')?.shadowRoot?.querySelector('.attendance-select')?.value === '1');
+  await ui.getByRole('button', { name: 'Выбрать тему', exact: true }).click();
   await ui.getByLabel('Тема из методпакета', { exact: true }).selectOption('7');
   await ui.getByRole('checkbox', { name: 'Выдать ДЗ из методпакета' }).check();
   ui.once('dialog', dialog => dialog.accept());
-  await ui.getByRole('button', { name: 'Сохранить тему', exact: true }).click();
-  await ui.getByRole('status').filter({ hasText: 'Посещаемость сохранена' }).waitFor().catch(async error => {
-    console.error('Attendance fixture failure:', await ui.getByRole('alert').allTextContents(), paths.slice(-10));
-    throw error;
-  });
+  await ui.getByRole('button', { name: 'В черновик', exact: true }).click();
+  assert.deepEqual(lessonWrites, ['theme'], 'failed theme attempt is the only prior write; retry remains explicit');
+  await lessonSave.click();
+  await ui.getByRole('status').filter({ hasText: 'Изменения урока сохранены в Omni' }).waitFor();
+  assert.deepEqual(lessonWrites, ['theme', 'theme', 'attendance']);
   assert.equal(await presence.inputValue(), '1');
   assert.equal(lessonStudents[0].id_vizit, 80); // Theme-created visit, not old draft metadata.
   await presence.selectOption('2');
+  assert.deepEqual(lessonWrites, ['theme', 'theme', 'attendance'], 'changing attendance only updates the local draft');
+  assert.equal(await lessonSave.isEnabled(), true);
+  await lessonSave.click();
+  await ui.getByRole('status').filter({ hasText: 'Изменения урока сохранены в Omni' }).waitFor();
+  assert.deepEqual(lessonWrites, ['theme', 'theme', 'attendance', 'attendance']);
   await ui.waitForFunction(() => document.querySelector('#omni-workspace-root')?.shadowRoot?.querySelector('.attendance-select')?.value === '2' && !document.querySelector('#omni-workspace-root')?.shadowRoot?.querySelector('.attendance-select')?.disabled);
   await presence.selectOption('0');
-  await ui.waitForFunction(() => document.querySelector('#omni-workspace-root')?.shadowRoot?.querySelector('.attendance-select')?.value === '0' && !document.querySelector('#omni-workspace-root')?.shadowRoot?.querySelector('.attendance-select')?.disabled);
+  assert.deepEqual(lessonWrites, ['theme', 'theme', 'attendance', 'attendance']);
+  ui.once('dialog', dialog => dialog.accept());
+  await ui.getByRole('button', { name: 'Отменить черновик', exact: true }).click();
   const writesBeforeAll = paths.filter(path => path === '/presents/set-was').length;
   ui.once('dialog', dialog => dialog.dismiss());
   await ui.getByRole('button', { name: 'Все присутствуют', exact: true }).click();
@@ -272,26 +288,62 @@ try {
   await ui.getByLabel('Поиск ученика', { exact: true }).fill('ученик А');
   ui.once('dialog', dialog => { assert.match(dialog.message(), /включая скрытых поиском/); return dialog.accept(); });
   await ui.getByRole('button', { name: 'Все присутствуют', exact: true }).click();
+  assert.deepEqual(lessonWrites, ['theme', 'theme', 'attendance', 'attendance'], 'bulk changes must stay local before global Save');
+  await lessonSave.click();
+  await ui.getByRole('status').filter({ hasText: 'Изменения урока сохранены в Omni' }).waitFor();
   await ui.waitForFunction(() => document.querySelector('#omni-workspace-root')?.shadowRoot?.querySelector('.attendance-select')?.value === '1' && !document.querySelector('#omni-workspace-root')?.shadowRoot?.querySelector('.attendance-select')?.disabled);
+  assert.deepEqual(lessonWrites, ['theme', 'theme', 'attendance', 'attendance', 'attendance']);
   assert.deepEqual(lessonStudents.map(row => row.was), [1, 1]);
   rejectAttendance = true;
   await presence.selectOption('0');
+  const beforeRejectedAttendance = lessonWrites.length;
+  assert.equal(lessonWrites.length, beforeRejectedAttendance, 'staging a rejected attendance change makes no request');
+  await lessonSave.click();
   await ui.getByRole('alert').filter({ hasText: 'Отметка запрещена сервером' }).waitFor();
-  assert.equal(await presence.inputValue(), '1');
-  assert.equal(await presence.isDisabled(), true);
+  assert.equal(await presence.inputValue(), '0', 'failed save keeps the local draft visible');
+  assert.equal(lessonWrites.length, beforeRejectedAttendance + 1);
+  assert.equal(await lessonSave.isDisabled(), true);
   rejectAttendance = false;
   await ui.getByRole('button', { name: 'Загрузить урок', exact: true }).click();
-  await presence.waitFor();
-  await ui.waitForFunction(() => !document.querySelector('#omni-workspace-root')?.shadowRoot?.querySelector('.attendance-select')?.disabled);
-  assert.equal(await presence.inputValue(), '1');
+  await ui.waitForFunction(() => !document.querySelector('#omni-workspace-root')?.shadowRoot?.querySelector('.lesson-save-bar button.primary')?.disabled);
+  assert.equal(await presence.inputValue(), '0');
+  await lessonSave.click();
+  await ui.getByRole('status').filter({ hasText: 'Изменения урока сохранены в Omni' }).waitFor();
+  assert.equal(await presence.inputValue(), '0');
+  assert.equal(lessonWrites.length, beforeRejectedAttendance + 2);
   ignoreAttendance = true;
-  await presence.selectOption('0');
+  await presence.selectOption('1');
+  const beforeUnconfirmed = lessonWrites.length;
+  await lessonSave.click();
   await ui.getByRole('alert').filter({ hasText: 'Omni не подтвердил все отметки' }).waitFor();
   assert.equal(await presence.inputValue(), '1');
-  assert.equal(await presence.isDisabled(), true);
+  assert.equal(lessonWrites.length, beforeUnconfirmed + 1);
+  assert.equal(await lessonSave.isDisabled(), true);
   ignoreAttendance = false;
   await ui.getByRole('button', { name: 'Загрузить урок', exact: true }).click();
-  await ui.waitForFunction(() => !document.querySelector('#omni-workspace-root')?.shadowRoot?.querySelector('.attendance-select')?.disabled);
+  await ui.waitForFunction(() => !document.querySelector('#omni-workspace-root')?.shadowRoot?.querySelector('.lesson-save-bar button.primary')?.disabled);
+  assert.equal(lessonWrites.length, beforeUnconfirmed + 1, 'rereading an uncertain result does not automatically retry writes');
+  assert.equal(await presence.inputValue(), '1');
+  await lessonSave.click();
+  await ui.getByRole('status').filter({ hasText: 'Изменения урока сохранены в Omni' }).waitFor();
+  assert.equal(lessonWrites.length, beforeUnconfirmed + 2);
+  // An already-themed lesson may still lack this student's visit. Stage both
+  // changes together; attendance creates the visit that the pending mark uses.
+  lessonStudents[0].id_vizit = null;
+  await ui.getByRole('button', { name: 'Загрузить урок', exact: true }).click();
+  await ui.getByLabel('Присутствие: Тестовый ученик А', { exact: true }).waitFor();
+  const beforeVisitCreation = lessonWrites.length;
+  const firstGrade = 'Контрольная: Тестовый ученик А';
+  await ui.getByRole('button', { name: firstGrade, exact: true }).click();
+  await ui.getByRole('spinbutton', { name: firstGrade, exact: true }).fill('7');
+  await ui.locator('.mark-editor').getByRole('button', { name: 'В черновик', exact: true }).click();
+  await ui.getByLabel('Присутствие: Тестовый ученик А', { exact: true }).selectOption('2');
+  assert.equal(lessonWrites.length, beforeVisitCreation, 'neither staged edit sends a write');
+  await lessonSave.click();
+  await ui.getByRole('status').filter({ hasText: 'Изменения урока сохранены в Omni' }).waitFor();
+  assert.deepEqual(lessonWrites.slice(beforeVisitCreation), ['attendance', 'mark']);
+  assert.equal(lessonStudents[0].id_vizit, 8);
+  assert.equal(lessonStudents[0].mark2, 7, 'mark write uses the visit created by the preceding attendance write');
   for (const [index, date, type, value] of [[0, '2026-09-29', 'Контрольная', '10'], [1, '2026-10-02', 'Работа на уроке', '11']]) {
     await ui.getByRole('button', { name: 'Расписание', exact: true }).click();
     await ui.getByRole('button', { name: 'Открыть урок', exact: true }).nth(index).click();
@@ -299,23 +351,42 @@ try {
     const gradeLabel = `${type}: Тестовый ученик А`;
     await ui.getByRole('button', { name: gradeLabel, exact: true }).click();
     await ui.getByRole('spinbutton', { name: gradeLabel, exact: true }).fill(value);
-    await ui.locator('.mark-editor').getByRole('button', { name: 'Сохранить', exact: true }).click();
-    await ui.getByRole('status').filter({ hasText: 'Оценка сохранена в Omni' }).waitFor();
+    await ui.locator('.mark-editor').getByRole('button', { name: 'В черновик', exact: true }).click();
+    const writesBeforeLessonDraft = lessonWrites.length;
+    await ui.getByLabel('Присутствие: Тестовый ученик А', { exact: true }).selectOption(index === 0 ? '0' : '1');
+    assert.equal(lessonWrites.length, writesBeforeLessonDraft, 'grades and attendance remain local until global Save');
+    if (index === 0) {
+      await ui.getByRole('button', { name: 'Расписание', exact: true }).click();
+      await ui.getByRole('button', { name: 'Открыть урок', exact: true }).nth(1).click();
+      await ui.getByText('Дата урока: 2026-10-02', { exact: true }).waitFor();
+      assert.equal(await ui.getByRole('button', { name: 'Контрольная: Тестовый ученик А', exact: true }).textContent(), '7', 'the past lesson draft must not leak into another lesson');
+      assert.equal(await ui.getByLabel('Присутствие: Тестовый ученик А', { exact: true }).inputValue(), '2');
+      await ui.getByRole('button', { name: 'Расписание', exact: true }).click();
+      await ui.getByRole('button', { name: 'Открыть урок', exact: true }).nth(0).click();
+      await ui.getByText('Дата урока: 2026-09-29', { exact: true }).waitFor();
+      assert.equal(await ui.getByRole('button', { name: gradeLabel, exact: true }).textContent(), value, 'returning to the original lesson restores its draft');
+      assert.equal(await ui.getByLabel('Присутствие: Тестовый ученик А', { exact: true }).inputValue(), '0');
+    }
+    await lessonSave.click();
+    await ui.getByRole('status').filter({ hasText: 'Изменения урока сохранены в Omni' }).waitFor();
+    assert.deepEqual(lessonWrites.slice(writesBeforeLessonDraft), ['attendance', 'mark']);
     assert.equal(await ui.getByRole('button', { name: gradeLabel, exact: true }).textContent(), value);
-    await presence.selectOption(index === 0 ? '0' : '1');
-    await ui.getByRole('status').filter({ hasText: 'Посещаемость сохранена в Omni' }).waitFor();
     assert.equal(lessonDate, date);
   }
   rejectMark = true;
   await ui.getByRole('button', { name: 'Контрольная: Тестовый ученик А', exact: true }).click();
   await ui.getByRole('spinbutton', { name: 'Контрольная: Тестовый ученик А', exact: true }).fill('9');
-  await ui.locator('.mark-editor').getByRole('button', { name: 'Сохранить', exact: true }).click();
+  await ui.locator('.mark-editor').getByRole('button', { name: 'В черновик', exact: true }).click();
+  await lessonSave.click();
   await ui.getByRole('alert').filter({ hasText: 'Период закрыт' }).waitFor();
   assert.equal(lessonStudents[0].mark2, 10);
   assert.equal(await ui.getByRole('button', { name: 'Контрольная: Тестовый ученик А', exact: true }).isDisabled(), true);
   rejectMark = false;
   await ui.getByRole('button', { name: 'Загрузить урок', exact: true }).click();
   await ui.waitForFunction(() => !document.querySelector('#omni-workspace-root')?.shadowRoot?.querySelector('.attendance-select')?.disabled);
+  await lessonSave.click();
+  await ui.getByRole('status').filter({ hasText: 'Изменения урока сохранены в Omni' }).waitFor();
+  assert.equal(lessonStudents[0].mark2, 9, 'a rejected mark draft can be retried explicitly after rereading');
   await ui.getByRole('button', { name: 'Домашние задания', exact: true }).click();
   assert.equal(await ui.locator('.homework-table tbody tr').count(), 3);
   assert.equal(await ui.locator('.live-details').count(), 0);

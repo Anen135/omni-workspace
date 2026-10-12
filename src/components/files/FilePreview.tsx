@@ -1,10 +1,10 @@
 import { lazy, Suspense, useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronDown, ChevronUp, ExternalLink } from 'lucide-react';
-import { materialLink } from './teaching-materials';
+import { materialLink } from '../../features/materials/teaching-materials';
 import './file-preview.css';
-import { desktopRequest, isDesktop } from './desktop-client';
-import { extensionRequest, isExtension } from './extension-client';
+import { desktopRequest, isDesktop } from '../../services/desktop-client';
+import { extensionRequest, isExtension } from '../../services/extension-client';
 const PdfPreview = lazy(() => import('./PdfPreview'));
 
 type Kind = 'image' | 'pdf' | 'unknown' | 'unsupported';
@@ -34,7 +34,7 @@ export function FilePreview({ url, filename = '', mime = '', fallback, linkLabel
     return () => clearTimeout(timer.current);
   }, [url]);
   useEffect(() => {
-    const dismiss = () => setHover(null);
+    const dismiss = () => hide();
     const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') hide(); };
     window.addEventListener('scroll', dismiss, true);
     window.addEventListener('resize', dismiss);

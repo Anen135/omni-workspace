@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { loadMaterialsCatalog, loadMethodPackage } from '../server/teaching-materials.mjs';
 import { validateInput } from '../server/omni-bridge.mjs';
-import { materialLink, materialTopics } from '../src/teaching-materials.ts';
+import { materialLink, materialTopics } from '../src/features/materials/teaching-materials.ts';
 
 test('preparation materials load without a current lesson, group or date', async () => {
   const calls = [];

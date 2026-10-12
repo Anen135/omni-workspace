@@ -26,9 +26,9 @@ const contentStyles = {
     build.onLoad({ filter: /.*/, namespace: 'inline-worker' }, () => ({ contents: 'export default ""', loader: 'js' }));
   },
 };
-await bundle({ entryPoints: ['src/extension-entry.tsx'], bundle: true, format: 'iife', platform: 'browser', target: 'chrome120', outfile: 'dist-extension/content.js', define: { 'import.meta.env.MODE': '"extension"', 'process.env.NODE_ENV': '"production"' }, plugins: [contentStyles], minify: true });
+await bundle({ entryPoints: ['src/app/extension/extension-entry.tsx'], bundle: true, format: 'iife', platform: 'browser', target: 'chrome120', outfile: 'dist-extension/content.js', define: { 'import.meta.env.MODE': '"extension"', 'process.env.NODE_ENV': '"production"' }, plugins: [contentStyles], minify: true });
 await bundle({ entryPoints: ['extension/background.mjs'], bundle: true, format: 'esm', platform: 'browser', target: 'chrome120', outfile: 'dist-extension/background.js', define: { __OMNI_BUILD_ID__: JSON.stringify(buildId) } });
-await bundle({ entryPoints: ['desktop/omni-agent.mjs'], bundle: true, format: 'iife', globalName: 'OmniDesktopAgent', platform: 'browser', target: 'chrome120', outfile: 'dist-extension/agent.js', footer: { js: `OmniDesktopAgent.build = ${JSON.stringify(buildId)};` } });
+await bundle({ entryPoints: ['shared/omni-agent.mjs'], bundle: true, format: 'iife', globalName: 'OmniDesktopAgent', platform: 'browser', target: 'chrome120', outfile: 'dist-extension/agent.js', footer: { js: `OmniDesktopAgent.build = ${JSON.stringify(buildId)};` } });
 await cp('public', 'dist-extension', { recursive: true });
 await copyFile('extension/manifest.json', 'dist-extension/manifest.json');
 await copyFile('extension/launcher.html', 'dist-extension/index.html');

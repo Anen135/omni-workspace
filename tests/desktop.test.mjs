@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { dispatch } from '../desktop/omni-agent.mjs';
+import { dispatch } from '../shared/omni-agent.mjs';
 
 test('desktop agent validates commands, origin and unauthenticated state', async () => {
   globalThis.location = { origin: 'https://evil.test', pathname: '/' };
