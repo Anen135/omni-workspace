@@ -274,7 +274,15 @@ export function LiveWorkspace({ onDemo }: { onDemo: () => void }) {
       if (version !== sessionVersion.current) throw new Error('Сессия изменилась. Обновите список работ.');
       ensureAccount(result.account);
       setHomeworkSaved(current => ({ ...current, ...Object.fromEntries(result.confirmedKeys.map(key => [key, mark])) }));
-      if (result.error) { setHomeworkNeedsReload(true); setError(result.error.message); }
+      if (result.error) {
+        setHomeworkNeedsReload(true);
+        const saved = result.confirmedKeys.length;
+        const message = saved ? `${result.error.message} Подтверждено сохранение: ${saved} из ${items.length}. Состояние остальных работ не подтверждено, проверьте их в Omni.` : result.error.message;
+        // The session itself is gone: reconnect instead of showing stale data. Marks which were
+        // already confirmed stay recorded in homeworkSaved until the next reload.
+        if (['AUTH_REQUIRED', 'ACCOUNT_CHANGED'].includes(result.error.code)) failed(new ConnectionError(result.error.code, message));
+        else setError(message);
+      }
       return { confirmedKeys: result.confirmedKeys };
     } catch (reason) {
       if (version === sessionVersion.current) { setHomeworkNeedsReload(true); failed(reason); }

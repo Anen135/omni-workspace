@@ -47,7 +47,11 @@ export async function saveHomeworkMarks(input, { request, identity }) {
       }
       confirmedKeys.push(expected.key);
     } catch (error) {
-      if (['ACCOUNT_CHANGED', 'AUTH_REQUIRED'].includes(error.code)) throw error;
+      // Session loss before anything was confirmed: throw, so the transport layer can
+      // run its usual login / account-change handling. Once some grades are confirmed,
+      // return them together with the error instead; throwing here would discard the
+      // list of already saved submissions and the UI could not tell what was written.
+      if (['ACCOUNT_CHANGED', 'AUTH_REQUIRED'].includes(error.code) && !confirmedKeys.length) throw error;
       return { account, confirmedKeys, error: {
         code: error.code || 'HOMEWORK_UNCONFIRMED',
         message: error.code ? error.message : 'Результат сохранения не подтверждён. Обновите список работ перед повторной отправкой.',

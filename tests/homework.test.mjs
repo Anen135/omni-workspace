@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { homeworkItems } from '../src/homework.ts';
 import { saveHomeworkMarks } from '../extension/homework.mjs';
-import { validateInput } from '../server/bridge-protocol.mjs';
+import { BridgeError, validateInput } from '../server/bridge-protocol.mjs';
 
 const row = (id = 1, student = 10) => ({ id, id_domzad_teach: 100 + id, stud_stud: student,
   fio_stud: 'Вымышленный студент', name_tgroups: 'Тест', theme: `Работа ${id}`,
@@ -80,3 +80,31 @@ for (const mode of ['lost', 'reject', 'mismatch']) {
     assert.equal(f.writes.length, 1);
   });
 }
+
+test('homework account switch mid-batch still reports grades confirmed before it', async () => {
+  const f = fixture();
+  // identity() calls: 1 preflight, then 3 per fully confirmed submission; the 5th is the second submission's first check.
+  let calls = 0;
+  const identity = async () => ({ id: ++calls >= 5 ? '2' : '1' });
+  const result = await saveHomeworkMarks(f.input, { ...f, identity });
+  assert.deepEqual(result.confirmedKeys, [f.input.items[0].key]);
+  assert.equal(result.error.code, 'ACCOUNT_CHANGED');
+  assert.equal(result.account.id, '1', 'confirmed grades belong to the original account');
+  assert.equal(f.writes.length, 1, 'no further writes after the account changed');
+});
+test('homework session loss mid-batch still reports grades confirmed before it', async () => {
+  const f = fixture();
+  const request = async (path, input) => {
+    if (path === '/homework/save-homework' && f.writes.length === 1) throw new BridgeError('AUTH_REQUIRED', 'Сессия истекла. Войдите снова.');
+    return f.request(path, input);
+  };
+  const result = await saveHomeworkMarks(f.input, { ...f, request });
+  assert.deepEqual(result.confirmedKeys, [f.input.items[0].key]);
+  assert.equal(result.error.code, 'AUTH_REQUIRED');
+  assert.equal(f.writes.length, 1);
+});
+test('homework session loss before any confirmation is thrown for transport-level handling', async () => {
+  const f = fixture();
+  const request = async path => { if (path === '/homework/save-homework') throw new BridgeError('AUTH_REQUIRED', 'Сессия истекла. Войдите снова.'); return f.request(path, {}); };
+  await assert.rejects(saveHomeworkMarks(f.input, { ...f, request }), { code: 'AUTH_REQUIRED' });
+});
