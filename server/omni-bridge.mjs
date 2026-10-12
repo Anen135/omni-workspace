@@ -1,6 +1,7 @@
 import { chromium } from 'playwright';
 import { resolve } from 'node:path';
 import { loadMaterialsCatalog, loadMethodPackage } from './teaching-materials.mjs';
+import { loadTeacherDossier } from './teacher-dossier.mjs';
 import { loadFilePreview } from './file-preview.mjs';
 import { submitOfficialLogin, loginErrors } from './login.mjs';
 
@@ -12,6 +13,7 @@ const readPaths = new Set([
   '/presents/get-homework', '/homework/get-group-spec', '/homework/get-new-homeworks',
   '/bind/get-public-form', '/bind/get-public-direction', '/bind/get-public-spec',
   '/bind/get-materials-type', '/bind/get-materials', '/bind/get-count-week',
+  '/dossier/get-single-data', '/dossier/get-data-graphics', '/dossier/get-all-data',
 ]);
 
 import { BridgeError, validateInput } from './bridge-protocol.mjs';
@@ -70,21 +72,21 @@ export function createBridge() {
     } catch { return { connected: false, state: 'loading' }; }
   }
 
-  async function request(path, data = {}, switching = false) {
+  async function request(path, data = {}, switching = false, method = 'POST') {
     if (!readPaths.has(path) && !(switching && path === '/auth/change-user')) throw new BridgeError('NOT_ALLOWED', 'Запрос не разрешён.', 400);
     const state = await status();
     if (!state.connected) throw new BridgeError(state.state === 'challenge' ? 'CHALLENGE' : 'AUTH_REQUIRED', 'Откройте окно Omni и завершите вход.', 401);
     let response;
     try {
-      response = await page.evaluate(async ({ path, data }) => {
+      response = await page.evaluate(async ({ path, data, method }) => {
         const result = await fetch(path, {
-          method: 'POST', credentials: 'same-origin', signal: AbortSignal.timeout(20000),
+          method, credentials: 'same-origin', signal: AbortSignal.timeout(20000),
           headers: {
             'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest',
             'X-CSRF-Token': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
             'Id-Local-Hash': sessionStorage.getItem('IdLocalHash') || '',
           },
-          body: JSON.stringify(data),
+          ...(method === 'POST' ? { body: JSON.stringify(data) } : {}),
         });
         const text = await result.text();
         if (result.status === 403 || result.status === 401 || result.url.includes('/login')) return { auth: true };
@@ -92,7 +94,7 @@ export function createBridge() {
         if (!result.ok) return { status: result.status };
         try { return { data: JSON.parse(text) }; }
         catch { return { invalid: true, challenge: /DDOS.GUARD|Проверка браузера/i.test(text) }; }
-      }, { path, data });
+      }, { path, data, method });
     } catch { throw new BridgeError('CONNECTION_LOST', 'Запрос прерван. Проверьте окно Omni и повторите загрузку.'); }
     if (response.auth) throw new BridgeError('AUTH_REQUIRED', 'Сессия Omni истекла. Войдите снова.', 401);
     if (response.conflict) throw new BridgeError('ACCOUNT_CHANGED', 'Аккаунт в Omni изменился. Обновите подключение.', 409);
@@ -101,7 +103,7 @@ export function createBridge() {
     return response.data;
   }
 
-  const read = (path, data) => request(path, data);
+  const read = (path, data, method) => request(path, data, false, method);
 
   async function identity() {
     const profile = await read('/profile/get-profile');
@@ -110,8 +112,8 @@ export function createBridge() {
     return { id: String(info.id_teach), name: info.fio_teach };
   }
 
-  async function section(path, params) {
-    try { return { data: await read(path, params), error: null }; }
+  async function section(path, params, method) {
+    try { return { data: await read(path, params, method), error: null }; }
     catch (error) {
       if (['AUTH_REQUIRED', 'ACCOUNT_CHANGED', 'CHALLENGE'].includes(error.code)) throw error;
       return { data: null, error: error.message };
@@ -199,6 +201,7 @@ export function createBridge() {
           homework: group && date && lenta !== undefined ? await section('/presents/get-homework', { group, lenta, date, ospr: 0 }) : { data: null, error: null },
         };
       } else if (action === 'materials-catalog') result = await loadMaterialsCatalog(section, input);
+      else if (action === 'teacher-dossier') result = await loadTeacherDossier(section);
       else if (action === 'method-package') result = await loadMethodPackage(section, input);
       else if (action === 'group') result = { students: await read('/students/get-students', { group: input.group }) };
       else result = { details: await section('/students/get-details-stud', { stud: input.stud }), attendance: await section('/students/get-stud-vizit', { stud: input.stud }) };

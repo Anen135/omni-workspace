@@ -1,0 +1,50 @@
+import assert from 'node:assert/strict';
+import { chromium } from 'playwright';
+import { createServer } from 'vite';
+const server = await createServer({configFile:false,server:{host:'127.0.0.1',port:5191,strictPort:true,watch:{ignored:['**/.omni-browser/**']}}});
+let browser;
+try {
+ await server.listen();
+ browser=await chromium.launch({channel:'msedge',headless:true});
+ const page=await browser.newPage({viewport:{width:1440,height:1000}});
+ const errors=[];page.on('pageerror',e=>errors.push(e.message));
+ await page.route('https://fonts.googleapis.com/**',r=>r.abort());
+ const section=data=>({data,error:null});
+ const account={id:'101',name:'Тестовый преподаватель',timezone:'Europe/Moscow'};
+ let mode='normal',calls=0;
+ await page.route('**/api/omni/**',async route=>{
+  const action=route.request().url().split('/').at(-1);
+  let body;
+  if(action==='status')body={connected:true};
+  else if(action==='snapshot')body={account,teachers:section([]),schedule:section({}),presents:section({}),groups:section([]),homework:section([]),newHomework:section([]),counts:{homework:0,practice:0},fetchedAt:new Date().toISOString()};
+  else if(action==='teacher-dossier'){
+   calls++;assert.deepEqual(route.request().postDataJSON(),{});
+   body={account:mode==='wrong'?{...account,id:'102'}:account,single:section(mode==='empty'?null:{'Учебных часов':42,'Комментарий':'<img src=x onerror="window.injected=true">'}),graphics:mode==='partial'?{data:null,error:'Тестовая ошибка динамики'}:section(mode==='empty'?[]:[{month:'Сентябрь',value:12},{month:'Октябрь',value:18}]),all:section(mode==='empty'?{}:[{'Группа':'Тестовая группа','Занятия':7}])};
+  } else throw new Error('Unexpected action '+action);
+  await route.fulfill({json:body});
+ });
+ await page.goto('http://127.0.0.1:5191/');
+ await page.getByRole('heading',{name:'Мой урок',exact:true}).waitFor();
+ assert.equal(calls,0,'dossier should load only after navigation');
+ await page.getByRole('button',{name:'Досье преподавателя',exact:true}).click();
+ await page.getByText('Учебных часов',{exact:true}).waitFor();
+ assert.equal(await page.getByText('42',{exact:true}).count(),1);
+ await page.getByText('Тестовая группа',{exact:true}).waitFor();
+ assert.equal(await page.evaluate(()=>!!window.injected),false);
+ mode='partial';await page.getByRole('button',{name:/Обновить досье/}).click();
+ await page.getByText('Тестовая ошибка динамики',{exact:true}).waitFor();
+ assert.equal(await page.getByText('42',{exact:true}).count(),1);
+ mode='empty';await page.getByRole('button',{name:/Обновить досье/}).click();
+ await page.waitForFunction(()=>!document.body.textContent.includes('Учебных часов'));
+ mode='normal';await page.getByRole('button',{name:/Обновить досье/}).click();
+ await page.getByText('Учебных часов',{exact:true}).waitFor();
+ await page.setViewportSize({width:390,height:844});
+ assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'no document overflow');
+ await page.screenshot({path:'tmp/dossier-mobile.png'});
+ await page.setViewportSize({width:1440,height:1000});
+ await page.screenshot({path:'tmp/dossier-desktop.png'});
+ mode='wrong';await page.getByRole('button',{name:/Обновить досье/}).click();
+ await page.waitForFunction(()=>!document.body.textContent.includes('Учебных часов'));
+ assert.deepEqual(errors,[]);
+ console.log('PASS: dossier navigation/lazy loading, data tables, escaped content, partial errors, empty data, account mismatch and mobile overflow. Fictional data only.');
+} finally {await browser?.close();await server.close();}

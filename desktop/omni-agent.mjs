@@ -1,5 +1,6 @@
 import { validateInput, BridgeError } from '../server/bridge-protocol.mjs';
 import { loadMaterialsCatalog, loadMethodPackage } from '../server/teaching-materials.mjs';
+import { loadTeacherDossier } from '../server/teacher-dossier.mjs';
 import { saveAttendance } from '../extension/attendance.mjs';
 import { lessonTheme } from '../extension/lesson-theme.mjs';
 import { saveLessonMark } from '../extension/lesson-mark.mjs';
@@ -13,12 +14,12 @@ export async function dispatch(action, input = {}) {
   if (action === 'status' || action === 'connect') return { connected: state === 'ready', state };
   if (action === 'login' || action === 'switch-teacher') throw new BridgeError('NOT_SUPPORTED', 'В прототипе выполните это действие в официальном окне Omni.');
   if (state !== 'ready') throw new BridgeError('AUTH_REQUIRED', 'Завершите вход в официальном окне Omni.');
-  async function read(path, data = {}) {
-    const response = await fetch(path, { method: 'POST', credentials: 'same-origin', signal: AbortSignal.timeout(20000), headers: {
+  async function read(path, data = {}, method = 'POST') {
+    const response = await fetch(path, { method, credentials: 'same-origin', signal: AbortSignal.timeout(20000), headers: {
       'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest',
       'X-CSRF-Token': document.querySelector('meta[name="csrf-token"]')?.content || '',
       'Id-Local-Hash': sessionStorage.getItem('IdLocalHash') || '',
-    }, body: JSON.stringify(data) });
+    }, ...(method === 'POST' ? { body: JSON.stringify(data) } : {}) });
     if ([401, 403].includes(response.status) || response.url.includes('/login')) throw new BridgeError('AUTH_REQUIRED', 'Сессия истекла. Войдите снова.');
     if (response.status === 409) throw new BridgeError('ACCOUNT_CHANGED', 'Аккаунт изменился. Обновите данные.');
     if (path === '/homework/save-homework' && [400, 422].includes(response.status)) {
@@ -38,8 +39,8 @@ export async function dispatch(action, input = {}) {
     if (!p?.id_teach || typeof p.fio_teach !== 'string') throw new BridgeError('SCHEMA_CHANGED', 'Не удалось распознать профиль Omni.');
     return { id: String(p.id_teach), name: p.fio_teach };
   }
-  async function section(path, params) {
-    try { return { data: await read(path, params), error: null }; }
+  async function section(path, params, method) {
+    try { return { data: await read(path, params, method), error: null }; }
     catch (error) { if (['AUTH_REQUIRED', 'ACCOUNT_CHANGED'].includes(error.code)) throw error; return { data: null, error: error.message }; }
   }
   if (action === 'set-attendance') return saveAttendance(input, { request: read, identity });
@@ -66,6 +67,7 @@ export async function dispatch(action, input = {}) {
       homework: group && date && lenta !== undefined ? await section('/presents/get-homework', { group, lenta, date, ospr: 0 }) : empty,
     };
   } else if (action === 'materials-catalog') result = await loadMaterialsCatalog(section, input);
+  else if (action === 'teacher-dossier') result = await loadTeacherDossier(section);
   else if (action === 'method-package') result = await loadMethodPackage(section, input);
   else if (action === 'group') result = { students: await read('/students/get-students', { group: input.group }) };
   else if (action === 'student') result = { details: await section('/students/get-details-stud', { stud: input.stud }), attendance: await section('/students/get-stud-vizit', { stud: input.stud }) };

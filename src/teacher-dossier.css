@@ -1,0 +1,29 @@
+.teacher-dossier { margin-bottom: 24px; }
+.teacher-dossier .panel-heading h2 { display: flex; align-items: center; gap: 9px; }
+.teacher-dossier .panel-heading h2 svg { flex-shrink: 0; color: var(--purple); }
+.dossier-status { display: flex; align-items: center; gap: 8px; padding: 0 24px 20px; color: var(--purple); font-size: 12px; }
+.dossier-section { padding: 20px 24px 24px; border-top: 1px solid var(--border); min-width: 0; }
+.dossier-section > h3 { margin: 0 0 18px; font-size: 15px; font-weight: 500; }
+.dossier-error { padding: 0 24px 20px; }
+.dossier-section .dossier-error { padding: 0 0 18px; }
+.dossier-error .warning { margin: 0 0 12px; }
+.dossier-empty { color: #777080; font-size: 12px; line-height: 1.7; }
+.dossier-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin: 0; }
+.dossier-metric { border: 1px solid var(--border); border-radius: 9px; background: #fcfbfe; padding: 16px; min-width: 0; overflow-wrap: anywhere; }
+.dossier-metric dt { color: #777080; font-size: 12px; line-height: 1.5; }
+.dossier-metric dd { margin: 9px 0 0; color: #514960; font-size: 20px; line-height: 1.5; white-space: pre-wrap; }
+.dossier-nested { margin-top: 20px; min-width: 0; }
+.dossier-nested h4 { margin: 0 0 12px; color: #75618f; font-size: 13px; font-weight: 500; overflow-wrap: anywhere; }
+.dossier-table-scroll { max-width: 100%; overflow-x: auto; border: 1px solid var(--border); border-radius: 8px; }
+.dossier-table { width: 100%; border-collapse: collapse; font-size: 12px; text-align: left; }
+.dossier-table th, .dossier-table td { padding: 12px 14px; vertical-align: top; border-bottom: 1px solid var(--border); overflow-wrap: anywhere; }
+.dossier-table th { background: #faf8fd; color: #75618f; font-weight: 500; }
+.dossier-table tr:last-child td { border-bottom: 0; }
+.dossier-table td { min-width: 110px; }
+.dossier-table .dossier-metric dd { font-size: 13px; }
+.dossier-value { white-space: pre-wrap; overflow-wrap: anywhere; }
+@media (max-width: 760px) {
+  .dossier-section { padding: 18px 14px; }
+  .dossier-status, .dossier-error { padding-left: 14px; padding-right: 14px; }
+  .dossier-metrics { grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); }
+}

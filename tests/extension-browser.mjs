@@ -59,6 +59,17 @@ try {
     }
     if (request.isNavigationRequest()) return route.fulfill({ contentType: 'text/html', body: `<!doctype html><meta name="csrf-token" content="fixture-csrf"><title>Fixture Omni</title>${signedIn ? '' : '<form><input type="password"></form><div data-login-challenge="fixture">Complete verification</div>'}<script>globalThis.angular = { element: () => ({ injector: () => ({ get: () => ({ clearLocalStorage: () => sessionStorage.setItem('switch-cleaned', 'yes') }) }) }) };</script>` });
     if (path === '/favicon.ico') return route.fulfill({ status: 404, body: '' });
+    if (path.startsWith('/dossier/')) {
+      assert.equal(request.method(), 'GET');
+      assert.equal(request.postData(), null);
+      assert.equal(request.headers()['x-csrf-token'], 'fixture-csrf');
+      if (!signedIn) return route.fulfill({ status: 401, body: '' });
+      paths.push(path);
+      const data = path === '/dossier/get-single-data' ? { 'Учебных часов': 42 }
+        : path === '/dossier/get-data-graphics' ? [{ month: 'Сентябрь', value: 12 }]
+        : [{ 'Группа': 'Группа досье', 'Занятия': 7 }];
+      return route.fulfill({ json: data });
+    }
     if (request.method() !== 'POST') return route.fulfill({ status: 404, body: '' });
     if (!signedIn) return route.fulfill({ status: 401, body: '' });
     paths.push(path);
@@ -186,6 +197,10 @@ try {
   await ui.getByRole('heading', { name: 'Мой урок' }).waitFor();
   assert.ok(paths.includes('/schedule/get-schedule'));
   assert.ok(paths.filter(path => path === '/profile/get-profile').length >= 2);
+  await ui.getByRole('button', { name: 'Досье преподавателя', exact: true }).click();
+  await ui.getByText('Учебных часов', { exact: true }).waitFor();
+  await ui.getByText('Группа досье', { exact: true }).waitFor();
+  for (const endpoint of ['get-single-data', 'get-data-graphics', 'get-all-data']) assert.ok(paths.includes('/dossier/' + endpoint));
   await ui.locator('nav button').nth(1).click();
   await ui.locator('.schedule-tools').waitFor();
   const calendarTrigger = ui.locator('.schedule-tools .workspace-popover > button');
