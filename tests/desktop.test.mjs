@@ -60,3 +60,13 @@ test('attendance transport preserves server validation errors and never retries 
     assert.equal(writes, 1);
   } finally { globalThis.fetch = originalFetch; delete globalThis.location; delete globalThis.document; delete globalThis.sessionStorage; }
 });
+
+test('desktop preview size limit is a plain integer expression', async () => {
+  // The desktop build is manual-only, so a typo here would otherwise go unnoticed until release.
+  const { readFile } = await import('node:fs/promises');
+  const source = await readFile(new URL('../desktop/PreviewFiles.cs', import.meta.url), 'utf8');
+  const match = /const int Limit = (\d+(?: \* \d+)*);/.exec(source);
+  assert.ok(match, 'PreviewFiles.Limit must be a product of integer literals');
+  const limit = match[1].split(' * ').reduce((product, factor) => product * Number(factor), 1);
+  assert.ok(Number.isSafeInteger(limit) && limit > 0 && limit <= 2 ** 31 - 1, 'Limit must fit in a C# int');
+});
