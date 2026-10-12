@@ -2,6 +2,7 @@ import React from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { Workspace } from './main';
 import { extensionRequest, onOfficialLoginRequired } from './extension-client';
+import { createPoller, type PollOutcome } from './poller';
 import styles from './styles.css?inline';
 import pages from './pages.css?inline';
 import preview from './file-preview.css?inline';
@@ -82,15 +83,21 @@ function start() {
     root = createRoot(container);
     root.render(<React.StrictMode><Workspace/></React.StrictMode>);
   }
-  async function check() {
-    if (nativeLogin()) { if (host) restore(); return; }
+  async function check(): Promise<PollOutcome> {
+    if (nativeLogin()) { if (host) restore(); return 'local'; }
     if (host && !host.isConnected) restore();
-    if (host || checking || document.readyState !== 'complete') return;
+    // A hidden tab sends nothing; it is checked again as soon as it is shown (see visibilitychange below).
+    if (host || checking || document.readyState !== 'complete' || document.hidden) return 'local';
     checking = true;
     try {
       const status = await extensionRequest<{ connected: boolean; state: string; warning?: string }>('status', {});
-      if (status.connected) mount(status.warning);
-    } catch { /* Loading, busy, or an expired session; keep official recovery usable. */ }
+      if (!status.connected) return 'retry';
+      mount(status.warning);
+      return 'mounted';
+    } catch (reason) {
+      // Loading, busy, or an expired session; keep official recovery usable.
+      return (reason as { code?: string }).code === 'BUSY' ? 'busy' : 'retry';
+    }
     finally { checking = false; }
   }
   onOfficialLoginRequired(restore);
@@ -100,14 +107,17 @@ function start() {
     }
   });
   observer.observe(document.documentElement, { childList: true, subtree: true });
-  void check();
   // Retry after native login, Angular navigation, or a teacher-switch reload.
   // In particular, a new document must wait for the old mutation's BUSY lock.
-  const timer = setInterval(() => { void check(); }, 1500);
+  // Requests which found nothing to mount back off (1.5 s up to 30 s); local checks and BUSY stay at 1.5 s.
+  const poller = createPoller(check);
+  poller.start();
   window.addEventListener('pagehide', event => {
     if (event.persisted) return;
-    clearInterval(timer); observer.disconnect(); restore();
+    poller.stop(); observer.disconnect(); restore();
   });
-  window.addEventListener('pageshow', () => { void check(); });
+  window.addEventListener('pageshow', () => poller.nudge());
+  window.addEventListener('focus', () => poller.nudge());
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) poller.nudge(); });
 }
 start();
