@@ -42,8 +42,16 @@ try {
   let rejectTheme = false;
   let lessonDate = '2026-09-30';
   let rejectMark = false;
+  let rejectReward = false;
+  let ignoreReward = false;
   const lessonWrites = [];
-  const lessonStudents = [{ id_stud: 101, fio_stud: 'Тестовый ученик А', was: null, id_vizit: null, theme: '', primary_teach: 0 }, { id_stud: 102, fio_stud: 'Тестовый ученик Б', was: 2, id_vizit: 9, theme: '', primary_teach: 0 }];
+  const lessonStudents = [{ id_stud: 101, fio_stud: 'Тестовый ученик А', was: null, id_vizit: null, theme: '', primary_teach: 0, prize: 0 }, { id_stud: 102, fio_stud: 'Тестовый ученик Б', was: 2, id_vizit: 9, theme: '', primary_teach: 0, prize: 0 }];
+  const copySourceDate = '2026-09-28';
+  const copySourceStudents = [
+    { id_stud: 102, fio_stud: 'Тестовый ученик Б', was: null, mark2: null, mark4: null, id_vizit: 9702, theme: 'Другая тема', prize: 2 },
+    { id_stud: 101, fio_stud: 'Тестовый ученик А', was: 0, mark2: 6, mark4: null, id_vizit: 9701, theme: 'Другая тема', prize: 4 },
+    { id_stud: 109, fio_stud: 'Ученик из другой группы', was: 1, mark2: 12, mark4: 12, id_vizit: 9709, theme: 'Другая тема', prize: 3 },
+  ];
   let homeworkQueue = [201, 202, 203].map((id, index) => ({ id, id_domzad_teach: id + 1000, stud_stud: index < 2 ? 101 : 102, fio_stud: index < 2 ? 'Тестовый ученик А' : 'Тестовый ученик Б', name_tgroups: 'Тест', name_spec: 'Веб', theme: `ДЗ ${id}`, stud_date: '2026-10-10 10:00:00', ospr: 0, mark: null, answer_text: 'Вымышленный ответ', comment: 'Не менять', filename: 'fixture.pdf', download_url_stud: 'https://fs.top-academy.ru/api/v1/files/pdf-fixture' }));
   const homeworkWrites = [];
   let rejectHomework = false;
@@ -89,11 +97,22 @@ try {
     }
     if (path === '/auth/get-start-info') data = { branch: { name: 'Тестовая академия' } };
     if (path === '/students/get-groups-list') data = [];
+    if (path === '/bind/get-public-form') data = [{ id_form: 4, name_form: 'Форма каталога' }];
+    if (path === '/bind/get-public-direction') data = [{ id: 16, dir_name: 'Направление каталога' }];
+    if (path === '/bind/get-public-spec') {
+      assert.deepEqual(request.postDataJSON(), { arc: 0 });
+      data = [{ id: 42, name_spec: 'Тестовый курс каталога' }];
+    }
+    if (path === '/bind/get-materials' || path === '/bind/get-count-week') {
+      assert.deepEqual(request.postDataJSON(), { spec: '42' });
+      data = [];
+    }
     if (path === '/schedule/get-schedule') data = { dates: { 1: '2026-09-29', 2: '2026-10-02' }, days: { 1: 'Вторник', 2: 'Пятница' }, body: { 0: { 1: { name_spec: 'Прошедший урок', l_start: '09:00', l_end: '10:30' }, 2: { name_spec: 'Будущий урок', l_start: '09:00', l_end: '10:30' } } } };
     if (path === '/presents/get-presents') {
-      lessonDate = request.postDataJSON().date || '2026-09-30';
+      const requestedDate = request.postDataJSON().date || '2026-09-30';
+      if (requestedDate !== copySourceDate) lessonDate = requestedDate;
       const slot = Number(request.postDataJSON().lenta || 0);
-      data = { cur_date: lessonDate, cur_group: 10, cur_lenta: slot, cur_schedule: slot === 4 ? 54 : 50, students: slot === 4 ? [] : lessonStudents, schedule: { 0: { name_spec: 'Первая пара', l_start: '09:00', l_end: '10:30' }, 4: { name_spec: 'Пара без учеников', l_start: '15:00', l_end: '16:30' } }, scheduleType: 'planned', can_set_theme: true, cur_spec: { id_spec: 3, source: 'fixture', id_base_spec: 4 } };
+      data = { cur_date: requestedDate, cur_group: 10, cur_lenta: slot, cur_schedule: slot === 4 ? 54 : 50, students: requestedDate === copySourceDate ? copySourceStudents : slot === 4 ? [] : lessonStudents, schedule: { 0: { name_spec: 'Первая пара', l_start: '09:00', l_end: '10:30' }, 4: { name_spec: 'Пара без учеников', l_start: '15:00', l_end: '16:30' } }, scheduleType: 'planned', can_set_theme: true, cur_spec: { id_spec: 3, source: 'fixture', id_base_spec: 4 } };
     }
     if (path === '/presents/set-mark') {
       lessonWrites.push('mark');
@@ -103,6 +122,20 @@ try {
       assert.equal(change.vizit, lessonStudents[0].id_vizit);
       if (!rejectMark) lessonStudents[0][`mark${change.type}`] = change.mark;
       data = rejectMark ? { success: false, message: 'Период закрыт' } : { success: true };
+    }
+    if (path === '/presents/set-prize') {
+      lessonWrites.push('reward');
+      const input = request.postDataJSON();
+      assert.deepEqual(Object.keys(input), ['prizes']);
+      const changes = Object.values(input.prizes);
+      assert.ok(changes.length > 0);
+      for (const change of changes) {
+        assert.deepEqual(Object.keys(change).sort(), ['id', 'reward']);
+        const matches = lessonStudents.filter(student => student.id_vizit === change.id);
+        assert.equal(matches.length, 1, 'Topcoins payload must use the current destination visit ID');
+        if (!rejectReward && !ignoreReward) matches[0].prize = change.reward === 4 ? 0 : change.reward;
+      }
+      data = rejectReward ? { error: 'Topcoins отклонены сервером' } : { success: true, total: 20 };
     }
     if (path === '/presents/get-methodpackage-themes') data = [{ public_week_id: 7, package_id: 5, week: 1, theme: 'Тестовая тема', has_homework: true, has_labwork: true }];
     if (path === '/presents/set-theme') {
@@ -220,6 +253,7 @@ try {
   await ui.locator('nav button').nth(0).click();
   await calendar.waitFor({ state: 'detached' });
   const presence = ui.getByLabel('Присутствие: Тестовый ученик А', { exact: true });
+  const reward = ui.getByLabel('Топкойны: Тестовый ученик А', { exact: true });
   const lessonSave = ui.getByRole('button', { name: 'Сохранить', exact: true });
   const dayPairs = ui.getByLabel('Пара выбранного дня', { exact: true });
   assert.equal(await dayPairs.locator('option').count(), 3);
@@ -230,7 +264,9 @@ try {
   await dayPairs.selectOption('0');
   await presence.waitFor();
   assert.equal(await presence.isEnabled(), true); // Empty lesson theme must not block attendance.
+  assert.equal(await reward.isDisabled(), true, 'rewards need present or late attendance');
   await presence.selectOption('1');
+  assert.equal(await reward.isEnabled(), true, 'draft attendance enables staging a reward before an official visit exists');
   await ui.getByText(/Черновик: 1 отметок/).waitFor();
   assert.equal(paths.filter(path => path === '/presents/set-was').length, 0);
   ui.once('dialog', dialog => dialog.accept());
@@ -270,6 +306,12 @@ try {
   assert.deepEqual(lessonWrites, ['theme', 'theme', 'attendance']);
   assert.equal(await presence.inputValue(), '1');
   assert.equal(lessonStudents[0].id_vizit, 80); // Theme-created visit, not old draft metadata.
+  await ui.locator('.lesson-theme-editor').getByText('Текущая тема: Тестовая тема', { exact: true }).waitFor();
+  lessonStudents[0].theme = '';
+  await ui.getByRole('button', { name: 'Загрузить урок', exact: true }).click();
+  await ui.locator('.lesson-banner').getByRole('heading', { name: 'Тестовая тема', exact: true }).waitFor();
+  await ui.locator('.lesson-theme-editor').getByText('Текущая тема: Тестовая тема', { exact: true }).waitFor();
+  lessonStudents[0].theme = 'Тестовая тема';
   await presence.selectOption('2');
   assert.deepEqual(lessonWrites, ['theme', 'theme', 'attendance'], 'changing attendance only updates the local draft');
   assert.equal(await lessonSave.isEnabled(), true);
@@ -338,12 +380,14 @@ try {
   await ui.getByRole('spinbutton', { name: firstGrade, exact: true }).fill('7');
   await ui.locator('.mark-editor').getByRole('button', { name: 'В черновик', exact: true }).click();
   await ui.getByLabel('Присутствие: Тестовый ученик А', { exact: true }).selectOption('2');
+  await reward.selectOption('1');
   assert.equal(lessonWrites.length, beforeVisitCreation, 'neither staged edit sends a write');
   await lessonSave.click();
   await ui.getByRole('status').filter({ hasText: 'Изменения урока сохранены в Omni' }).waitFor();
-  assert.deepEqual(lessonWrites.slice(beforeVisitCreation), ['attendance', 'mark']);
+  assert.deepEqual(lessonWrites.slice(beforeVisitCreation), ['attendance', 'mark', 'reward']);
   assert.equal(lessonStudents[0].id_vizit, 8);
   assert.equal(lessonStudents[0].mark2, 7, 'mark write uses the visit created by the preceding attendance write');
+  assert.equal(lessonStudents[0].prize, 1, 'reward write uses the visit created by preceding attendance');
   for (const [index, date, type, value] of [[0, '2026-09-29', 'Контрольная', '10'], [1, '2026-10-02', 'Работа на уроке', '11']]) {
     await ui.getByRole('button', { name: 'Расписание', exact: true }).click();
     await ui.getByRole('button', { name: 'Открыть урок', exact: true }).nth(index).click();
@@ -387,6 +431,118 @@ try {
   await lessonSave.click();
   await ui.getByRole('status').filter({ hasText: 'Изменения урока сохранены в Omni' }).waitFor();
   assert.equal(lessonStudents[0].mark2, 9, 'a rejected mark draft can be retried explicitly after rereading');
+  const beforeRewards = lessonWrites.length;
+  rejectReward = true;
+  await reward.selectOption('2');
+  assert.equal(lessonWrites.length, beforeRewards, 'reward changes stay local before Save');
+  await lessonSave.click();
+  await ui.getByRole('alert').filter({ hasText: 'Omni отклонил топкойны' }).waitFor();
+  assert.equal(lessonStudents[0].prize, 1);
+  assert.equal(await reward.inputValue(), '2', 'a rejected reward remains visible in the local draft');
+  assert.equal(lessonWrites.length, beforeRewards + 1);
+  assert.equal(await lessonSave.isDisabled(), true);
+  rejectReward = false;
+  await ui.getByRole('button', { name: 'Загрузить урок', exact: true }).click();
+  await ui.waitForFunction(() => !document.querySelector('#omni-workspace-root')?.shadowRoot?.querySelector('.lesson-save-bar button.primary')?.disabled);
+  assert.equal(lessonWrites.length, beforeRewards + 1, 'reread never automatically retries a reward write');
+  await lessonSave.click();
+  await ui.getByRole('status').filter({ hasText: 'Изменения урока сохранены в Omni' }).waitFor();
+  assert.equal(lessonStudents[0].prize, 2);
+  ignoreReward = true;
+  await reward.selectOption('3');
+  await lessonSave.click();
+  await ui.getByRole('alert').filter({ hasText: 'Omni не подтвердил топкойны' }).waitFor();
+  assert.equal(await reward.inputValue(), '3');
+  assert.equal(lessonStudents[0].prize, 2);
+  const beforeRewardReread = lessonWrites.length;
+  ignoreReward = false;
+  await ui.getByRole('button', { name: 'Загрузить урок', exact: true }).click();
+  await ui.waitForFunction(() => !document.querySelector('#omni-workspace-root')?.shadowRoot?.querySelector('.lesson-save-bar button.primary')?.disabled);
+  assert.equal(lessonWrites.length, beforeRewardReread, 'unconfirmed reward is not retried during reread');
+  await lessonSave.click();
+  await ui.getByRole('status').filter({ hasText: 'Изменения урока сохранены в Omni' }).waitFor();
+  assert.equal(lessonStudents[0].prize, 3);
+  await reward.selectOption('1');
+  const beforeRewardConflict = lessonWrites.length;
+  lessonStudents[0].prize = 2; // Simulate another official client changing the reward.
+  await lessonSave.click();
+  await ui.getByRole('alert').filter({ hasText: 'Топкойны или запись ученика изменились' }).waitFor();
+  assert.equal(lessonWrites.length, beforeRewardConflict, 'conflicting remote reward prevents any write');
+  assert.equal(await reward.inputValue(), '1');
+  ui.once('dialog', dialog => dialog.accept());
+  await ui.getByRole('button', { name: 'Отменить черновик', exact: true }).click();
+  await reward.selectOption('4');
+  assert.equal(await reward.inputValue(), '', 'removal sentinel is displayed as no reward');
+  assert.equal(lessonWrites.length, beforeRewardConflict, 'staging removal still makes no write');
+  await lessonSave.click();
+  await ui.getByRole('status').filter({ hasText: 'Изменения урока сохранены в Omni' }).waitFor();
+  assert.equal(lessonStudents[0].prize, 0);
+  assert.equal(await reward.locator('option[value="4"]').isDisabled(), true, 'removal is unavailable once no reward remains');
+  // Reading a previous lesson never switches the destination or copies its
+  // visit IDs. Default copy protects filled values, explicit overwrite stages
+  // only the selected categories, and Save is the first mutation request.
+  const copyPanel = ui.getByLabel('Перенос с прошлой пары', { exact: true });
+  await copyPanel.getByRole('button', { name: 'Перенести с прошлой пары', exact: true }).click();
+  await copyPanel.getByLabel('Дата прошлой пары', { exact: true }).fill(copySourceDate);
+  const beforeCopy = lessonWrites.length;
+  await copyPanel.getByRole('button', { name: 'Загрузить прошлую пару', exact: true }).click();
+  await copyPanel.getByText('Совпали ученики: 2 из 2', { exact: true }).waitFor();
+  assert.deepEqual(await copyPanel.locator('tbody tr td:first-child').allTextContents(), ['Тестовый ученик А', 'Тестовый ученик Б'], 'copy matches unique IDs despite source order and unmatched students');
+  assert.equal(lessonWrites.length, beforeCopy, 'loading source makes no mutation request');
+  await copyPanel.getByRole('checkbox', { name: 'Топкойны', exact: true }).uncheck();
+  await copyPanel.getByRole('button', { name: 'В черновик', exact: true }).click();
+  assert.equal(await presence.inputValue(), '1', 'filled destination attendance is protected by default');
+  assert.equal(await ui.getByRole('button', { name: 'Контрольная: Тестовый ученик А', exact: true }).textContent(), '9');
+  assert.equal(await lessonSave.isDisabled(), true, 'copy of filled values without overwrite creates no draft');
+  await copyPanel.getByRole('checkbox', { name: 'Оценки', exact: true }).uncheck();
+  await copyPanel.getByRole('checkbox', { name: 'Заменить заполненные значения', exact: true }).check();
+  ui.once('dialog', dialog => dialog.accept());
+  await copyPanel.getByRole('button', { name: 'В черновик', exact: true }).click();
+  assert.equal(await presence.inputValue(), '0');
+  assert.equal(await ui.getByRole('button', { name: 'Контрольная: Тестовый ученик А', exact: true }).textContent(), '9', 'attendance-only copy must not replace grades');
+  assert.equal(lessonWrites.length, beforeCopy, 'copy remains a local draft until Save');
+  await lessonSave.click();
+  await ui.getByRole('status').filter({ hasText: 'Изменения урока сохранены в Omni' }).waitFor();
+  assert.deepEqual(lessonWrites.slice(beforeCopy), ['attendance']);
+  assert.equal(lessonStudents[0].id_vizit, 8, 'copied old source visit must never become target visit');
+  assert.equal(lessonStudents[0].theme, 'Тестовая тема', 'source theme is never copied');
+  await copyPanel.getByRole('checkbox', { name: 'Посещаемость', exact: true }).uncheck();
+  await copyPanel.getByRole('checkbox', { name: 'Оценки', exact: true }).check();
+  ui.once('dialog', dialog => dialog.accept());
+  await copyPanel.getByRole('button', { name: 'В черновик', exact: true }).click();
+  assert.equal(await ui.getByRole('button', { name: 'Контрольная: Тестовый ученик А', exact: true }).textContent(), '6');
+  assert.equal(await presence.inputValue(), '0');
+  assert.equal(lessonWrites.length, beforeCopy + 1);
+  await lessonSave.click();
+  await ui.getByRole('status').filter({ hasText: 'Изменения урока сохранены в Omni' }).waitFor();
+  assert.deepEqual(lessonWrites.slice(beforeCopy), ['attendance', 'mark']);
+  assert.equal(lessonStudents[0].mark2, 6);
+  assert.equal(lessonStudents[0].mark4, 11, 'empty source grades must not delete filled destination grades');
+  await copyPanel.getByRole('checkbox', { name: 'Оценки', exact: true }).uncheck();
+  await copyPanel.getByRole('checkbox', { name: 'Топкойны', exact: true }).check();
+  ui.once('dialog', dialog => dialog.accept());
+  await copyPanel.getByRole('button', { name: 'В черновик', exact: true }).click();
+  assert.equal(lessonWrites.length, beforeCopy + 2, 'copied rewards remain local until Save');
+  await lessonSave.click();
+  await ui.getByRole('status').filter({ hasText: 'Изменения урока сохранены в Omni' }).waitFor();
+  assert.deepEqual(lessonWrites.slice(beforeCopy), ['attendance', 'mark', 'reward']);
+  assert.equal(lessonStudents[1].prize, 2, 'positive source reward matches the second destination student by ID');
+  assert.equal(lessonStudents[1].id_vizit, 81);
+  assert.equal(lessonStudents[0].prize, 0, 'source removal sentinel must not create or revoke a destination reward');
+  await ui.getByRole('button', { name: 'Материалы', exact: true }).click();
+  const catalogCourse = ui.getByRole('combobox', { name: 'Методпакет', exact: true });
+  await ui.waitForFunction(() => !document.querySelector('#omni-workspace-root')?.shadowRoot?.querySelector('input[role="combobox"]')?.disabled);
+  const beforeCatalogSearch = paths.filter(path => path === '/bind/get-public-spec').length;
+  await catalogCourse.fill('Тестовый курс');
+  const courseOptions = ui.getByRole('listbox', { name: 'Методпакет', exact: true });
+  assert.equal(await courseOptions.evaluate(node => getComputedStyle(node).position), 'absolute');
+  assert.equal(paths.filter(path => path === '/bind/get-public-spec').length, beforeCatalogSearch);
+  await catalogCourse.press('Enter');
+  await ui.waitForFunction(() => !document.querySelector('#omni-workspace-root')?.shadowRoot?.querySelector('input[role="combobox"]')?.disabled);
+  assert.equal(await catalogCourse.inputValue(), 'Тестовый курс каталога');
+  await ui.getByRole('combobox', { name: 'Форма обучения', exact: true }).fill('Форма');
+  await ui.getByRole('combobox', { name: 'Форма обучения', exact: true }).press('Escape');
+  assert.equal(await ui.getByRole('listbox').count(), 0);
   await ui.getByRole('button', { name: 'Домашние задания', exact: true }).click();
   assert.equal(await ui.locator('.homework-table tbody tr').count(), 3);
   assert.equal(await ui.locator('.live-details').count(), 0);
@@ -505,7 +661,7 @@ try {
   assert.equal(status.data.connected, true);
   assert.deepEqual(errors, []);
   assert.equal(requests.some(url => url.startsWith('chrome-extension://') || /localhost|127\.0\.0\.1/.test(url)), false);
-  console.log('PASS: same-tab UI mount, native login/challenge preservation, Shadow DOM styling/calendar, attendance drafts, topic save, marks, materials/PDF, teacher/account switching, logout-warning recovery and second-tab invalidation. All data fictional.');
+  console.log('PASS: same-tab UI mount, native login/challenge preservation, Shadow DOM styling/calendar, attendance drafts, topic save, marks, previous-lesson copy, materials/PDF, teacher/account switching, logout-warning recovery and second-tab invalidation. All data fictional.');
 } finally {
   await context?.close();
   // Only the unique temporary test profile created above is removed.

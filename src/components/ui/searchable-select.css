@@ -1,0 +1,14 @@
+.searchable-select { position: relative; min-width: 0; }
+.searchable-select > label { display: block; margin-bottom: 8px; color: var(--text-secondary, #75618f); font-size: 12px; }
+.searchable-select-control { position: relative; }
+.searchable-select .searchable-select-control input { width: 100%; min-width: 0; padding: 11px 64px 11px 11px; border: 1px solid var(--border); border-radius: 7px; background: var(--surface, #faf8fd); color: var(--text-primary, #514960); font: inherit; font-size: 13px; }
+.searchable-select-control > button { position: absolute; top: 50%; transform: translateY(-50%); display: grid; place-items: center; width: 26px; height: 28px; padding: 0; border: 0; border-radius: 5px; background: transparent; color: var(--text-secondary, #75618f); cursor: pointer; }
+.searchable-select-control > button:hover { background: var(--primary-soft, #eee9fb); }
+.searchable-select-control > button:disabled { cursor: default; opacity: .5; }
+.searchable-select-clear { right: 32px; }
+.searchable-select-toggle { right: 5px; }
+.searchable-select-options { position: absolute; z-index: 30; top: 100%; left: 0; right: 0; max-height: 260px; overflow-y: auto; margin-top: 5px; padding: 4px; background: var(--surface, #fff); border: 1px solid var(--border); border-radius: 9px; box-shadow: 0 6px 20px #29154a1a; }
+.searchable-select-options > button { display: block; width: 100%; padding: 9px 10px; border: 0; border-radius: 5px; text-align: left; background: transparent; color: var(--text-primary, #514960); font: inherit; font-size: 13px; line-height: 1.5; cursor: pointer; overflow-wrap: anywhere; }
+.searchable-select-options > button.is-active { background: var(--primary-soft, #eee9fb); }
+.searchable-select-options > button[aria-selected="true"] { color: var(--purple); font-weight: 600; }
+.searchable-select-empty { margin: 8px 10px; color: var(--text-secondary, #75618f); font-size: 12px; }

@@ -4,6 +4,7 @@ import { loadTeacherDossier } from '../server/teacher-dossier.mjs';
 import { saveAttendance } from '../extension/attendance.mjs';
 import { lessonTheme } from '../extension/lesson-theme.mjs';
 import { saveLessonMark } from '../extension/lesson-mark.mjs';
+import { saveLessonReward } from '../extension/lesson-reward.mjs';
 import { saveHomeworkMarks } from '../extension/homework.mjs';
 
 const origin = 'https://omni.top-academy.ru';
@@ -26,10 +27,10 @@ export async function dispatch(action, input = {}) {
       const body = await response.json().catch(() => null);
       throw new BridgeError('HOMEWORK_REJECTED', `Omni отклонил оценку. ${typeof body?.message === 'string' ? body.message.replace(/<[^>]*>/g, '').slice(0, 250) : 'Проверьте допустимую оценку и доступ к работе.'}`);
     }
-    if (['/presents/set-was', '/presents/set-theme', '/presents/set-mark'].includes(path) && [400, 422].includes(response.status)) {
+    if (['/presents/set-was', '/presents/set-theme', '/presents/set-mark', '/presents/set-prize'].includes(path) && [400, 422].includes(response.status)) {
       const body = await response.json().catch(() => null);
       const reason = typeof body?.message === 'string' ? body.message : typeof body?.error === 'string' ? body.error : '';
-      throw new BridgeError(path.endsWith('set-mark') ? 'MARK_REJECTED' : path.endsWith('set-theme') ? 'THEME_REJECTED' : 'ATTENDANCE_REJECTED', `Omni отклонил изменения.${reason ? ' ' + reason.replace(/<[^>]*>/g, '').slice(0, 250) : ''} Загрузите урок перед повторной попыткой.`);
+      throw new BridgeError(path.endsWith('set-prize') ? 'REWARD_REJECTED' : path.endsWith('set-mark') ? 'MARK_REJECTED' : path.endsWith('set-theme') ? 'THEME_REJECTED' : 'ATTENDANCE_REJECTED', `Omni отклонил изменения.${reason ? ' ' + reason.replace(/<[^>]*>/g, '').slice(0, 250) : ''} Загрузите урок перед повторной попыткой.`);
     }
     if (!response.ok) throw new BridgeError('UPSTREAM_ERROR', 'Omni не вернул данные.');
     try { return await response.json(); } catch { throw new BridgeError('UPSTREAM_ERROR', 'Не удалось прочитать ответ Omni.'); }
@@ -45,6 +46,7 @@ export async function dispatch(action, input = {}) {
   }
   if (action === 'set-attendance') return saveAttendance(input, { request: read, identity });
   if (action === 'set-lesson-mark') return saveLessonMark(input, { request: read, identity });
+  if (action === 'set-lesson-reward') return saveLessonReward(input, { request: read, identity });
   if (action === 'set-homework-marks') return saveHomeworkMarks(input, { request: read, identity });
   if (action === 'lesson-themes' || action === 'set-lesson-theme') return lessonTheme(action, input, { request: read, identity });
   const account = await identity();

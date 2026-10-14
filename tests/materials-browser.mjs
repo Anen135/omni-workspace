@@ -58,12 +58,18 @@ try {
       homework: section([]), newHomework: section([{ filename: 'answer.png', download_url_stud: 'https://example.com/answer.png' }, { filename: 'document.pdf', download_url_stud: 'https://example.com/document.pdf' }]), counts: { homework: 2, practice: 0 }, fetchedAt: new Date().toISOString(),
     };
     else if (action === 'lesson') body = { account, presents: { cur_group: '1', cur_lenta: '1', cur_date: '2026-09-21' }, materials: section([{ download_url: 'https://example.com/issued-file' }]), homework: section([]) };
-    else if (action === 'materials-catalog') body = {
-      account, forms: section([{ id_form: 4, name_form: 'Форма A' }, { id_form: 5, name_form: 'Пустая форма' }]),
-      types: section([{ id: 1, name: 'Домашние задания' }, { id: 2, name: 'Уроки' }]),
-      directions: section(input.form === '4' ? [{ id: 16, dir_name: 'Направление A' }] : []),
-      packages: section(input.form === '4' ? [{ id: 42, name_spec: 'Тестовый курс' }, { id: 43, name_spec: 'Пустой курс' }] : []),
-    };
+    else if (action === 'materials-catalog') {
+      const unscopedDirections = [{ id: 16, dir_name: 'Направление A' }, { id: 17, dir_name: 'Направление B' }];
+      const unscopedPackages = [{ id: 44, name_spec: 'Курс без формы' }, { id: 45, name_spec: 'Пустой курс без формы' }];
+      body = {
+        account, forms: section([{ id_form: 4, name_form: 'Форма A' }, { id_form: 5, name_form: 'Пустая форма' }]),
+        types: section([{ id: 1, name: 'Домашние задания' }, { id: 2, name: 'Уроки' }]),
+        directions: section(input.form === '4' ? [{ id: 16, dir_name: 'Направление A' }] : input.form ? [] : unscopedDirections),
+        packages: section(input.form === '4'
+          ? [{ id: 42, name_spec: 'Тестовый курс' }, { id: 43, name_spec: 'Пустой курс' }]
+          : input.form ? [] : input.direction === '16' ? [unscopedPackages[0]] : input.direction === '17' ? [unscopedPackages[1]] : unscopedPackages),
+      };
+    }
     else if (action === 'method-package') body = {
       account: wrongAccount ? { ...account, id: '102' } : account,
       materials: failPackage ? { data: null, error: 'Тестовая ошибка загрузки' } : section(input.spec === '43' ? {} : materials),
@@ -74,6 +80,8 @@ try {
   });
   await page.goto('http://127.0.0.1:5184/', { waitUntil: 'domcontentloaded' });
   await page.getByRole('heading', { name: 'Мой урок' }).waitFor();
+  await page.getByText('Подключено', { exact: true }).waitFor();
+  await page.waitForFunction(() => !Array.from(document.querySelectorAll('button')).find(button => button.textContent === 'Обновить')?.disabled);
   let releaseSnapshot;
   snapshotGate = new Promise(resolve => { releaseSnapshot = resolve; });
   const refreshRequest = page.waitForRequest(request => request.url().endsWith('/snapshot'));
@@ -83,14 +91,72 @@ try {
   await page.locator('.teaching-materials').waitFor();
   await page.waitForTimeout(300);
   assert.equal(requests.filter(request => request.action === 'materials-catalog').length, 0);
+  const catalogStarted = page.waitForRequest(request => request.url().endsWith('/materials-catalog'));
   releaseSnapshot();
   snapshotGate = undefined;
-  const form = page.getByLabel('Форма обучения', { exact: true });
-  const course = page.getByLabel('Методпакет', { exact: true });
+  await catalogStarted;
+  const form = page.getByRole('combobox', { name: 'Форма обучения', exact: true });
+  const direction = page.getByRole('combobox', { name: 'Направление', exact: true });
+  const course = page.getByRole('combobox', { name: 'Методпакет', exact: true });
   const refresh = page.getByRole('button', { name: 'Обновить методички' });
-  await form.selectOption('4');
-  await page.getByLabel('Направление', { exact: true }).selectOption('16');
-  await course.selectOption('42');
+  const catalogRequests = () => requests.filter(request => request.action === 'materials-catalog');
+  await page.waitForFunction(() => !document.querySelector('[aria-label="Форма обучения"]')?.disabled);
+  assert.ok(catalogRequests().length, `catalogue request expected; observed ${JSON.stringify(requests)}`);
+  assert.deepEqual(catalogRequests().at(-1).input, {});
+  await page.getByRole('button', { name: 'Открыть список: Методпакет' }).click();
+  await page.getByRole('listbox', { name: 'Методпакет' }).getByRole('option', { name: 'Курс без формы', exact: true }).waitFor();
+  await page.getByRole('listbox', { name: 'Методпакет' }).getByRole('option', { name: 'Пустой курс без формы', exact: true }).waitFor();
+  await course.fill('курс без формы');
+  assert.equal(catalogRequests().length, 1, 'typing in method-package filter is local');
+  await course.press('Escape');
+
+  // Each of the three catalogue controls filters locally while text is entered.
+  const beforeTyping = catalogRequests().length;
+  await form.fill('Форма A');
+  await page.getByRole('listbox', { name: 'Форма обучения' }).getByRole('option', { name: 'Форма A' }).waitFor();
+  assert.equal(catalogRequests().length, beforeTyping);
+  await form.fill('нет такого варианта');
+  await page.getByText('Ничего не найдено', { exact: true }).waitFor();
+  assert.equal(catalogRequests().length, beforeTyping);
+  await page.keyboard.press('Escape');
+  assert.equal(await page.getByRole('listbox', { name: 'Форма обучения' }).count(), 0);
+
+  // With no form chosen, direction selection is valid and sends only its ID.
+  await direction.fill('Направление B');
+  await page.getByRole('listbox', { name: 'Направление' }).getByRole('option', { name: 'Направление B' }).waitFor();
+  assert.equal(catalogRequests().length, beforeTyping);
+  await page.getByRole('option', { name: 'Направление B' }).click();
+  assert.deepEqual(catalogRequests().at(-1).input, { direction: '17' });
+  await page.getByRole('button', { name: 'Открыть список: Методпакет' }).click();
+  await course.fill('Пустой курс без формы');
+  await page.getByRole('listbox', { name: 'Методпакет' }).getByRole('option', { name: 'Пустой курс без формы' }).waitFor();
+  assert.equal(catalogRequests().length, beforeTyping + 1);
+  await course.press('Escape');
+  assert.equal(await page.getByRole('listbox', { name: 'Методпакет' }).count(), 0);
+  await page.getByRole('button', { name: 'Открыть список: Методпакет' }).click();
+  await page.getByRole('option', { name: 'Пустой курс без формы' }).click();
+  assert.equal(requests.filter(request => request.action === 'method-package').at(-1).input.spec, '45');
+  await page.getByRole('button', { name: 'Очистить: Методпакет' }).click();
+  await page.getByRole('button', { name: 'Открыть список: Методпакет' }).click();
+  await page.mouse.click(1100, 350);
+  assert.equal(await page.getByRole('listbox', { name: 'Методпакет' }).count(), 0);
+
+  await page.getByRole('button', { name: 'Очистить: Направление' }).click();
+  assert.deepEqual(catalogRequests().at(-1).input, {});
+  await form.fill('Форма A');
+  await page.getByRole('option', { name: 'Форма A' }).click();
+  assert.deepEqual(catalogRequests().at(-1).input, { form: '4' });
+  await page.getByRole('button', { name: 'Очистить: Форма обучения' }).click();
+  assert.deepEqual(catalogRequests().at(-1).input, {});
+  await form.fill('Форма A');
+  await page.getByRole('option', { name: 'Форма A' }).click();
+  assert.deepEqual(catalogRequests().at(-1).input, { form: '4' });
+  await direction.fill('Направление A');
+  await page.getByRole('option', { name: 'Направление A' }).click();
+  assert.deepEqual(catalogRequests().at(-1).input, { form: '4', direction: '16' });
+  await course.fill('Тестовый курс');
+  await page.getByRole('option', { name: 'Тестовый курс' }).click();
+  assert.equal(requests.filter(request => request.action === 'method-package').at(-1).input.spec, '42');
   await page.getByRole('heading', { name: 'Методичка до урока' }).waitFor();
   assert.equal(await page.locator('.method-card').count(), 3);
   assert.equal(await page.getByRole('link', { name: 'Открыть файл' }).getAttribute('href'), 'https://fs.top-academy.ru/api/v1/files/test-fixture');
@@ -98,6 +164,9 @@ try {
   const pdfToggle = page.locator('.method-card').filter({ hasText: 'Методичка до урока' }).getByRole('button', { name: 'Превью', exact: true });
   assert.equal(await pdfToggle.getAttribute('aria-expanded'), 'false');
   assert.equal(await page.locator('.file-preview-full').count(), 0);
+  // Leave the expanded hover rail before interacting with the content beneath it.
+  await page.mouse.move(800, 300);
+  await page.waitForFunction(() => document.querySelector('.sidebar').getBoundingClientRect().width === 72);
   await pdfToggle.hover();
   await page.getByRole('tooltip').waitFor();
   await page.getByRole('tooltip').locator('canvas[data-rendered="true"]').waitFor();
@@ -118,9 +187,11 @@ try {
   await page.setViewportSize({ width: 390, height: 844 });
   assert.ok(await page.locator('.teaching-materials').evaluate(el => el.scrollWidth <= el.clientWidth));
   await page.setViewportSize({ width: 1440, height: 1000 });
-  await course.selectOption('43');
+  await course.fill('Пустой курс');
+  await page.getByRole('option', { name: 'Пустой курс', exact: true }).click();
   await page.getByText('В этом методпакете пока нет материалов', { exact: true }).waitFor();
-  await course.selectOption('42');
+  await course.fill('Тестовый курс');
+  await page.getByRole('option', { name: 'Тестовый курс', exact: true }).click();
   await page.getByRole('heading', { name: 'Методичка до урока' }).waitFor();
   failPackage = true;
   await refresh.click();
@@ -129,16 +200,20 @@ try {
   failPackage = false;
   await refresh.click();
   await page.getByRole('heading', { name: 'Методичка до урока' }).waitFor();
-  await form.selectOption('5');
+  await form.fill('Пустая форма');
+  await page.getByRole('option', { name: 'Пустая форма', exact: true }).click();
   await page.getByText('Для выбранной формы методпакеты не найдены', { exact: true }).waitFor();
   assert.equal(await page.locator('.method-card').count(), 0);
   assert.equal(await course.inputValue(), '');
-  assert.equal(await page.getByLabel('Направление', { exact: true }).inputValue(), '');
-  await form.selectOption('4');
+  assert.equal(await direction.inputValue(), '');
+  await form.fill('Форма A');
+  await page.getByRole('option', { name: 'Форма A', exact: true }).click();
   // Homework previews use the same controls and do not require a lesson.
   await page.getByRole('button', { name: 'Домашние задания', exact: true }).click();
   await page.getByRole('button', { name: 'Открыть работу', exact: true }).first().click();
   const imageToggle = page.locator('.file-preview').first().getByRole('button', { name: 'Превью', exact: true });
+  await page.mouse.move(800, 300);
+  await page.waitForFunction(() => document.querySelector('.sidebar').getBoundingClientRect().width === 72);
   for (const event of ['scroll', 'resize']) {
     await imageToggle.dispatchEvent('pointerover', { pointerType: 'mouse', clientX: 50, clientY: 50 });
     await page.evaluate(type => window.dispatchEvent(new Event(type)), event);
@@ -157,9 +232,11 @@ try {
   await page.waitForFunction(() => document.querySelector('.file-preview-full img')?.naturalWidth > 0);
   await page.getByRole('button', { name: 'Свернуть превью', exact: true }).click();
   await page.getByRole('button', { name: 'Материалы', exact: true }).click();
-  await form.selectOption('4');
+  await form.fill('Форма A');
+  await page.getByRole('option', { name: 'Форма A', exact: true }).click();
   wrongAccount = true;
-  await course.selectOption('42');
+  await course.fill('Тестовый курс');
+  await page.getByRole('option', { name: 'Тестовый курс', exact: true }).click();
   await page.getByRole('alert').filter({ hasText: 'Аккаунт изменился' }).waitFor();
   assert.equal(await page.locator('.teaching-materials').count(), 0);
   assert.ok(!requests.some(request => request.action === 'lesson'));

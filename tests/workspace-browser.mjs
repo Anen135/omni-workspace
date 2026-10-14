@@ -20,6 +20,7 @@ try {
   const students = Array.from({ length: 30 }, (_, i) => ({ id_stud: String(i + 1), fio_stud: `Ученик ${String(i + 1).padStart(2, '0')}`, was: i % 3, mark2: i === 0 ? 0 : 10, mark4: 9 }));
   const lesson = (name, start, end) => ({ name_spec: name, groups: 'Группа A', num_rooms: '101', l_start: start, l_end: end });
   const weeks = [];
+  let eventTheme = false;
   await page.route('**/api/omni/**', async route => {
     const action = route.request().url().split('/').at(-1);
     const input = route.request().postDataJSON();
@@ -27,7 +28,9 @@ try {
     if (action === 'status') body = { connected: true };
     else if (action === 'snapshot') {
       weeks.push(input.week);
-      body = { account, teachers: section([]), presents: section({}), groups: section([{ id_tgroups: '1', name_tgroups: 'Группа A' }]),
+      body = { account, teachers: section([]), presents: section(eventTheme
+        ? { scheduleType: 'event', scheduleData: { theme: 'Тема мероприятия' }, students: [] }
+        : { students: [{ id_stud: '41', id_vizit: null, theme: '' }, { id_stud: '42', id_vizit: '92', theme: 'Тема из записи посещения' }] }), groups: section([{ id_tgroups: '1', name_tgroups: 'Группа A' }]),
         schedule: section({ dates, daysShort: { 1: 'Пн', 2: 'Вт', 3: 'Ср', 4: 'Чт', 5: 'Пт', 6: 'Сб', 7: 'Вс' }, body: { 1: { 1: lesson('Ранняя пара', '07:00', '08:30') }, 2: { 1: lesson('Пересечение', '08:00', '09:30') }, 3: { 2: lesson('Поздняя пара', '22:00', '23:30') }, 4: { 3: lesson('Без времени', '', '') } } }),
         newHomework: section([{ fio_stud: 'Ученик 01', theme: 'Тема A', name_spec: 'Предмет A', name_tgroups: 'Группа A', answer_text: 'Ответ A' }, { fio_stud: 'Ученик 02', theme: 'Тема B', name_tgroups: 'Группа B' }]),
         homework: section([]), counts: { homework: 2, practice: 0 }, fetchedAt: new Date().toISOString() };
@@ -37,6 +40,7 @@ try {
   });
   await page.goto('http://127.0.0.1:5187/');
   await page.getByText('Подключено', { exact: true }).waitFor();
+  assert.equal(await page.locator('.lesson-banner h2').innerText(), 'Тема из записи посещения');
   const sidebar = page.locator('.sidebar');
   const mainLeft = await page.locator('main').evaluate(node => node.getBoundingClientRect().left);
   assert.equal(await sidebar.evaluate(node => node.getBoundingClientRect().width), 72);
@@ -45,7 +49,7 @@ try {
   assert.equal(await page.locator('main').evaluate(node => node.getBoundingClientRect().left), mainLeft);
   await page.mouse.move(500, 200);
   await page.waitForFunction(() => document.querySelector('.sidebar').getBoundingClientRect().width === 72);
-  await sidebar.getByRole('button', { name: 'Расписание', exact: true }).focus();
+  await page.keyboard.press('Tab');
   await page.waitForFunction(() => document.querySelector('.sidebar').getBoundingClientRect().width === 240);
   await page.evaluate(() => document.activeElement.blur());
   await page.waitForFunction(() => document.querySelector('.sidebar').getBoundingClientRect().width === 72);
@@ -107,6 +111,11 @@ try {
   await page.getByLabel('Раздел', { exact: true }).selectOption('schedule');
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
   await page.screenshot({ path: 'tmp/workspace-mobile.png' });
+  eventTheme = true;
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await page.reload();
+  await page.getByText('Подключено', { exact: true }).waitFor();
+  assert.equal(await page.locator('.lesson-banner h2').innerText(), 'Тема мероприятия');
   assert.deepEqual(errors, []);
   console.log('PASS: weekly grid, overlap/missing times, shared header, calendar, drawer, students search/sort/pagination, homework filters, mobile overflow.');
 } finally { await browser?.close(); await server.close(); }

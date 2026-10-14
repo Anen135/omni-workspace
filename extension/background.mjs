@@ -51,7 +51,7 @@ async function dispatch({ action, input = {} }, sender) {
   const logoutKey = Number.isInteger(sender.tab?.id) ? `logoutWarning:${sender.tab.id}` : '';
   if (action === 'capabilities') {
     if (logoutKey && officialUrl(sender.url) && new URL(sender.url).pathname.startsWith('/login')) await chrome.storage.session.remove(logoutKey);
-    return { version: chrome.runtime.getManifest().version, teacherSwitch: true, accountSwitch: true, attendance: true, lessonTheme: true, lessonMark: true, homeworkMarks: true, sessionRevision: (await chrome.storage.session.get('sessionRevision')).sessionRevision || '' };
+    return { version: chrome.runtime.getManifest().version, teacherSwitch: true, accountSwitch: true, attendance: true, lessonTheme: true, lessonMark: true, lessonReward: true, homeworkMarks: true, sessionRevision: (await chrome.storage.session.get('sessionRevision')).sessionRevision || '' };
   }
   if (!officialUrl(sender.url)) {
     if (action !== 'connect') throw Object.assign(new Error('Откройте Omni.'), { code: 'FORBIDDEN' });

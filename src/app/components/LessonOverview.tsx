@@ -4,10 +4,10 @@ import { label, rows, type Account, type RemoteRecord } from '../../services/omn
 import type { LessonDraft } from '../../features/lesson/lesson-draft';
 import type { presentLessons } from '../../features/lesson/present-lessons';
 
-export function LessonBanner({ account, fetchedAt, date, students, draft }: {
-  account: Account; fetchedAt: string; date: string; students: RemoteRecord[]; draft?: LessonDraft;
+export function LessonBanner({ account, fetchedAt, date, students, theme, draft }: {
+  account: Account; fetchedAt: string; date: string; students: RemoteRecord[]; theme: string; draft?: LessonDraft;
 }) {
-  return <section className="lesson-banner"><span className="lesson-icon"><BookOpen size={25}/></span><div className="lesson-description"><div className="lesson-meta"><span>РЕАЛЬНЫЕ ДАННЫЕ</span><span>{date}</span></div><h2>{draft?.theme?.theme || label(students[0]?.theme) || (students.length ? 'Текущее занятие' : 'Omni не вернул текущую пару')}</h2><div className="lesson-time">Обновлено {new Date(fetchedAt).toLocaleTimeString('ru-RU')} · {account.branch}{draft?.theme && ' · тема в черновике'}</div></div></section>;
+  return <section className="lesson-banner"><span className="lesson-icon"><BookOpen size={25}/></span><div className="lesson-description"><div className="lesson-meta"><span>РЕАЛЬНЫЕ ДАННЫЕ</span><span>{date}</span></div><h2>{draft?.theme?.theme || theme || (students.length ? 'Текущее занятие' : 'Omni не вернул текущую пару')}</h2><div className="lesson-time">Обновлено {new Date(fetchedAt).toLocaleTimeString('ru-RU')} · {account.branch}{draft?.theme && ' · тема в черновике'}</div></div></section>;
 }
 
 export function LessonSaveBar({ busy, saving, draft, hasTheme, hasDrafts, unavailable, onSave, onDiscard }: {
@@ -15,7 +15,7 @@ export function LessonSaveBar({ busy, saving, draft, hasTheme, hasDrafts, unavai
   onSave: () => void; onDiscard: () => void;
 }) {
   return <div className="lesson-save-bar">
-    <div role="status">{draft ? `Черновик: ${Object.keys(draft.attendance).length} отметок посещаемости · ${Object.keys(draft.marks).length} оценок${draft.theme ? ' · тема урока' : ''}. В Omni ещё не сохранён.` : 'Посещаемость, оценки и тема накапливаются в черновике до нажатия «Сохранить».'}
+    <div role="status">{draft ? `Черновик: ${Object.keys(draft.attendance).length} отметок посещаемости · ${Object.keys(draft.marks).length} оценок · ${Object.keys(draft.rewards || {}).length} наград${draft.theme ? ' · тема урока' : ''}. В Omni ещё не сохранён.` : 'Посещаемость, оценки, топкойны и тема накапливаются в черновике до нажатия «Сохранить».'}
       {!hasTheme && !draft?.theme && <span> Добавьте тему в черновик, чтобы сохранить урок.</span>}
       {hasDrafts && <small> Черновики хранятся до закрытия или перезагрузки страницы.</small>}
     </div>

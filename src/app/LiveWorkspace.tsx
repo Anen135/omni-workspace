@@ -11,8 +11,11 @@ import { homeworkItems, type HomeworkReviewItem } from '../features/homework/hom
 import { LessonThemeEditor, type ThemeChoice, type ThemeData } from '../features/lesson/LessonThemeEditor';
 import { scheduleDays } from '../features/schedule/schedule';
 import { presentLessons } from '../features/lesson/present-lessons';
-import { attendanceStatus, attendanceVisit, attendanceUnavailable, attendanceHasTheme, attendanceDraftKey, type AttendanceChange, type AttendanceStatus } from '../features/lesson/attendance';
-import { emptyLessonDraft, hasLessonChanges, lessonDraftConflict, markValue, reconcileLessonDraft, type LessonDraft } from '../features/lesson/lesson-draft';
+import { PreviousLessonCopy } from '../features/lesson/PreviousLessonCopy';
+import { copyLessonDraft, type CopySelection, type CopySource, type PreviousLessonData } from '../features/lesson/lesson-copy';
+import { rewardLevel, rewardValue, type LessonReward } from '../features/lesson/lesson-reward';
+import { attendanceStatus, attendanceVisit, attendanceUnavailable, attendanceHasTheme, attendanceLessonInfo, attendanceDraftKey, type AttendanceChange, type AttendanceStatus } from '../features/lesson/attendance';
+import { emptyLessonDraft, hasLessonChanges, lessonDraftConflict, markValue, reconcileLessonDraft, stageAttendanceChange, stageMarkChange, stageRewardChange, type LessonDraft } from '../features/lesson/lesson-draft';
 import { SectionView } from '../components/data/RemoteData';
 import { ConnectionCard } from './components/ConnectionCard';
 import { WorkspaceHeader } from './components/WorkspaceHeader';
@@ -64,6 +67,7 @@ export function LiveWorkspace({ onDemo }: { onDemo: () => void }) {
   const draft = lessonDrafts[draftKey];
   const hasDrafts = Object.keys(lessonDrafts).length > 0;
   const hasTheme = attendanceHasTheme(presentData);
+  const currentTheme = label(attendanceLessonInfo(presentData)?.theme).trim() || (presentData.scheduleType === 'event' ? label(record(presentData.scheduleData).theme).trim() : '');
   const lessonStudents = rows(presentData.students);
   const dayLessons = presentLessons(presentData.schedule);
   const groups = rows(snapshot?.groups.data);
@@ -300,7 +304,7 @@ export function LiveWorkspace({ onDemo }: { onDemo: () => void }) {
   function storeDraft(key: string, next: LessonDraft) {
     setLessonDrafts(current => {
       const updated = { ...current };
-      if (hasLessonChanges(next)) updated[key] = { ...next, attendance: { ...next.attendance }, marks: { ...next.marks } };
+      if (hasLessonChanges(next)) updated[key] = { ...next, attendance: { ...next.attendance }, marks: { ...next.marks }, rewards: { ...next.rewards } };
       else delete updated[key];
       return updated;
     });
@@ -322,17 +326,59 @@ export function LiveWorkspace({ onDemo }: { onDemo: () => void }) {
     const base = lessonStudents.find(item => label(item.id_stud) === stud);
     if (!base) return;
     setLessonDrafts(current => {
-      const next = current[draftKey] || emptyLessonDraft();
-      const key = `${stud}:${type}`;
-      const existing = next.marks[key];
-      const previousMark = existing ? existing.previousMark : markValue(base[`mark${type}`]);
-      const marks = { ...next.marks };
-      if (String(mark) === previousMark) delete marks[key];
-      else marks[key] = { stud, type, mark, previousMark, visit: existing ? existing.visit : attendanceVisit(base.id_vizit) };
-      const updated = { ...current, [draftKey]: { ...next, marks } };
+      const next = stageMarkChange(current[draftKey] || emptyLessonDraft(), base, type, mark);
+      const updated = { ...current, [draftKey]: next };
       if (!hasLessonChanges(updated[draftKey])) delete updated[draftKey];
       return updated;
     });
+  }
+  function stageReward(student: RemoteRecord, reward: LessonReward) {
+    if (!snapshot || operation.current || attendanceReason) return;
+    const matches = lessonStudents.filter(item => label(item.id_stud) === label(student.id_stud));
+    if (matches.length !== 1) return;
+    const was = draft?.attendance[label(student.id_stud)]?.was ?? attendanceStatus(matches[0].was);
+    if ((was !== 1 && was !== 2) || rewardLevel(matches[0].prize) === null) return;
+    setLessonDrafts(current => {
+      const next = stageRewardChange(current[draftKey] || emptyLessonDraft(), matches[0], reward);
+      const updated = { ...current, [draftKey]: next };
+      if (!hasLessonChanges(next)) delete updated[draftKey];
+      return updated;
+    });
+  }
+  async function loadPreviousLesson(source: CopySource): Promise<PreviousLessonData> {
+    if (!snapshot || operation.current || attendanceReason) throw new Error('Дождитесь завершения операции и загрузите текущий урок.');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(source.date) || source.date > selectedDate || source.date === selectedDate && (source.slot === undefined || Number(source.slot) >= Number(presentData.cur_lenta))) throw new Error('Выберите пару, которая была раньше текущего урока.');
+    const version = sessionVersion.current;
+    const accountId = snapshot.account.id;
+    const group = label(presentData.cur_group);
+    operation.current = true; setBusy(true); setError('');
+    try {
+      const result = await omniRequest<RemoteLesson>('lesson', { date: source.date, group, ...(source.slot !== undefined ? { lenta: source.slot } : {}) });
+      if (version !== sessionVersion.current) throw new Error('Сессия изменилась. Загрузите текущий урок заново.');
+      if (result.account.id !== accountId) throw new ConnectionError('ACCOUNT_CHANGED', 'Аккаунт изменился. Загрузите текущий урок заново.');
+      const presents = record(result.presents);
+      const loadedSlot = label(presents.cur_lenta);
+      if (presents.cur_date !== source.date || label(presents.cur_group) !== group || !/^\d{1,12}$/.test(loadedSlot) || source.slot !== undefined && loadedSlot !== source.slot || source.date === selectedDate && Number(loadedSlot) >= Number(presentData.cur_lenta)) throw new Error('Omni не подтвердил выбранную прошлую пару для этой группы.');
+      const slots = presentLessons(presents.schedule);
+      const selected = slots.find(item => item.slot === loadedSlot);
+      return { students: rows(presents.students), date: source.date, slot: loadedSlot, dayLessons: slots, description: `${source.date.split('-').reverse().join('.')} · ${selected?.title || `Пара · ${loadedSlot}`}${selected?.time ? ` · ${selected.time}` : ''}` };
+    } catch (reason) {
+      if (version === sessionVersion.current && reason instanceof ConnectionError && ['AUTH_REQUIRED', 'ACCOUNT_CHANGED', 'CHALLENGE'].includes(reason.code)) failed(reason);
+      throw reason;
+    } finally { operation.current = false; setBusy(false); }
+  }
+  function stagePreviousLesson(source: PreviousLessonData, selection: CopySelection) {
+    if (!snapshot || operation.current || attendanceReason) return;
+    if (source.date > selectedDate || source.date === selectedDate && Number(source.slot) >= Number(presentData.cur_lenta)) return;
+    if (selection.overwrite && !window.confirm('Заменить заполненные отметки, оценки и топкойны этого урока выбранными значениями с прошлой пары? Изменения останутся в черновике до нажатия «Сохранить».')) return;
+    setLessonDrafts(current => {
+      const next = copyLessonDraft(current[draftKey] || emptyLessonDraft(), lessonStudents, source.students, selection);
+      const updated = { ...current };
+      if (hasLessonChanges(next)) updated[draftKey] = next;
+      else delete updated[draftKey];
+      return updated;
+    });
+    setNotice('Выбранные значения прошлой пары перенесены в черновик. Нажмите «Сохранить» для отправки в Omni.');
   }
   async function loadLessonThemes(): Promise<ThemeData> {
     if (!snapshot || operation.current) throw new Error('Дождитесь завершения операции.');
@@ -363,18 +409,14 @@ export function LiveWorkspace({ onDemo }: { onDemo: () => void }) {
     if (!snapshot || !isExtension() || operation.current || attendanceReason) return;
     if (all && !window.confirm(`Отметить присутствующими всю группу (${items.length} учеников), включая скрытых поиском? Отметки останутся в черновике до нажатия «Сохранить».`)) return;
     setLessonDrafts(current => {
-      const next = current[draftKey] || emptyLessonDraft();
-      const attendance = { ...next.attendance };
+      let next = current[draftKey] || emptyLessonDraft();
       for (const student of items) {
         const stud = label(student.id_stud);
         const base = lessonStudents.find(item => label(item.id_stud) === stud);
         if (!base) continue;
-        const existing = attendance[stud];
-        const previousWas = existing ? existing.previousWas : attendanceStatus(base.was);
-        if (was === previousWas) delete attendance[stud];
-        else attendance[stud] = { stud, was, previousWas, visit: existing ? existing.visit : attendanceVisit(base.id_vizit) };
+        next = stageAttendanceChange(next, base, was);
       }
-      const updated = { ...current, [draftKey]: { ...next, attendance } };
+      const updated = { ...current, [draftKey]: next };
       if (!hasLessonChanges(updated[draftKey])) delete updated[draftKey];
       return updated;
     });
@@ -389,7 +431,7 @@ export function LiveWorkspace({ onDemo }: { onDemo: () => void }) {
     const version = sessionVersion.current;
     const key = draftKey;
     const params = { accountId: snapshot.account.id, date: label(presentData.cur_date), group: label(presentData.cur_group), lenta: label(presentData.cur_lenta), schedule: label(presentData.cur_schedule) };
-    let pending: LessonDraft = { ...draft, attendance: { ...draft.attendance }, marks: { ...draft.marks } };
+    let pending: LessonDraft = { ...draft, attendance: { ...draft.attendance }, marks: { ...draft.marks }, rewards: { ...draft.rewards } };
     operation.current = true; setBusy(true); setAttendanceSaving(true); setError(''); setNotice('');
     function accept(result: { account: { id: string }; presents: unknown }, themeChanged = false) {
       if (version !== sessionVersion.current) throw new Error('Сессия изменилась.');
@@ -421,6 +463,11 @@ export function LiveWorkspace({ onDemo }: { onDemo: () => void }) {
           if (matches.length !== 1 || markValue(matches[0][`mark${change.type}`]) !== change.previousMark) { storeDraft(key, pending); throw new Error('После сохранения темы изменилась оценка ученика. Перечитайте урок.'); }
           pending.marks[markKey] = { ...change, visit: attendanceVisit(matches[0].id_vizit) };
         }
+        for (const [stud, change] of Object.entries(pending.rewards || {})) {
+          const matches = students.filter(student => label(student.id_stud) === stud);
+          if (matches.length !== 1 || rewardValue(matches[0].prize) !== change.previousReward) { storeDraft(key, pending); throw new Error('После сохранения темы изменились топкойны ученика. Перечитайте урок.'); }
+          pending.rewards![stud] = { ...change, visit: attendanceVisit(matches[0].id_vizit) };
+        }
         storeDraft(key, pending);
         if (result.warning) { setError(result.warning); }
       }
@@ -434,6 +481,12 @@ export function LiveWorkspace({ onDemo }: { onDemo: () => void }) {
           if (matches.length !== 1 || markValue(matches[0][`mark${change.type}`]) !== change.previousMark) { storeDraft(key, pending); throw new Error('После сохранения посещаемости изменилась оценка ученика. Перечитайте урок.'); }
           pending.marks[markKey] = { ...change, visit: attendanceVisit(matches[0].id_vizit) };
         }
+        for (const [stud, change] of Object.entries(pending.rewards || {})) {
+          if (!changes.some(attendance => attendance.stud === stud)) continue;
+          const matches = rows(fresh.students).filter(student => label(student.id_stud) === stud);
+          if (matches.length !== 1 || rewardValue(matches[0].prize) !== change.previousReward) { storeDraft(key, pending); throw new Error('После сохранения посещаемости изменились топкойны ученика. Перечитайте урок.'); }
+          pending.rewards![stud] = { ...change, visit: attendanceVisit(matches[0].id_vizit) };
+        }
         storeDraft(key, pending);
       }
       for (const [markKey, change] of Object.entries(pending.marks)) {
@@ -441,6 +494,13 @@ export function LiveWorkspace({ onDemo }: { onDemo: () => void }) {
         if (matches.length !== 1 || !(Number(matches[0].id_vizit) > 0) || attendanceVisit(matches[0].id_vizit) !== change.visit) throw new Error('Запись посещения для оценки недоступна или изменилась. Перечитайте урок.');
         fresh = accept(await omniRequest<{ account: { id: string }; presents: unknown }>('set-lesson-mark', { ...params, ...change, visit: label(matches[0].id_vizit) }));
         delete pending.marks[markKey];
+        storeDraft(key, pending);
+      }
+      for (const [stud, change] of Object.entries(pending.rewards || {})) {
+        const matches = rows(fresh.students).filter(student => label(student.id_stud) === stud);
+        if (matches.length !== 1 || !(Number(matches[0].id_vizit) > 0) || attendanceVisit(matches[0].id_vizit) !== change.visit) throw new Error('Запись посещения для топкойнов недоступна или изменилась. Перечитайте урок.');
+        fresh = accept(await omniRequest<{ account: { id: string }; presents: unknown }>('set-lesson-reward', { ...params, ...change, visit: label(matches[0].id_vizit) }));
+        delete pending.rewards![stud];
         storeDraft(key, pending);
       }
       setGroupStudents(null); setGroupId(''); setGroupName(''); setDetail(null);
@@ -452,9 +512,9 @@ export function LiveWorkspace({ onDemo }: { onDemo: () => void }) {
   const studentTable = (items: RemoteRecord[]) => {
     const displayed = tab === 'lesson' && draft ? items.map(student => {
       const stud = label(student.id_stud);
-      return { ...student, ...(draft.attendance[stud] ? { was: draft.attendance[stud].was } : {}), ...(draft.marks[`${stud}:2`] ? { mark2: draft.marks[`${stud}:2`].mark } : {}), ...(draft.marks[`${stud}:4`] ? { mark4: draft.marks[`${stud}:4`].mark } : {}) };
+      return { ...student, ...(draft.attendance[stud] ? { was: draft.attendance[stud].was } : {}), ...(draft.marks[`${stud}:2`] ? { mark2: draft.marks[`${stud}:2`].mark } : {}), ...(draft.marks[`${stud}:4`] ? { mark4: draft.marks[`${stud}:4`].mark } : {}), ...(draft.rewards?.[stud] ? { prize: draft.rewards[stud].reward } : {}) };
     }) : items;
-    return <StudentTable key={`${tab}:${groupId}:${draftKey}`} items={displayed} busy={busy} onOpen={student => void openStudent(student)} marks={tab === 'lesson' && isExtension() ? { unavailable: attendanceReason, allowDraft: true, onChange: stageMark } : undefined} attendance={tab === 'lesson' && isExtension() ? { unavailable: attendanceReason, saving: attendanceSaving, onChange: (student, was) => markAttendance([student], was), onAll: () => markAttendance(displayed, 1, true) } : undefined}/>;
+    return <StudentTable key={`${tab}:${groupId}:${draftKey}`} items={displayed} busy={busy} onOpen={student => void openStudent(student)} marks={tab === 'lesson' && isExtension() ? { unavailable: attendanceReason, allowDraft: true, onChange: stageMark } : undefined} rewards={tab === 'lesson' && isExtension() ? { unavailable: attendanceReason, onChange: stageReward } : undefined} attendance={tab === 'lesson' && isExtension() ? { unavailable: attendanceReason, saving: attendanceSaving, onChange: (student, was) => markAttendance([student], was), onAll: () => markAttendance(displayed, 1, true) } : undefined}/>;
   };
   function openDemo() {
     if (operation.current) return;
@@ -483,13 +543,16 @@ export function LiveWorkspace({ onDemo }: { onDemo: () => void }) {
           onLogin={login} onConnect={() => void connect()} onDemo={onDemo}/>}
         {snapshot && <>
           {tab === 'lesson' && <>
-            <LessonBanner account={snapshot.account} fetchedAt={snapshot.fetchedAt} date={selectedDate} students={lessonStudents} draft={draft}/>
+            <LessonBanner account={snapshot.account} fetchedAt={snapshot.fetchedAt} date={selectedDate} students={lessonStudents} theme={currentTheme} draft={draft}/>
             {isExtension() && <>
               <LessonSaveBar busy={busy} saving={attendanceSaving} draft={draft} hasTheme={hasTheme}
                 hasDrafts={hasDrafts} unavailable={attendanceReason} onSave={() => void saveLessonDraft()}
                 onDiscard={() => { if (window.confirm('Удалить локальный черновик этого урока?')) clearLessonDraft(); }}/>
-              <LessonThemeEditor key={draftKey} busy={busy} unavailable={attendanceReason} draft={draft?.theme}
+              <LessonThemeEditor key={draftKey} busy={busy} unavailable={attendanceReason} currentTheme={currentTheme} draft={draft?.theme}
                 onLoad={loadLessonThemes} onSave={stageTheme}/>
+              <PreviousLessonCopy key={`copy:${draftKey}`} busy={busy} unavailable={attendanceReason} students={lessonStudents}
+                date={selectedDate} slot={label(presentData.cur_lenta)} dayLessons={dayLessons}
+                onLoad={loadPreviousLesson} onCopy={stagePreviousLesson}/>
             </>}
             <LessonSelectors date={selectedDate} today={today} presents={presentData} dayLessons={dayLessons}
               busy={busy} onDatePick={date => void loadLesson(undefined, undefined, date)}

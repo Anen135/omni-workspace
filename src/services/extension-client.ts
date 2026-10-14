@@ -53,6 +53,7 @@ const actionCapabilities = new Map<string, string>([
   ['lesson-themes', 'lessonTheme'],
   ['set-lesson-theme', 'lessonTheme'],
   ['set-lesson-mark', 'lessonMark'],
+  ['set-lesson-reward', 'lessonReward'],
   ['set-homework-marks', 'homeworkMarks'],
 ]);
 

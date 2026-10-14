@@ -156,7 +156,7 @@ export function createBridge() {
           throw new BridgeError('LOGIN_UNAVAILABLE', loginErrors.LOGIN_UNAVAILABLE);
         } finally { input.password = ''; }
       }
-      if (['set-attendance', 'lesson-themes', 'set-lesson-theme', 'set-lesson-mark', 'set-homework-marks'].includes(action)) throw new BridgeError('NOT_SUPPORTED', 'Изменяйте урок через расширение браузера.', 400);
+      if (['set-attendance', 'lesson-themes', 'set-lesson-theme', 'set-lesson-mark', 'set-lesson-reward', 'set-homework-marks'].includes(action)) throw new BridgeError('NOT_SUPPORTED', 'Изменяйте урок через расширение браузера.', 400);
       const account = await identity();
       if (action === 'switch-teacher') {
         if (account.id !== input.accountId) throw new BridgeError('ACCOUNT_CHANGED', 'Аккаунт изменился. Обновите данные перед переключением.', 409);

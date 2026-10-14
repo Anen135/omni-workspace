@@ -13,7 +13,7 @@ const { outputFiles } = await build({
   write: false,
 });
 const helperUrl = `data:text/javascript;base64,${Buffer.from(outputFiles[0].text).toString('base64')}`;
-const { lessonDraftConflict, reconcileLessonDraft } = await import(helperUrl);
+const { lessonDraftConflict, reconcileLessonDraft, stageRewardChange, hasLessonChanges } = await import(helperUrl);
 
 const presents = (students) => ({
   cur_date: '2026-10-12', cur_group: 10, cur_lenta: 0, cur_schedule: 50,
@@ -104,4 +104,62 @@ test('reconciliation matches student IDs exactly and keeps a different student d
   ]);
   const reconciled = reconcileLessonDraft(draft, fresh);
   assert.deepEqual(reconciled.attendance, { 1101: draft.attendance[1101] });
+});
+
+test('Topcoins edits retain the first source reward and visit while updating only the staged level', () => {
+  const original = { id_stud: 101, was: 1, id_vizit: 8, prize: 1 };
+  const first = stageRewardChange({ attendance: {}, marks: {} }, original, 2);
+  assert.deepEqual(first.rewards['101'], { stud: '101', reward: 2, previousReward: '1', visit: '8' });
+  const second = stageRewardChange(first, { ...original, prize: 2 }, 3);
+  assert.deepEqual(second.rewards['101'], { stud: '101', reward: 3, previousReward: '1', visit: '8' });
+  assert.equal(hasLessonChanges(second), true);
+  const reverted = stageRewardChange(second, { ...original, prize: 3 }, 1);
+  assert.deepEqual(reverted.rewards, {});
+  assert.equal(hasLessonChanges(reverted), false);
+  assert.equal(first.rewards['101'].reward, 2, 'later edits must not mutate the earlier draft');
+});
+
+test('Topcoins conflict prevents stale value or visit replacement and accepts null visit before its own creation', () => {
+  const original = { id_stud: 101, was: 1, id_vizit: null, prize: 0 };
+  const draft = stageRewardChange({ attendance: {}, marks: {} }, original, 2);
+  assert.equal(lessonDraftConflict(draft, presents([original])), '');
+  assert.match(lessonDraftConflict(draft, presents([{ ...original, prize: 1 }])), /Топкойны или запись ученика изменились/);
+  assert.match(lessonDraftConflict(draft, presents([{ ...original, id_vizit: 80 }])), /Топкойны или запись ученика изменились/);
+  assert.match(lessonDraftConflict(draft, presents([original, original])), /Топкойны или запись ученика изменились/);
+  assert.match(lessonDraftConflict(draft, presents([])), /Топкойны или запись ученика изменились/);
+});
+
+test('reread clears only uniquely confirmed Topcoins and preserves unresolved expected baselines', () => {
+  const draft = {
+    attendance: {}, marks: {}, needsReload: true,
+    rewards: {
+      101: { stud: '101', reward: 2, previousReward: null, visit: '8' },
+      102: { stud: '102', reward: 3, previousReward: null, visit: '9' },
+      103: { stud: '103', reward: 1, previousReward: null, visit: '10' },
+    },
+  };
+  const fresh = presents([
+    { id_stud: 101, prize: '2', id_vizit: 8 },
+    { id_stud: 102, prize: 0, id_vizit: 9 },
+    { id_stud: 103, prize: 1, id_vizit: 10 },
+    { id_stud: 103, prize: 1, id_vizit: 10 },
+  ]);
+  const next = reconcileLessonDraft(draft, fresh);
+  assert.deepEqual(next.rewards, { 102: draft.rewards[102], 103: draft.rewards[103] });
+  assert.equal(next.needsReload, false);
+  assert.equal(next.rewards[102].previousReward, null, 'reread must not authorize overwriting a changed baseline');
+  assert.equal(draft.rewards[101].reward, 2);
+});
+
+test('reward removal uses original sentinel and reconciles all supported no-award representations', () => {
+  const original = { id_stud: 101, was: 1, id_vizit: 8, prize: 3 };
+  const removal = stageRewardChange({ attendance: {}, marks: {} }, original, 4);
+  assert.deepEqual(removal.rewards['101'], { stud: '101', reward: 4, previousReward: '3', visit: '8' });
+  for (const prize of [0, '0', 4, '4', null, undefined, '']) {
+    assert.deepEqual(reconcileLessonDraft(removal, presents([{ ...original, prize }])).rewards, {});
+  }
+  const stagedAward = stageRewardChange({ attendance: {}, marks: {} }, { ...original, prize: 0 }, 2);
+  assert.equal(stagedAward.rewards['101'].previousReward, null);
+  const canceled = stageRewardChange(stagedAward, { ...original, prize: 2 }, 4);
+  assert.deepEqual(canceled.rewards, {}, 'removing a new local award cancels it without creating a removal request');
 });

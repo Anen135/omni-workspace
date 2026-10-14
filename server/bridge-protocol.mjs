@@ -8,6 +8,13 @@ export class BridgeError extends Error {
 
 export function validateInput(action, input) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw new BridgeError('BAD_INPUT', 'Некорректный запрос.', 400);
+  if (action === 'set-lesson-reward') {
+    const fields = ['accountId', 'date', 'group', 'lenta', 'schedule', 'stud', 'visit', 'reward', 'previousReward'];
+    const id = value => typeof value === 'string' && /^[1-9]\d{0,11}$/.test(value);
+    if (Object.keys(input).some(key => !fields.includes(key)) || !['accountId', 'group', 'schedule', 'stud', 'visit'].every(key => id(input[key])) || typeof input.lenta !== 'string' || !/^\d{1,12}$/.test(input.lenta) || ![1, 2, 3, 4].includes(input.reward) || !(input.previousReward === null || ['1', '2', '3'].includes(input.previousReward))) throw new BridgeError('BAD_INPUT', 'Некорректные топкойны или занятие.', 400);
+    validateInput('lesson', { date: input.date, group: input.group, lenta: input.lenta });
+    return input;
+  }
   if (action === 'set-homework-marks') {
     // Homework grades are whole numbers 1-12: Omni's server rejects anything above 12, so this mirrors
     // its limit and does not choose a scale. (Lesson marks below use a technical 1-100 bound instead;
@@ -53,6 +60,6 @@ export function validateInput(action, input) {
   for (const key of ['form', 'direction', 'spec']) {
     if (input[key] !== undefined && !((typeof input[key] === 'string' || Number.isSafeInteger(input[key])) && /^[1-9]\d{0,11}$/.test(String(input[key])))) throw new BridgeError('BAD_INPUT', 'Некорректный идентификатор методпакета.', 400);
   }
-  if ((action === 'method-package' && input.spec === undefined) || (input.direction !== undefined && input.form === undefined)) throw new BridgeError('BAD_INPUT', 'Не выбрана форма обучения или методпакет.', 400);
+  if (action === 'method-package' && input.spec === undefined) throw new BridgeError('BAD_INPUT', 'Не выбран методпакет.', 400);
   return input;
 }

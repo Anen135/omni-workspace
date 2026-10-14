@@ -4,6 +4,7 @@ import { ConnectionError, label, omniRequest, rows, type Section } from '../../s
 import { materialTopics } from './teaching-materials';
 import './teaching-materials.css';
 import { MaterialCard } from './MaterialCard';
+import { SearchableSelect } from '../../components/ui/SearchableSelect';
 
 type Catalog = { account: { id: string }; forms: Section; directions: Section; packages: Section; types: Section };
 type MethodPackage = { account: { id: string }; materials: Section; themes: Section };
@@ -67,11 +68,16 @@ export function TeachingMaterials({ accountId, disabled, onConnectionError }: {
   const sectionErrors = [catalog?.forms, catalog?.directions, catalog?.packages, catalog?.types, pack?.materials, pack?.themes].flatMap(section => section?.error ? [section.error] : []);
 
   return <section className="panel teaching-materials" aria-label="Методички для подготовки">
-    <div className="panel-heading"><div><h2>Методички для подготовки</h2><p>Доступны до начала урока. Выберите форму обучения и методпакет.</p></div><button className="button secondary" disabled={locked} onClick={() => void (spec ? loadPackage(spec) : loadCatalog({ ...(form ? { form } : {}), ...(direction ? { direction } : {}) }))}><RefreshCw size={15}/>Обновить методички</button></div>
+    <div className="panel-heading"><div><h2>Методички для подготовки</h2><p>Доступны до начала урока. Выберите методпакет; форма обучения и направление необязательны.</p></div><button className="button secondary" disabled={locked} onClick={() => void (spec ? loadPackage(spec) : loadCatalog({ ...(form ? { form } : {}), ...(direction ? { direction } : {}) }))}><RefreshCw size={15}/>Обновить методички</button></div>
     <div className="method-filters">
-      <label>Форма обучения<select aria-label="Форма обучения" value={form} disabled={locked || !catalog} onChange={event => { const value = event.target.value; setForm(value); setDirection(''); void loadCatalog(value ? { form: value } : {}); }}><option value="">Выберите форму обучения</option>{rows(catalog?.forms.data).map(item => <option key={label(item.id_form)} value={label(item.id_form)}>{label(item.name_form)}</option>)}</select></label>
-      <label>Направление<select aria-label="Направление" value={direction} disabled={locked || !form} onChange={event => { const value = event.target.value; setDirection(value); void loadCatalog({ form, ...(value ? { direction: value } : {}) }); }}><option value="">Все направления</option>{rows(catalog?.directions.data).map(item => <option key={label(item.id)} value={label(item.id)}>{label(item.dir_name)}</option>)}</select></label>
-      <label className="method-package-select">Методпакет<select aria-label="Методпакет" value={spec} disabled={locked || !packages.length} onChange={event => void loadPackage(event.target.value)}><option value="">Выберите предмет / курс</option>{packages.map(item => <option key={label(item.id)} value={label(item.id)}>{label(item.name_spec)}</option>)}</select></label>
+      <SearchableSelect label="Форма обучения" value={form} disabled={locked || !catalog} placeholder="Все формы обучения"
+        options={rows(catalog?.forms.data).map(item => ({ value: label(item.id_form), label: label(item.name_form) }))}
+        onChange={value => { setForm(value); setDirection(''); void loadCatalog(value ? { form: value } : {}); }}/>
+      <SearchableSelect label="Направление" value={direction} disabled={locked || !rows(catalog?.directions.data).length} placeholder="Все направления"
+        options={rows(catalog?.directions.data).map(item => ({ value: label(item.id), label: label(item.dir_name) }))}
+        onChange={value => { setDirection(value); void loadCatalog({ ...(form ? { form } : {}), ...(value ? { direction: value } : {}) }); }}/>
+      <SearchableSelect className="method-package-select" label="Методпакет" value={spec} disabled={locked || !packages.length} placeholder="Выберите предмет / курс"
+        options={packages.map(item => ({ value: label(item.id), label: label(item.name_spec) }))} onChange={value => void loadPackage(value)}/>
     </div>
     {busy && <div className="method-status" role="status"><LoaderCircle className="spin" size={17}/>Загружаю методички…</div>}
     {error && <div className="warning" role="alert">{error}</div>}

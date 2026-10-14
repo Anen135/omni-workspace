@@ -8,25 +8,33 @@ test('preparation materials load without a current lesson, group or date', async
   const calls = [];
   const section = async (path, data) => { calls.push([path, data]); return { data: [], error: null }; };
   await loadMaterialsCatalog(section);
-  assert.deepEqual(calls.map(([path]) => path), ['/bind/get-public-form', '/bind/get-materials-type']);
+  assert.deepEqual(calls, [
+    ['/bind/get-public-form', {}],
+    ['/bind/get-materials-type', {}],
+    ['/bind/get-public-direction', {}],
+    ['/bind/get-public-spec', { arc: 0 }],
+  ]);
   calls.length = 0;
   await loadMethodPackage(section, { spec: '42' });
   assert.deepEqual(calls, [['/bind/get-materials', { spec: '42' }], ['/bind/get-count-week', { spec: '42' }]]);
 });
 
-test('catalogue scopes packages to the selected form and optional direction', async () => {
+test('catalogue scopes packages to optional form and direction filters', async () => {
   const calls = [];
   const section = async (path, data) => { calls.push([path, data]); return { data: [], error: null }; };
   await loadMaterialsCatalog(section, { form: '4', direction: '16' });
   assert.deepEqual(calls.slice(-2), [['/bind/get-public-direction', { form: '4' }], ['/bind/get-public-spec', { form: '4', direction: '16', arc: 0 }]]);
+  calls.length = 0;
+  await loadMaterialsCatalog(section, { direction: '16' });
+  assert.deepEqual(calls.slice(-2), [['/bind/get-public-direction', {}], ['/bind/get-public-spec', { direction: '16', arc: 0 }]]);
 });
 
 test('materials API accepts only bounded identifiers and known parameters', () => {
-  for (const input of [{}, { form: '4' }, { form: 4, direction: 16 }]) assert.doesNotThrow(() => validateInput('materials-catalog', input));
+  for (const input of [{}, { form: '4' }, { direction: '16' }, { form: 4, direction: 16 }]) assert.doesNotThrow(() => validateInput('materials-catalog', input));
   assert.doesNotThrow(() => validateInput('method-package', { spec: '42' }));
   for (const spec of [null, '', 0, -1, 1.5, true, [], {}, '1/../../', '1234567890123']) assert.throws(() => validateInput('method-package', { spec }), { code: 'BAD_INPUT' });
   assert.throws(() => validateInput('method-package', {}), { code: 'BAD_INPUT' });
-  assert.throws(() => validateInput('materials-catalog', { direction: 16 }), { code: 'BAD_INPUT' });
+  assert.throws(() => validateInput('materials-catalog', { direction: '1/../../' }), { code: 'BAD_INPUT' });
   assert.throws(() => validateInput('method-package', { spec: 42, url: 'https://example.com' }), { code: 'BAD_INPUT' });
   assert.throws(() => validateInput('materials-catalog', { form: 4, arc: 1 }), { code: 'BAD_INPUT' });
 });

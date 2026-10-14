@@ -25,7 +25,7 @@
     transition: width 160ms ease, box-shadow 160ms ease;
   }
   .live-workspace main { margin-left: 72px; width: calc(100% - 72px); }
-  .live-workspace .sidebar:is(:hover, :focus-within) {
+  .live-workspace .sidebar:is(:hover, :has(:focus-visible)) {
     width: 240px;
     box-shadow: 8px 0 24px #19213212;
   }
@@ -50,12 +50,12 @@
   }
   .live-workspace .sidebar .profile { padding-inline: 5px; }
   .live-workspace .sidebar .profile > div { visibility: hidden; }
-  .live-workspace .sidebar:is(:hover, :focus-within) .brand { font-size: 28px; }
-  .live-workspace .sidebar:is(:hover, :focus-within) .brand-dot { display: inline; }
-  .live-workspace .sidebar:is(:hover, :focus-within) .nav-label,
-  .live-workspace .sidebar:is(:hover, :focus-within) .profile > div { visibility: visible; }
-  .live-workspace .sidebar:is(:hover, :focus-within) nav button,
-  .live-workspace .sidebar:is(:hover, :focus-within) .sidebar-bottom > button {
+  .live-workspace .sidebar:is(:hover, :has(:focus-visible)) .brand { font-size: 28px; }
+  .live-workspace .sidebar:is(:hover, :has(:focus-visible)) .brand-dot { display: inline; }
+  .live-workspace .sidebar:is(:hover, :has(:focus-visible)) .nav-label,
+  .live-workspace .sidebar:is(:hover, :has(:focus-visible)) .profile > div { visibility: visible; }
+  .live-workspace .sidebar:is(:hover, :has(:focus-visible)) nav button,
+  .live-workspace .sidebar:is(:hover, :has(:focus-visible)) .sidebar-bottom > button {
     width: 212px;
     font-size: 14px;
   }
@@ -164,3 +164,8 @@
 .theme-issue-options { display: flex; flex-wrap: wrap; gap: 16px; width: 100%; font-size: 13px; }
 .mark-editor { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .mark-editor input { width: 64px; padding: 6px; border: 1px solid var(--border, #e7e9f2); border-radius: 8px; }
+.lesson-copy input[type=checkbox] { width: auto; }
+.lesson-copy { margin-bottom: 16px; }
+.reward-editor { display: inline-flex; align-items: center; gap: 6px; color: var(--purple); }
+.reward-editor select { min-width: 64px; padding: 7px 8px; border: 1px solid var(--border); border-radius: 8px; color: inherit; background: var(--primary-soft); }
+.reward-editor select:disabled { opacity: .65; cursor: not-allowed; }

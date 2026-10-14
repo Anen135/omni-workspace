@@ -4,8 +4,8 @@ import { attendanceLessonInfo } from './attendance';
 
 export type ThemeChoice = { theme: string; publicWeekId: string | null; issueHomework: boolean; issueLabwork: boolean; previousTheme: string };
 export type ThemeData = { presents: RemoteRecord; themes: RemoteRecord[] };
-export function LessonThemeEditor({ busy, unavailable, draft, onLoad, onSave }: {
-  busy: boolean; unavailable: string; draft?: ThemeChoice; onLoad: () => Promise<ThemeData>; onSave: (choice: ThemeChoice) => Promise<void>;
+export function LessonThemeEditor({ busy, unavailable, currentTheme, draft, onLoad, onSave }: {
+  busy: boolean; unavailable: string; currentTheme: string; draft?: ThemeChoice; onLoad: () => Promise<ThemeData>; onSave: (choice: ThemeChoice) => Promise<void>;
 }) {
   const [data, setData] = useState<ThemeData | null>(null);
   const [selection, setSelection] = useState('manual');
@@ -39,6 +39,7 @@ export function LessonThemeEditor({ busy, unavailable, draft, onLoad, onSave }: 
   }
   return <section className="panel lesson-theme-editor" aria-label="Тема урока">
     <div className="panel-heading"><div><h2>Тема урока</h2><p>Выберите тему, нажмите «В черновик», затем «Сохранить» для отправки урока в Omni</p></div><button className="button secondary" disabled={busy || !!unavailable} onClick={() => void load()}>{data ? 'Обновить список тем' : 'Выбрать тему'}</button></div>
+    {!data && <p className="attendance-help">{draft ? `Тема в черновике: ${draft.theme}` : currentTheme ? `Текущая тема: ${currentTheme}` : 'Тема ещё не сохранена.'}</p>}
     {unavailable && <p className="attendance-help">{unavailable}</p>}
     {data && <form onSubmit={event => { event.preventDefault(); void save(); }}>
       {denied && <p role="status">Omni не разрешает изменять тему этого занятия.</p>}
