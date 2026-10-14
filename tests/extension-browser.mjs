@@ -258,6 +258,10 @@ try {
   await calendar.waitFor({ state: 'detached' });
   const presence = ui.getByLabel('Присутствие: Тестовый ученик А', { exact: true });
   const reward = ui.getByLabel('Топкойны: Тестовый ученик А', { exact: true });
+  async function setReward(level) {
+    await reward.press('Home');
+    for (let step = 0; step < level; step++) await reward.press('ArrowRight');
+  }
   const lessonSave = ui.getByRole('button', { name: 'Сохранить', exact: true });
   const dayPairs = ui.getByLabel('Пара выбранного дня', { exact: true });
   assert.equal(await dayPairs.locator('option').count(), 3);
@@ -384,7 +388,7 @@ try {
   await ui.getByRole('spinbutton', { name: firstGrade, exact: true }).fill('7');
   await ui.locator('.mark-editor').getByRole('button', { name: 'В черновик', exact: true }).click();
   await ui.getByLabel('Присутствие: Тестовый ученик А', { exact: true }).selectOption('2');
-  await reward.selectOption('1');
+  await setReward(1);
   assert.equal(lessonWrites.length, beforeVisitCreation, 'neither staged edit sends a write');
   await lessonSave.click();
   await ui.getByRole('status').filter({ hasText: 'Изменения урока сохранены в Omni' }).waitFor();
@@ -435,9 +439,32 @@ try {
   await lessonSave.click();
   await ui.getByRole('status').filter({ hasText: 'Изменения урока сохранены в Omni' }).waitFor();
   assert.equal(lessonStudents[0].mark2, 9, 'a rejected mark draft can be retried explicitly after rereading');
+  const rewardB = ui.getByLabel('Топкойны: Тестовый ученик Б', { exact: true });
+  const writesBeforeBudget = lessonWrites.length;
+  await reward.press('End');
+  await rewardB.press('End');
+  assert.equal(await reward.inputValue(), '3');
+  assert.equal(await rewardB.inputValue(), '2', 'a second slider cannot allocate more than the lesson remainder');
+  await ui.getByText('Топкойны: 5 из 5 · Осталось: 0', { exact: true }).waitFor();
+  await rewardB.press('ArrowRight');
+  assert.equal(await rewardB.inputValue(), '2', 'exhausted budget prevents an increase');
+  await ui.getByLabel('Поиск ученика', { exact: true }).fill('Тестовый ученик Б');
+  await rewardB.press('End');
+  assert.equal(await rewardB.inputValue(), '2', 'hidden students still consume the shared budget');
+  await ui.getByLabel('Поиск ученика', { exact: true }).fill('');
+  await reward.press('ArrowLeft');
+  await rewardB.press('End');
+  assert.equal(await reward.inputValue(), '2');
+  assert.equal(await rewardB.inputValue(), '3', 'decreasing another reward releases the remaining point');
+  assert.equal(lessonWrites.length, writesBeforeBudget, 'budget allocation makes no API writes before Save');
+  ui.once('dialog', dialog => dialog.accept());
+  await ui.getByRole('button', { name: 'Отменить черновик', exact: true }).click();
+  assert.equal(await reward.inputValue(), '1');
+  assert.equal(await rewardB.inputValue(), '0');
+  await ui.getByText('Топкойны: 1 из 5 · Осталось: 4', { exact: true }).waitFor();
   const beforeRewards = lessonWrites.length;
   rejectReward = true;
-  await reward.selectOption('2');
+  await setReward(2);
   assert.equal(lessonWrites.length, beforeRewards, 'reward changes stay local before Save');
   await lessonSave.click();
   await ui.getByRole('alert').filter({ hasText: 'Omni отклонил топкойны' }).waitFor();
@@ -453,7 +480,7 @@ try {
   await ui.getByRole('status').filter({ hasText: 'Изменения урока сохранены в Omni' }).waitFor();
   assert.equal(lessonStudents[0].prize, 2);
   ignoreReward = true;
-  await reward.selectOption('3');
+  await setReward(3);
   await lessonSave.click();
   await ui.getByRole('alert').filter({ hasText: 'Omni не подтвердил топкойны' }).waitFor();
   assert.equal(await reward.inputValue(), '3');
@@ -466,7 +493,7 @@ try {
   await lessonSave.click();
   await ui.getByRole('status').filter({ hasText: 'Изменения урока сохранены в Omni' }).waitFor();
   assert.equal(lessonStudents[0].prize, 3);
-  await reward.selectOption('1');
+  await setReward(1);
   const beforeRewardConflict = lessonWrites.length;
   lessonStudents[0].prize = 2; // Simulate another official client changing the reward.
   await lessonSave.click();
@@ -475,13 +502,13 @@ try {
   assert.equal(await reward.inputValue(), '1');
   ui.once('dialog', dialog => dialog.accept());
   await ui.getByRole('button', { name: 'Отменить черновик', exact: true }).click();
-  await reward.selectOption('4');
-  assert.equal(await reward.inputValue(), '', 'removal sentinel is displayed as no reward');
+  await setReward(0);
+  assert.equal(await reward.inputValue(), '0', 'removal sentinel is displayed as zero on the slider');
   assert.equal(lessonWrites.length, beforeRewardConflict, 'staging removal still makes no write');
   await lessonSave.click();
   await ui.getByRole('status').filter({ hasText: 'Изменения урока сохранены в Omni' }).waitFor();
   assert.equal(lessonStudents[0].prize, 0);
-  assert.equal(await reward.locator('option[value="4"]').isDisabled(), true, 'removal is unavailable once no reward remains');
+  assert.equal(await reward.getAttribute('aria-valuetext'), 'Без топкойнов');
   // Reading a previous lesson never switches the destination or copies its
   // visit IDs. Default copy protects filled values, explicit overwrite stages
   // only the selected categories, and Save is the first mutation request.

@@ -13,7 +13,7 @@ import { scheduleDays } from '../features/schedule/schedule';
 import { presentLessons } from '../features/lesson/present-lessons';
 import { PreviousLessonCopy } from '../features/lesson/PreviousLessonCopy';
 import { copyLessonDraft, type CopySelection, type CopySource, type PreviousLessonData } from '../features/lesson/lesson-copy';
-import { rewardLevel, rewardValue, type LessonReward } from '../features/lesson/lesson-reward';
+import { lessonRewardBudget, lessonRewardDraftAllowed, rewardLevel, rewardMaximum, rewardValue, type LessonReward } from '../features/lesson/lesson-reward';
 import { attendanceStatus, attendanceVisit, attendanceUnavailable, attendanceHasTheme, attendanceLessonInfo, attendanceDraftKey, type AttendanceChange, type AttendanceStatus } from '../features/lesson/attendance';
 import { emptyLessonDraft, hasLessonChanges, lessonDraftConflict, markValue, reconcileLessonDraft, stageAttendanceChange, stageMarkChange, stageRewardChange, type LessonDraft } from '../features/lesson/lesson-draft';
 import { SectionView } from '../components/data/RemoteData';
@@ -338,10 +338,17 @@ export function LiveWorkspace({ onDemo }: { onDemo: () => void }) {
     if (!snapshot || operation.current || attendanceReason) return;
     const matches = lessonStudents.filter(item => label(item.id_stud) === label(student.id_stud));
     if (matches.length !== 1) return;
-    const was = draft?.attendance[label(student.id_stud)]?.was ?? attendanceStatus(matches[0].was);
-    if ((was !== 1 && was !== 2) || rewardLevel(matches[0].prize) === null) return;
     setLessonDrafts(current => {
-      const next = stageRewardChange(current[draftKey] || emptyLessonDraft(), matches[0], reward);
+      const currentDraft = current[draftKey] || emptyLessonDraft();
+      const stud = label(student.id_stud);
+      const was = currentDraft.attendance[stud]?.was ?? attendanceStatus(matches[0].was);
+      if ((was !== 1 && was !== 2) || rewardLevel(matches[0].prize) === null) return current;
+      const budget = lessonRewardBudget(lessonStudents, currentDraft.rewards);
+      const value = currentDraft.rewards?.[stud]?.reward ?? matches[0].prize;
+      const requested = rewardLevel(reward);
+      if (requested === null || requested > rewardMaximum(value, budget.remaining)) return current;
+      const next = stageRewardChange(currentDraft, matches[0], reward);
+      if (!lessonRewardDraftAllowed(lessonStudents, next.rewards)) return current;
       const updated = { ...current, [draftKey]: next };
       if (!hasLessonChanges(next)) delete updated[draftKey];
       return updated;
@@ -375,12 +382,16 @@ export function LiveWorkspace({ onDemo }: { onDemo: () => void }) {
     if (selection.overwrite && !window.confirm('Заменить заполненные отметки, оценки и топкойны этого урока выбранными значениями с прошлой пары? Изменения останутся в черновике до нажатия «Сохранить».')) return;
     setLessonDrafts(current => {
       const next = copyLessonDraft(current[draftKey] || emptyLessonDraft(), lessonStudents, source.students, selection);
+      if (!lessonRewardDraftAllowed(lessonStudents, next.rewards)) {
+        setNotice('Перенос отменён: на урок можно выдать не больше 5 топкойнов. Уменьшите награды или отключите их перенос. Черновик не изменён.');
+        return current;
+      }
       const updated = { ...current };
       if (hasLessonChanges(next)) updated[draftKey] = next;
       else delete updated[draftKey];
+      setNotice('Выбранные значения прошлой пары перенесены в черновик. Нажмите «Сохранить» для отправки в Omni.');
       return updated;
     });
-    setNotice('Выбранные значения прошлой пары перенесены в черновик. Нажмите «Сохранить» для отправки в Omni.');
   }
   async function loadLessonThemes(): Promise<ThemeData> {
     if (!snapshot || operation.current) throw new Error('Дождитесь завершения операции.');
@@ -428,6 +439,7 @@ export function LiveWorkspace({ onDemo }: { onDemo: () => void }) {
   }
   async function saveLessonDraft() {
     if (!snapshot || !draft || operation.current || attendanceReason) return;
+    if (!lessonRewardDraftAllowed(lessonStudents, draft.rewards)) { setError('Нельзя увеличить награды: лимит урока — 5 топкойнов. Уменьшите топкойны в черновике или загрузите полный список учеников.'); return; }
     if (!hasTheme && !draft.theme) { setError('Добавьте тему урока в черновик перед сохранением.'); return; }
     if (draft.theme && !window.confirm('Сохранить тему и все изменения урока в Omni? Выбранные параметры выдачи ДЗ и практической работы будут применены.')) return;
     const version = sessionVersion.current;
@@ -448,6 +460,7 @@ export function LiveWorkspace({ onDemo }: { onDemo: () => void }) {
       let fresh = accept(await omniRequest<RemoteLesson>('lesson', { date: params.date, group: params.group, lenta: params.lenta }));
       const conflict = lessonDraftConflict(pending, fresh);
       if (conflict) throw new Error(conflict);
+      if (!lessonRewardDraftAllowed(rows(fresh.students), pending.rewards)) throw new Error('Общее количество топкойнов изменилось в Omni. Лимит урока — 5. Перечитайте урок и уменьшите награды.');
       if (pending.theme) {
         const result = await omniRequest<{ account: { id: string }; presents: unknown; warning?: string }>('set-lesson-theme', { ...params, ...pending.theme });
         fresh = accept(result, true);
@@ -498,9 +511,14 @@ export function LiveWorkspace({ onDemo }: { onDemo: () => void }) {
         delete pending.marks[markKey];
         storeDraft(key, pending);
       }
-      for (const [stud, change] of Object.entries(pending.rewards || {})) {
+      // Release allocated coins first, so a redistribution cannot exceed the
+      // limit temporarily even when its final draft fits within five coins.
+      const rewardChanges = Object.entries(pending.rewards || {}).sort(([, a], [, b]) =>
+        (rewardLevel(a.reward)! - (rewardLevel(a.previousReward) ?? 0)) - (rewardLevel(b.reward)! - (rewardLevel(b.previousReward) ?? 0)));
+      for (const [stud, change] of rewardChanges) {
         const matches = rows(fresh.students).filter(student => label(student.id_stud) === stud);
         if (matches.length !== 1 || !(Number(matches[0].id_vizit) > 0) || attendanceVisit(matches[0].id_vizit) !== change.visit) throw new Error('Запись посещения для топкойнов недоступна или изменилась. Перечитайте урок.');
+        if (!lessonRewardDraftAllowed(rows(fresh.students), { [stud]: change })) throw new Error('Лимит урока — 5 топкойнов. Награды в Omni изменились: перечитайте урок перед увеличением.');
         fresh = accept(await omniRequest<{ account: { id: string }; presents: unknown }>('set-lesson-reward', { ...params, ...change, visit: label(matches[0].id_vizit) }));
         delete pending.rewards![stud];
         storeDraft(key, pending);
