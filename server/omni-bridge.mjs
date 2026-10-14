@@ -2,6 +2,7 @@ import { chromium } from 'playwright';
 import { resolve } from 'node:path';
 import { loadMaterialsCatalog, loadMethodPackage } from './teaching-materials.mjs';
 import { loadTeacherDossier } from './teacher-dossier.mjs';
+import { loadScheduleRange } from './schedule-range.mjs';
 import { loadFilePreview } from './file-preview.mjs';
 import { submitOfficialLogin, loginErrors } from './login.mjs';
 
@@ -157,6 +158,7 @@ export function createBridge() {
         } finally { input.password = ''; }
       }
       if (['set-attendance', 'lesson-themes', 'set-lesson-theme', 'set-lesson-mark', 'set-lesson-reward', 'set-homework-marks'].includes(action)) throw new BridgeError('NOT_SUPPORTED', 'Изменяйте урок через расширение браузера.', 400);
+      if (action === 'schedule-range') return loadScheduleRange(input, { identity, section });
       const account = await identity();
       if (action === 'switch-teacher') {
         if (account.id !== input.accountId) throw new BridgeError('ACCOUNT_CHANGED', 'Аккаунт изменился. Обновите данные перед переключением.', 409);

@@ -74,9 +74,13 @@ try {
       assert.equal(request.headers()['x-csrf-token'], 'fixture-csrf');
       if (!signedIn) return route.fulfill({ status: 401, body: '' });
       paths.push(path);
-      const data = path === '/dossier/get-single-data' ? { 'Учебных часов': 42 }
-        : path === '/dossier/get-data-graphics' ? [{ month: 'Сентябрь', value: 12 }]
-        : [{ 'Группа': 'Группа досье', 'Занятия': 7 }];
+      const single = { count_pairs: { indicator_value: 42 } };
+      const graphics = { count_pairs: [{ month_date: '2026-09-01', graphic_value: 12 }] };
+      const data = path === '/dossier/get-single-data' ? single
+        : path === '/dossier/get-data-graphics' ? graphics
+        : { single_data: single, graphics_data: graphics, profile_data: { fio_teach: 'Преподаватель досье' },
+          teach_specs_list: [{ name_spec: 'Предмет досье', read_now: 1 }],
+          evaluation: { students_who_need_help: [{ fio: 'Студент досье', group: 'Группа досье', percent_hw_completion: 0 }] } };
       return route.fulfill({ json: data });
     }
     if (request.method() !== 'POST') return route.fulfill({ status: 404, body: '' });
@@ -235,7 +239,7 @@ try {
   assert.ok(paths.includes('/schedule/get-schedule'));
   assert.ok(paths.filter(path => path === '/profile/get-profile').length >= 2);
   await ui.getByRole('button', { name: 'Досье преподавателя', exact: true }).click();
-  await ui.getByText('Учебных часов', { exact: true }).waitFor();
+  await ui.locator('.dossier-summary-card').filter({ hasText: 'Количество пар' }).getByText('42', { exact: true }).waitFor();
   await ui.getByText('Группа досье', { exact: true }).waitFor();
   for (const endpoint of ['get-single-data', 'get-data-graphics', 'get-all-data']) assert.ok(paths.includes('/dossier/' + endpoint));
   await ui.locator('nav button').nth(1).click();

@@ -1,6 +1,7 @@
 import { validateInput, BridgeError } from '../server/bridge-protocol.mjs';
 import { loadMaterialsCatalog, loadMethodPackage } from '../server/teaching-materials.mjs';
 import { loadTeacherDossier } from '../server/teacher-dossier.mjs';
+import { loadScheduleRange } from '../server/schedule-range.mjs';
 import { saveAttendance } from '../extension/attendance.mjs';
 import { lessonTheme } from '../extension/lesson-theme.mjs';
 import { saveLessonMark } from '../extension/lesson-mark.mjs';
@@ -49,6 +50,7 @@ export async function dispatch(action, input = {}) {
   if (action === 'set-lesson-reward') return saveLessonReward(input, { request: read, identity });
   if (action === 'set-homework-marks') return saveHomeworkMarks(input, { request: read, identity });
   if (action === 'lesson-themes' || action === 'set-lesson-theme') return lessonTheme(action, input, { request: read, identity });
+  if (action === 'schedule-range') return loadScheduleRange(input, { identity, section });
   const account = await identity();
   let result;
   if (action === 'snapshot') {

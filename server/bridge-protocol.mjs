@@ -8,6 +8,10 @@ export class BridgeError extends Error {
 
 export function validateInput(action, input) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw new BridgeError('BAD_INPUT', 'Некорректный запрос.', 400);
+  if (action === 'schedule-range') {
+    if (Object.keys(input).some(key => !['accountId', 'weeks'].includes(key)) || typeof input.accountId !== 'string' || !/^[1-9]\d{0,11}$/.test(input.accountId) || !Array.isArray(input.weeks) || input.weeks.length < 1 || input.weeks.length > 16 || [...input.weeks].some(week => !Number.isInteger(week) || Math.abs(week) > 52) || new Set(input.weeks).size !== input.weeks.length) throw new BridgeError('BAD_INPUT', 'Укажите аккаунт и от 1 до 16 разных недель в допустимом диапазоне.', 400);
+    return input;
+  }
   if (action === 'set-lesson-reward') {
     const fields = ['accountId', 'date', 'group', 'lenta', 'schedule', 'stud', 'visit', 'reward', 'previousReward'];
     const id = value => typeof value === 'string' && /^[1-9]\d{0,11}$/.test(value);

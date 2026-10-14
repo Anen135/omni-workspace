@@ -39,7 +39,9 @@ export function LiveWorkspace({ onDemo }: { onDemo: () => void }) {
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [lesson, setLesson] = useState<RemoteLesson | null>(null);
   const [tab, setTab] = useState<WorkspaceTab>('lesson');
-  const [busy, setBusy] = useState(false);
+  const [workspaceBusy, setBusy] = useState(false);
+  const [incomeBusy, setIncomeBusy] = useState(false);
+  const busy = workspaceBusy || incomeBusy;
   const [error, setError] = useState('');
   const [authNeeded, setAuthNeeded] = useState(false);
   const [waiting, setWaiting] = useState(false);
@@ -577,7 +579,7 @@ export function LiveWorkspace({ onDemo }: { onDemo: () => void }) {
             section={snapshot.newHomework} items={reviewItems}
             grading={isExtension() ? { busy, unavailable: homeworkNeedsReload ? 'Перед следующей оценкой нажмите «Обновить работы».' : undefined, onGrade: gradeHomework } : undefined}/>}
           {tab === 'dossier' && <TeacherDossier key={`${snapshot.account.id}:${snapshot.account.branch}:${sessionVersion.current}`}
-            accountId={snapshot.account.id} accountName={snapshot.account.name} disabled={busy} onConnectionError={failed}/>}
+            accountId={snapshot.account.id} accountName={snapshot.account.name} branch={snapshot.account.branch} schedule={snapshot.schedule} today={today} disabled={busy} onConnectionError={failed} onIncomeLoading={setIncomeBusy}/>}
           {tab === 'materials' && <>
             <TeachingMaterials key={`${snapshot.account.id}:${snapshot.account.branch}`} accountId={snapshot.account.id} disabled={busy} onConnectionError={failed}/>
             <IssuedMaterialsPanel lesson={lesson} busy={busy} date={selectedDate} groupSelected={!!presentData.cur_group}
