@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
 import { label, rows, type RemoteRecord, type Section } from '../../services/omni-client';
-import type { HomeworkReviewItem } from './homework';
+import { homeworkGroupName, type HomeworkReviewItem } from './homework';
 import { materialLink } from '../materials/teaching-materials';
 import './homework.css';
 
@@ -21,7 +21,7 @@ function fallbackItems(data: unknown): HomeworkReviewItem[] {
     key: 'readonly-' + index,
     studentId: label(source.id_stud || source.student_id),
     studentName: label(source.fio_stud || source.student_name),
-    groupName: label(source.name_tgroups || source.group_name),
+    groupName: homeworkGroupName(source),
     subject: label(source.name_spec || source.spec_name || source.subject),
     theme: label(source.theme || source.title),
     submittedAt: label(source.date_upload || source.date_create || source.submitted_at),
@@ -163,6 +163,8 @@ export function HomeworkTable({ section, render, items: suppliedItems, grading }
     const keys = studentFile ? ['download_url_stud'] : ['download_url', 'file_url', 'link'];
     const standalone = !studentFile && materialLink(label(item.filename)) && item.filename !== item.download_url_stud;
     if (!keys.some(key => materialLink(label(item[key]))) && !standalone) return <span className="homework-muted">—</span>;
+    // Submission and assignment URLs are separate files; generic metadata does not identify the student's attachment.
+    if (studentFile) return render(pick(item, keys));
     const filenameUrl = materialLink(label(item.filename));
     const filenameBelongsHere = !filenameUrl || standalone || keys.some(key => materialLink(label(item[key])) === filenameUrl);
     return render(pick(item, [...keys, ...(filenameBelongsHere ? ['filename'] : []), 'file_name', 'original_name', 'mime_type', 'content_type', 'mime']));
@@ -174,7 +176,7 @@ export function HomeworkTable({ section, render, items: suppliedItems, grading }
     <div className="homework-filters">
       <label>Студент<select aria-label="Студент домашних работ" value={student} disabled={locked} onChange={event => { setStudent(event.target.value); resetSelection(); }}><option value="">Все студенты</option>{students.map(option => <option key={option.key} value={option.key}>{option.name}{option.groups.size ? ' · ' + [...option.groups].join(', ') : ''}{duplicateNames.has(option.name) && option.id ? ' · ID ' + option.id : ''}</option>)}</select></label>
       <label>Группа<select aria-label="Группа домашних заданий" value={group} disabled={locked} onChange={event => { setGroup(event.target.value); setStudent(''); resetSelection(); }}><option value="">Все группы</option>{groups.map(name => <option key={name} value={name}>{name}</option>)}</select></label>
-      <label className="homework-search">Поиск<input type="search" aria-label="Поиск домашнего задания" placeholder="Имя, тема или предмет" value={query} disabled={locked} onChange={event => { setQuery(event.target.value); resetSelection(); }}/></label>
+      <label className="homework-search">Поиск<input type="search" aria-label="Поиск домашнего задания" placeholder="Имя, группа, тема или предмет" value={query} disabled={locked} onChange={event => { setQuery(event.target.value); resetSelection(); }}/></label>
       {(group || student || query) && <button type="button" className="button secondary" disabled={locked} onClick={() => { setGroup(''); setStudent(''); setQuery(''); resetSelection(); }}>Сбросить</button>}
     </div>
     <div className="homework-bulk">

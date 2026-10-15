@@ -24,6 +24,7 @@ try {
     const { default: ReactDOM } = await import('/node_modules/.vite/deps/react-dom_client.js');
     const { createRoot } = ReactDOM;
     const { HomeworkTable } = await import('/src/features/homework/HomeworkTable.tsx');
+    const { homeworkItems } = await import('/src/features/homework/homework.ts');
     const make = (key, studentId, studentName, index) => ({
       key, studentId, studentName, groupName: 'Тестовая группа', subject: 'Алгебра',
       theme: `Тема ${index}`, submittedAt: `2026-10-${String(index % 28 + 1).padStart(2, '0')}`,
@@ -44,10 +45,24 @@ try {
       const keys = selected.map(item => item.key);
       return { confirmedKeys: window.gradingMode === 'partial' ? keys.slice(0, 1) : keys };
     };
-    createRoot(document.getElementById('root')).render(React.createElement(HomeworkTable, {
+    const root = createRoot(document.getElementById('root'));
+    root.render(React.createElement(HomeworkTable, {
       section: { data: [], error: null }, render: value => React.createElement('span', null, value.answer_text || 'файл'), items,
       grading: { busy: false, onGrade },
     }));
+    window.showGroupFixture = fallback => {
+      const sources = [
+        { group: '  Группа Альфа  ', theme: 'Тема Альфа' },
+        { group: 'Группа Бета', theme: 'Тема Бета' },
+        { theme: 'Тема без группы' },
+        { group: ['Группа Альфа', 'Группа Бета'], theme: 'Тема с неоднозначной группой' },
+      ].map((source, index) => ({ ...source, id: 501 + index, id_domzad_teach: 601 + index, id_stud: 701 + index, ospr: 0, fio_stud: 'Однофамилец', answer_text: 'Тестовый ответ' }));
+      root.render(React.createElement('div', { key: fallback ? 'fallback-groups' : 'normalized-groups', 'data-group-fixture': fallback ? 'fallback' : 'normalized' }, React.createElement(HomeworkTable, {
+        key: fallback ? 'fallback-groups' : 'normalized-groups',
+        section: { data: sources, error: null }, items: fallback ? undefined : homeworkItems({ homework: sources }),
+        render: value => React.createElement('span', null, value.answer_text || 'файл'),
+      })));
+    };
   });
   await page.locator('.homework-table tbody tr').first().waitFor();
 
@@ -118,9 +133,28 @@ try {
   await page.evaluate(() => window.releaseGrade());
   await page.locator('.homework-result').waitFor();
 
+  for (const fallback of [false, true]) {
+    await page.evaluate(useFallback => window.showGroupFixture(useFallback), fallback);
+    await page.locator(`[data-group-fixture="${fallback ? 'fallback' : 'normalized'}"] .homework-table tbody tr small`).filter({ hasText: 'Группа Альфа' }).waitFor();
+    const groupFilter = page.getByRole('combobox', { name: 'Группа домашних заданий', exact: true });
+    assert.deepEqual(await groupFilter.locator('option').allTextContents(), ['Все группы', 'Группа Альфа', 'Группа Бета']);
+    assert.equal(await page.locator('.homework-table tbody tr').count(), 4);
+    const search = page.getByRole('searchbox', { name: 'Поиск домашнего задания', exact: true });
+    await search.fill('группа альфа');
+    assert.equal(await page.locator('.homework-table tbody tr').count(), 1, 'official group labels are searchable in both normalizers');
+    assert.match(await page.locator('.homework-table tbody tr').innerText(), /Тема Альфа/);
+    await search.fill('');
+    await groupFilter.selectOption('Группа Бета');
+    assert.equal(await page.locator('.homework-table tbody tr').count(), 1, 'official group labels filter submissions');
+    assert.equal(await page.locator('.homework-table tbody tr small').first().innerText(), 'Группа Бета', 'official group is displayed below the student');
+    await groupFilter.selectOption('');
+    const unknown = page.locator('.homework-table tbody tr').filter({ hasText: /Тема без группы|Тема с неоднозначной группой/ });
+    assert.equal(await unknown.count(), 2);
+    for (const row of await unknown.all()) assert.doesNotMatch(await row.innerText(), /Группа Альфа|Группа Бета/, 'same student names and structured groups cannot supply a guessed label');
+  }
   await page.setViewportSize({ width: 390, height: 844 });
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'mobile table must scroll inside its own wrapper');
   assert.ok(await page.locator('.homework-scroll').evaluate(el => el.scrollWidth > el.clientWidth), 'mobile overflow belongs to table wrapper');
   assert.deepEqual(errors, []);
-  console.log('PASS: compact details, duplicate-name identity filtering, all filtered pages selected, grade 12 bulk callback, filter reset, inline grade, pending/error/partial states and mobile table overflow.');
+  console.log('PASS: compact details, duplicate-name identity filtering, all filtered pages selected, grade 12 bulk callback, filter reset, inline grade, pending/error/partial states, official groups display/search/filter in both normalizers, missing/ambiguous groups and mobile table overflow.');
 } finally { await browser?.close(); await server.close(); }

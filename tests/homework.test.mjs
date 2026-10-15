@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { homeworkItems } from '../src/features/homework/homework.ts';
+import { homeworkGroupName, homeworkItems } from '../src/features/homework/homework.ts';
 import { saveHomeworkMarks } from '../extension/homework.mjs';
 import { BridgeError, validateInput } from '../server/bridge-protocol.mjs';
 
@@ -38,6 +38,30 @@ test('homework unwraps official nested lists, preserves identity and refuses amb
   assert.equal(result[0].submittedAt, row().stud_date);
   assert.ok(homeworkItems({ homework: [row(), row()] }).every(item => !item.canGrade));
   assert.equal(homeworkItems([{ fio_stud: 'Без ID' }])[0].canGrade, false);
+});
+test('homework reads official group labels from flat and all nested collections without changing identity', () => {
+  const submission = { ...row(), name_tgroups: undefined, group: '  Группа из Omni  ' };
+  for (const data of [[submission], { homework: [submission] }, { lab_work: { first: submission } }, { requests: [submission] }]) {
+    const [item] = homeworkItems(data);
+    assert.equal(item.groupName, 'Группа из Omni');
+    assert.equal(item.studentId, '10');
+    assert.equal(item.source, submission);
+    assert.equal(item.source.group, '  Группа из Omni  ', 'display normalization does not modify the source');
+    const kind = !Array.isArray(data) && 'lab_work' in data ? 'lab_work' : !Array.isArray(data) && 'requests' in data ? 'requests' : 'homework';
+    assert.equal(item.key, `${kind}:1:101:10`);
+    assert.equal(item.canGrade, kind !== 'requests');
+  }
+});
+test('homework group labels retain alias priority and do not guess missing or structured groups', () => {
+  assert.equal(homeworkGroupName({ name_tgroups: ' Группа A ', group_name: 'Группа B', group: 'Группа C' }), 'Группа A');
+  assert.equal(homeworkGroupName({ name_tgroups: '  ', group_name: ' Группа B ', group: 'Группа C' }), 'Группа B');
+  assert.equal(homeworkGroupName({ name_tgroups: '', group_name: '  ', group: ' Группа C ' }), 'Группа C');
+  for (const group of [undefined, null, '', '  ', 123, false, {}, { name: 'Не угадывать' }, ['Группа A', 'Группа B']]) {
+    const [item] = homeworkItems([{ ...row(), name_tgroups: undefined, group }]);
+    assert.equal(item.groupName, '');
+    assert.equal(item.key, 'homework:1:101:10');
+    assert.equal(item.canGrade, true, 'missing display metadata does not change grading eligibility');
+  }
 });
 test('homework protocol accepts only explicit bounded submission selection', () => {
   const { input } = fixture();

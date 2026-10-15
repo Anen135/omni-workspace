@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { AlertCircle, RefreshCw } from 'lucide-react';
+import { HelpTip } from '../../../components/ui/HelpTip';
 
 export function DossierSection({ title, description, error, busy = false, empty = false, emptyText, onRetry, children }: {
   title: string;
@@ -12,7 +13,7 @@ export function DossierSection({ title, description, error, busy = false, empty 
   children?: ReactNode;
 }) {
   return <section className="dossier-section" aria-label={title} aria-busy={busy}>
-    <header className="dossier-section-heading"><div><h3>{title}</h3>{description && <p>{description}</p>}</div></header>
+    <header className="dossier-section-heading"><div className="help-heading"><h3>{title}</h3>{description && <HelpTip label={`О разделе «${title}»`}>{description}</HelpTip>}</div></header>
     {error && <div className="dossier-section-error" role="alert">
       <AlertCircle size={16}/><p>{error}</p>
       {onRetry && <button className="button secondary" disabled={busy} onClick={onRetry}><RefreshCw size={14}/>Повторить загрузку: {title}</button>}

@@ -3,8 +3,9 @@ import { attendanceLabels, attendanceStatus, type AttendanceStatus } from './att
 import { MarkEditor } from './MarkEditor';
 import { RewardEditor } from './RewardEditor';
 import { lessonRewardBudget, LESSON_REWARD_LIMIT, rewardMaximum, rewardLevel, type LessonReward } from './lesson-reward';
+import { HelpTip } from '../../components/ui/HelpTip';
 
-export function StudentTable({ items, busy, onOpen, attendance, marks, rewards }: { items: Record<string, unknown>[]; busy: boolean; onOpen: (item: Record<string, unknown>) => void; attendance?: { unavailable: string; saving: boolean; onChange: (item: Record<string, unknown>, was: AttendanceStatus) => void; onAll: () => void }; marks?: { unavailable: string; allowDraft?: boolean; onChange: (item: Record<string, unknown>, type: 2 | 4, mark: number) => void }; rewards?: { unavailable: string; onChange: (item: Record<string, unknown>, reward: LessonReward) => void } }) {
+export function StudentTable({ items, busy, onOpen, attendance, marks, rewards, lessonView = false }: { items: Record<string, unknown>[]; busy: boolean; onOpen: (item: Record<string, unknown>) => void; attendance?: { unavailable: string; saving: boolean; onChange: (item: Record<string, unknown>, was: AttendanceStatus) => void; onAll: () => void }; marks?: { unavailable: string; allowDraft?: boolean; onChange: (item: Record<string, unknown>, type: 2 | 4, mark: number) => void }; rewards?: { unavailable: string; onChange: (item: Record<string, unknown>, reward: LessonReward) => void }; lessonView?: boolean }) {
   const [query, setQuery] = useState('');
   const [ascending, setAscending] = useState(true);
   const [page, setPage] = useState(0);
@@ -21,9 +22,9 @@ export function StudentTable({ items, busy, onOpen, attendance, marks, rewards }
       {attendance && <button className="button secondary" title={attendance.unavailable || 'Вся группа, включая скрытых поиском учеников'} disabled={busy || !!attendance.unavailable || items.every(row => attendanceStatus(row.was) === 1)} onClick={attendance.onAll}>Все присутствуют</button>}
       {rewards && <span className="reward-budget" role="status" title="Локальный лимит на весь выбранный урок, включая учеников вне поиска и текущей страницы. Учитывает черновик.">{rewardBudget.used === null ? 'Топкойны: количество неизвестно · увеличение недоступно' : `Топкойны: ${rewardBudget.used} из ${LESSON_REWARD_LIMIT} · Осталось: ${rewardBudget.remaining}`}</span>}
     </div>
-    {attendance?.unavailable && <p className="attendance-help">{attendance.unavailable}</p>}
+    {attendance?.unavailable && <div className="attendance-help">{attendance.unavailable === 'Выберите доступное занятие в Omni и загрузите урок.' ? <HelpTip label="Как выбрать доступное занятие">{attendance.unavailable}</HelpTip> : attendance.unavailable}</div>}
     {attendance?.saving && <p className="attendance-help" role="status">Сохраняю изменения и проверяю ответ Omni…</p>}
-    <div className="table-scroll"><table><thead><tr><th aria-sort={ascending ? 'ascending' : 'descending'}><button className="text-button" onClick={() => setAscending(!ascending)}>Ученик {ascending ? '↑' : '↓'}</button></th><th>Присутствие</th><th>Контрольная</th><th>Работа на уроке</th>{showRewards && <th>Топкойны</th>}{average && <th>Средняя оценка</th>}</tr></thead><tbody>{filtered.slice(current * 25, (current + 1) * 25).map((student, index) => {
+    <div className="table-scroll" tabIndex={lessonView ? 0 : undefined} role={lessonView ? 'region' : undefined} aria-label={lessonView ? 'Таблица учеников' : undefined}><table><thead><tr><th aria-sort={ascending ? 'ascending' : 'descending'}><button className="text-button" onClick={() => setAscending(!ascending)}>Ученик {ascending ? '↑' : '↓'}</button></th><th>Присутствие</th><th>Контрольная</th><th>Работа на уроке</th>{showRewards && <th>Топкойны</th>}{average && <th>Средняя оценка</th>}</tr></thead><tbody>{filtered.slice(current * 25, (current + 1) * 25).map((student, index) => {
       const was = attendanceStatus(student.was);
       return <tr key={text(student.id_stud) || index}>
         <td><button className="student-name" disabled={busy || !student.id_stud} onClick={() => onOpen(student)}><span className="avatar purple" aria-hidden="true">{text(student.fio_stud).split(' ').slice(0, 2).map(word => word[0]).join('')}</span>{text(student.fio_stud) || 'Имя не получено'}</button></td>

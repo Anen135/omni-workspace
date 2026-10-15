@@ -11,7 +11,7 @@ internal static class PreviewFiles {
     const int Limit = 1 * 1024 * 1024 * 1024;
     internal static bool Allowed(Uri uri) => uri.Scheme == "https" && uri.IsDefaultPort && uri.UserInfo == "" && (
         uri.Host == "fs.top-academy.ru" && Regex.IsMatch(uri.AbsolutePath, "^/api/v1/files/[A-Za-z0-9_-]+$") ||
-        uri.Host == "storage.yandexcloud.net" && uri.AbsolutePath.StartsWith("/top-academy-services-omni/", StringComparison.Ordinal));
+        uri.Host == "storage.yandexcloud.net" && (uri.AbsolutePath.StartsWith("/top-academy-services-omni/", StringComparison.Ordinal) || uri.AbsolutePath.StartsWith("/top-academy-services-msapi/", StringComparison.Ordinal)));
     internal static async Task<object> Load(string address) {
         using (var handler = new HttpClientHandler { AllowAutoRedirect = false, UseCookies = false })
         using (var client = new HttpClient(handler))

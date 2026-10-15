@@ -6,7 +6,7 @@
   "description": "Локальный интерфейс преподавателя. Вход и данные через официальную вкладку Omni.",
   "minimum_chrome_version": "120",
   "permissions": ["scripting", "storage"],
-  "host_permissions": ["https://omni.top-academy.ru/*", "https://fs.top-academy.ru/*", "https://storage.yandexcloud.net/top-academy-services-omni/*"],
+  "host_permissions": ["https://omni.top-academy.ru/*", "https://fs.top-academy.ru/*", "https://storage.yandexcloud.net/top-academy-services-omni/*", "https://storage.yandexcloud.net/top-academy-services-msapi/*"],
   "background": { "service_worker": "background.js", "type": "module" },
   "content_scripts": [{ "matches": ["https://omni.top-academy.ru/*"], "js": ["content.js"], "run_at": "document_idle", "all_frames": false, "world": "ISOLATED" }],
   "action": { "default_title": "Открыть Omni Workspace", "default_icon": "icon.png" },

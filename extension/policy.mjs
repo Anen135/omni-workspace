@@ -30,6 +30,6 @@ export function allowedFile(value) {
     const url = new URL(value);
     return url.protocol === 'https:' && !url.username && !url.password && !url.port && (
       url.hostname === 'fs.top-academy.ru' && /^\/api\/v1\/files\/[A-Za-z0-9_-]+$/.test(url.pathname) ||
-      url.hostname === 'storage.yandexcloud.net' && url.pathname.startsWith('/top-academy-services-omni/'));
+      url.hostname === 'storage.yandexcloud.net' && (url.pathname.startsWith('/top-academy-services-omni/') || url.pathname.startsWith('/top-academy-services-msapi/')));
   } catch { return false; }
 }

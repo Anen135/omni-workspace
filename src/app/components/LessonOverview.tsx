@@ -1,8 +1,9 @@
-import { BookOpen } from 'lucide-react';
+import { BookOpen, Save } from 'lucide-react';
 import { DatePickerPopover } from '../../components/DatePickerPopover';
 import { label, rows, type Account, type RemoteRecord } from '../../services/omni-client';
 import type { LessonDraft } from '../../features/lesson/lesson-draft';
 import type { presentLessons } from '../../features/lesson/present-lessons';
+import { HelpTip } from '../../components/ui/HelpTip';
 
 export function LessonBanner({ account, fetchedAt, date, students, theme, draft }: {
   account: Account; fetchedAt: string; date: string; students: RemoteRecord[]; theme: string; draft?: LessonDraft;
@@ -10,17 +11,21 @@ export function LessonBanner({ account, fetchedAt, date, students, theme, draft 
   return <section className="lesson-banner"><span className="lesson-icon"><BookOpen size={25}/></span><div className="lesson-description"><div className="lesson-meta"><span>РЕАЛЬНЫЕ ДАННЫЕ</span><span>{date}</span></div><h2>{draft?.theme?.theme || theme || (students.length ? 'Текущее занятие' : 'Omni не вернул текущую пару')}</h2><div className="lesson-time">Обновлено {new Date(fetchedAt).toLocaleTimeString('ru-RU')} · {account.branch}{draft?.theme && ' · тема в черновике'}</div></div></section>;
 }
 
-export function LessonSaveBar({ busy, saving, draft, hasTheme, hasDrafts, unavailable, onSave, onDiscard }: {
-  busy: boolean; saving: boolean; draft?: LessonDraft; hasTheme: boolean; hasDrafts: boolean; unavailable: string;
+export function LessonSaveBar({ busy, saving, draft, hasTheme, unavailable, onSave, onDiscard }: {
+  busy: boolean; saving: boolean; draft?: LessonDraft; hasTheme: boolean; unavailable: string;
   onSave: () => void; onDiscard: () => void;
 }) {
-  return <div className="lesson-save-bar">
-    <div role="status">{draft ? `Черновик: ${Object.keys(draft.attendance).length} отметок посещаемости · ${Object.keys(draft.marks).length} оценок · ${Object.keys(draft.rewards || {}).length} наград${draft.theme ? ' · тема урока' : ''}. В Omni ещё не сохранён.` : 'Посещаемость, оценки, топкойны и тема накапливаются в черновике до нажатия «Сохранить».'}
-      {!hasTheme && !draft?.theme && <span> Добавьте тему в черновик, чтобы сохранить урок.</span>}
-      {hasDrafts && <small> Черновики хранятся до закрытия или перезагрузки страницы.</small>}
+  if (!draft) return null;
+  const canSave = !busy && !saving && !unavailable && (hasTheme || !!draft.theme);
+  const needsLesson = unavailable === 'Выберите доступное занятие в Omni и загрузите урок.';
+  return <div className="lesson-save-bar has-draft">
+    <div className="lesson-save-status">
+      <span role="status">{saving ? 'Сохраняю изменения и проверяю ответ Omni…' : `Черновик: ${Object.keys(draft.attendance).length} отметок посещаемости · ${Object.keys(draft.marks).length} оценок · ${Object.keys(draft.rewards || {}).length} наград${draft.theme ? ' · тема урока' : ''}. В Omni ещё не сохранён.`}</span>
+      {!hasTheme && !draft.theme && <HelpTip label="Почему урок не готов к сохранению">Добавьте тему в черновик, чтобы сохранить урок.</HelpTip>}
+      {needsLesson ? <HelpTip label="Как выбрать доступное занятие">{unavailable}</HelpTip> : unavailable && <span className="lesson-save-reason">{unavailable}</span>}
+      <button className="text-button lesson-discard" disabled={busy} onClick={onDiscard}>Отменить черновик</button>
     </div>
-    <button className="button primary" disabled={busy || !draft || !!unavailable || (!hasTheme && !draft.theme)} onClick={onSave}>{saving ? 'Сохраняю…' : 'Сохранить'}</button>
-    {draft && <button className="text-button" disabled={busy} onClick={onDiscard}>Отменить черновик</button>}
+    {canSave && <div className="lesson-save-actions"><button className="button primary lesson-save-icon" aria-label="Сохранить" title="Сохранить" onClick={onSave}><Save size={20} aria-hidden="true"/></button></div>}
   </div>;
 }
 
@@ -30,8 +35,13 @@ export function LessonSelectors({ date, today, presents, dayLessons, busy, onDat
 }) {
   const currentSlot = label(presents.cur_lenta);
   const group = rows(presents.groups).find(item => label(item.id_tgroups) === label(presents.cur_group));
-  return <>
-    <div className="workspace-table-tools"><strong>Дата урока: {date || 'не выбрана'}</strong><DatePickerPopover unrestricted today={today} value={date || today} busy={busy} onPick={onDatePick}/><button className="button secondary" disabled={busy} onClick={onSchedule}>Выбрать пару в расписании</button><span>Группа: {label(group?.name_tgroups) || label(presents.cur_group) || '—'}</span><span>Пара: {label(presents.cur_lenta_number) || currentSlot || '—'}</span></div>
-    {dayLessons.length > 0 && <div className="workspace-table-tools" role="group" aria-label="Пары выбранного дня"><label>Пара <select aria-label="Пара выбранного дня" disabled={busy} value={dayLessons.some(item => item.slot === currentSlot) ? currentSlot : ''} onChange={event => onSlotPick(event.target.value)}><option value="" disabled>Выберите пару</option>{dayLessons.map(item => <option key={item.slot} value={item.slot}>{item.title}{item.time ? ` · ${item.time}` : ''}</option>)}</select></label><span>{dayLessons.length} пар · список из раздела «Присутствующие» Omni</span></div>}
-  </>;
+  return <section className="lesson-context panel" aria-label="Выбор урока">
+    <div className="lesson-context-row">
+      <div className="lesson-context-date"><span>Дата урока</span><div><DatePickerPopover unrestricted today={today} value={date || today} busy={busy} onPick={onDatePick}/><strong>{date || 'не выбрана'}</strong></div></div>
+      {dayLessons.length > 0 && <div className="lesson-context-slot" role="group" aria-label="Пары выбранного дня"><label>Пара<select aria-label="Пара выбранного дня" disabled={busy} value={dayLessons.some(item => item.slot === currentSlot) ? currentSlot : ''} onChange={event => onSlotPick(event.target.value)}><option value="" disabled>Выберите пару</option>{dayLessons.map(item => <option key={item.slot} value={item.slot}>{item.title}{item.time ? ` · ${item.time}` : ''}</option>)}</select></label></div>}
+      <div className="lesson-context-current"><span>Группа: <strong>{label(group?.name_tgroups) || label(presents.cur_group) || '—'}</strong></span><span>Пара: <strong>{label(presents.cur_lenta_number) || currentSlot || '—'}</strong></span></div>
+      <button className="button secondary" disabled={busy} onClick={onSchedule}>Выбрать пару в расписании</button>
+    </div>
+    {dayLessons.length > 0 && <div className="lesson-context-source help-heading"><span>{dayLessons.length} пар</span><HelpTip label="Об источнике списка пар">Список получен из раздела «Присутствующие» Omni.</HelpTip></div>}
+  </section>;
 }

@@ -5,6 +5,7 @@ import type { IncomeConfig, IncomeHistoryWeek, IncomePeriodSummary } from '../in
 import { DossierSection } from './DossierSection';
 import { DossierOverview } from './DossierOverview';
 import { DossierDetails } from './DossierDetails';
+import { HelpTip } from '../../../components/ui/HelpTip';
 import '../income.css';
 
 type Props = { accountId: string; branch?: string; schedule: Section; today: string; disabled?: boolean; onConnectionError?: (reason: unknown) => void; onLoadingChange?: (loading: boolean) => void };
@@ -140,13 +141,13 @@ function IncomePanel({ accountId, branch = '', today, disabled = false, onConnec
     });
     return hasPricedLesson ? `≥ ${formatMoney.format(row[field])}` : null;
   }
-  return <DossierSection title="Доходы" description="Расчёт по реальному расписанию и вашим ставкам — не подтверждённая зарплата Omni.">
+  return <DossierSection title="Доходы">
     <div className="dossier-income-summary">
-      <div className="dossier-income-heading"><p className="dossier-income-period">Месячный прогноз и заработок</p><button type="button" className="button secondary small" disabled={loading || disabled} onClick={() => void load()}>Обновить расчёт</button></div>
-      <p className="dossier-income-note">Заработано — расчёт по занятиям до сегодняшнего дня, без проверки проведения и оплаты. Сегодняшние пары ещё относятся к оставшимся. Одна запись расписания — одна пара.</p>
+      <div className="dossier-income-heading"><div className="help-heading"><p className="dossier-income-period">Месячный прогноз и заработок</p><HelpTip label="О расчёте дохода">Заработано рассчитывается по занятиям до сегодняшнего дня. Сегодняшние пары относятся к оставшимся; одна запись расписания считается одной парой.</HelpTip></div><button type="button" className="button secondary small" disabled={loading || disabled} onClick={() => void load()}>Обновить расчёт</button></div>
+      <p className="dossier-income-note">Расчёт по расписанию и вашим ставкам — не подтверждённая зарплата Omni.</p>
       {loading && <p className="dossier-income-note" role="status">Загружаем расписание: {history.length} из {periods.weeks.length} недель…</p>}
       {loadError && <p className="dossier-section-error" role="alert">{loadError}</p>}
-      {!loading && incomplete && <p className="dossier-income-note">«≥» — известная часть суммы: итог может быть больше. «—» — нет ни одного занятия с известной ставкой. Причины неполного расчёта указаны под суммами. Уточните ставки или обновите расчёт.</p>}
+      {!loading && incomplete && <p className="dossier-income-note">Неполный расчёт: «≥» — известная часть, «—» — нет сумм с известной ставкой. Причины указаны под суммами.</p>}
       {loading && !history.length ? <div className="dossier-income-skeleton" aria-label="Загрузка доходов"><span/><span/><span/><span/></div> : <DossierOverview metrics={[
         incomeMetric('income-year', `Всего заработано с 1 января ${year}`, metrics.yearEarned),
         incomeMetric('income-previous', 'Заработано в прошлом месяце', metrics.previousMonth),
@@ -158,12 +159,12 @@ function IncomePanel({ accountId, branch = '', today, disabled = false, onConnec
         { id: 'income-month-count', label: 'Пар в этом месяце', value: metrics.monthPlan.missingDays ? null : metrics.monthPlan.count },
         { id: 'income-unpriced', label: 'Без ставки в этом месяце', value: metrics.monthPlan.missingDays ? null : metrics.monthPlan.unpriced },
       ]}/>}
-      <p className="dossier-income-note">Прогноз на месяц вперёд: {dateText(today)} — {dateText(periods.ranges.rollingMonth.end)} (конечная дата не включена). Следующий месяц — отдельный календарный период. Нет расписания в будущих неделях — нет предположенных пар.</p>
+      <p className="dossier-income-note">Прогноз на месяц вперёд: {dateText(today)} — {dateText(periods.ranges.rollingMonth.end)} (конечная дата не включена).</p>
       <div className="dossier-income-paycycle">
-        <div className="dossier-income-heading"><h4>До зарплаты</h4><strong>{dateText(payday)}</strong></div>
-        <p className="dossier-income-note">Расчётный цикл: {dateText(periods.payStart)} — {dateText(payday)} (день выплаты не включён). Это локальная модель от выплаты до выплаты, а не данные бухгалтерии.</p>
+        <div className="dossier-income-heading"><div className="help-heading"><h4>До зарплаты</h4><HelpTip label="О расчётном цикле">Локальная модель от выплаты до выплаты, а не данные бухгалтерии. День выплаты не включён в цикл.</HelpTip></div><strong>{dateText(payday)}</strong></div>
+        <p className="dossier-income-note">Расчётный цикл: {dateText(periods.payStart)} — {dateText(payday)} (день выплаты не включён).</p>
         <DossierOverview metrics={[
-          { ...previousPayCycle, note: `${dateText(periods.ranges.previousPayCycle.start)} — ${dateText(periods.ranges.previousPayCycle.end)} (день выплаты не включён). ${previousPayCycle.note || 'Расчёт по расписанию, не подтверждение выплаты.'}` },
+          { ...previousPayCycle, note: `${dateText(periods.ranges.previousPayCycle.start)} — ${dateText(periods.ranges.previousPayCycle.end)} (день выплаты не включён). ${previousPayCycle.note || ''}` },
           incomeMetric('pay-earned', 'Заработано за расчётный цикл', metrics.payEarned),
           incomeMetric('pay-remaining', 'Осталось заработать до выплаты', metrics.payRemaining),
           incomeMetric('pay-plan', 'План за расчётный цикл', metrics.payPlan),
@@ -182,7 +183,8 @@ function IncomePanel({ accountId, branch = '', today, disabled = false, onConnec
     </div>
     <details className="dossier-income-settings">
       <summary>Настройки дохода{dirty ? ' · есть несохранённые изменения' : ''}</summary>
-      <p className="dossier-income-note">Ставки за одну пару для группы. Пустая ставка — не оценивать, 0 — бесплатная пара. Настройки привязаны к преподавателю и филиалу, сохраняются только в этом браузере.</p>
+      <div className="help-heading"><h4>Ставки за пару</h4><HelpTip label="О настройках дохода">Настройки привязаны к преподавателю и филиалу и сохраняются только в этом браузере.</HelpTip></div>
+      <p className="dossier-income-note">Пустая ставка — не оценивать, 0 — бесплатная пара.</p>
       <div className="dossier-income-fields">
         <label>Обычная пара, ₽<input type="text" inputMode="decimal" value={draft.defaultRate} onChange={event => change({ defaultRate: event.target.value })}/></label>
         <label>Мастер-класс, ₽<input type="text" inputMode="decimal" value={draft.masterclassRate} onChange={event => change({ masterclassRate: event.target.value })}/></label>
@@ -197,7 +199,7 @@ function IncomePanel({ accountId, branch = '', today, disabled = false, onConnec
         <button type="button" className="button secondary small" onClick={() => change({ groupRates: { ...draft.groupRates, [selectedNewGroup]: draft.defaultRate } })}>Добавить ставку</button>
       </div>}
       {summary.lessons.some(lesson => lesson.ambiguous) && <div className="dossier-income-events"><h4>Уточнить события</h4>
-        <p className="dossier-income-note">Неплановые занятия или записи без группы не оценены автоматически. Отметьте только реальные мастер-классы.</p>
+        <p className="dossier-income-note">Занятия ниже не оценены автоматически. Отметьте только реальные мастер-классы.</p>
         {summary.lessons.filter(lesson => lesson.ambiguous).map(lesson => <label key={lesson.key} className="dossier-income-event">
           <input type="checkbox" checked={draft.masterclassLessons.includes(lesson.key)} onChange={event => change({ masterclassLessons: event.target.checked ? [...draft.masterclassLessons, lesson.key] : draft.masterclassLessons.filter(key => key !== lesson.key) })}/>
           <span>Мастер-класс: {dateText(lesson.date)}, пара {lesson.slot} · {lesson.group || 'Без группы'} · {lesson.event || lesson.subject}</span>

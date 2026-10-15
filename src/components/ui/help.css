@@ -1,0 +1,14 @@
+.help-heading { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; min-width: 0; }
+.help-tip-trigger { display: inline-flex; flex: 0 0 auto; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 4px; border-radius: 7px; color: #697386; vertical-align: middle; cursor: help; }
+.help-tip-trigger:hover, .help-tip-trigger[aria-expanded=true] { background: #f1edff; color: #6c4df6; }
+.help-tip-trigger:focus-visible { outline: 2px solid #6c4df6; outline-offset: 2px; }
+.help-tip-bubble { position: fixed; z-index: 1000; width: max-content; max-width: min(288px, calc(100vw - 16px)); padding: 12px 14px; border: 1px solid #ded8f2; border-radius: 10px; box-shadow: 0 6px 24px #19213220; background: #fff; color: #353e50; font: 13px/1.6 'Golos Text', sans-serif; overflow-wrap: anywhere; white-space: normal; }
+.help-page { display: grid; gap: 16px; min-width: 0; }
+.help-page > .help-page-intro { display: flex; flex-direction: row; flex-wrap: wrap; gap: 8px 20px; }
+.help-page-intro a { color: #6c4df6; text-decoration: underline; text-underline-offset: 3px; }
+.help-page-section { padding: 20px; border: 1px solid #e7e9f2; border-radius: 12px; background: #fff; scroll-margin-top: 80px; }
+.help-page-section h2 { margin-bottom: 14px; font-size: 18px; }
+.help-page-section h3 { margin: 18px 0 6px; font-size: 14px; }
+.help-page-section p { max-width: 85ch; color: #596174; font-size: 13px; line-height: 1.75; }
+.help-page-section p + p { margin-top: 10px; }
+@media (max-width: 760px) { .help-tip-trigger { width: 32px; height: 32px; } .help-page-section { padding: 16px; } }

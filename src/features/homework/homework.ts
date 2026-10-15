@@ -18,6 +18,14 @@ const id = (value: unknown): string => /^[1-9]\d{0,11}$/.test(text(value)) ? tex
 const object = (value: unknown): RemoteRecord => value && typeof value === 'object' && !Array.isArray(value) ? value as RemoteRecord : {};
 export const homeworkMark = (value: unknown): number | null => text(value).trim() !== '' && Number.isFinite(Number(value)) && Number(value) > 0 ? Number(value) : null;
 
+export function homeworkGroupName(source: RemoteRecord): string {
+  // The official homework modal displays its submission's `group` field.
+  for (const value of [source.name_tgroups, source.group_name, source.group]) {
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+  return '';
+}
+
 // Official homeWorkCtrl.getModalData receives these three collections, not a flat table.
 export function homeworkItems(data: unknown): HomeworkReviewItem[] {
   const container = object(data);
@@ -35,7 +43,7 @@ export function homeworkItems(data: unknown): HomeworkReviewItem[] {
       return {
         key: identified ? `${kind}:${submissionId}:${workId}:${studentId}` : `readonly:${kind}:${index}`,
         studentId, studentName: text(source.fio_stud),
-        groupName: text(source.name_tgroups || source.group_name),
+        groupName: homeworkGroupName(source),
         subject: text(source.name_spec || source.spec_name), theme: text(source.theme || source.title),
         submittedAt: text(source.stud_date || source.time || source.date_upload || source.submitted_at),
         mark: homeworkMark(source.mark), source,

@@ -5,6 +5,7 @@ import { materialTopics } from './teaching-materials';
 import './teaching-materials.css';
 import { MaterialCard } from './MaterialCard';
 import { SearchableSelect } from '../../components/ui/SearchableSelect';
+import { HelpTip } from '../../components/ui/HelpTip';
 
 type Catalog = { account: { id: string }; forms: Section; directions: Section; packages: Section; types: Section };
 type MethodPackage = { account: { id: string }; materials: Section; themes: Section };
@@ -68,7 +69,7 @@ export function TeachingMaterials({ accountId, disabled, onConnectionError }: {
   const sectionErrors = [catalog?.forms, catalog?.directions, catalog?.packages, catalog?.types, pack?.materials, pack?.themes].flatMap(section => section?.error ? [section.error] : []);
 
   return <section className="panel teaching-materials" aria-label="Методички для подготовки">
-    <div className="panel-heading"><div><h2>Методички для подготовки</h2><p>Доступны до начала урока. Выберите методпакет; форма обучения и направление необязательны.</p></div><button className="button secondary" disabled={locked} onClick={() => void (spec ? loadPackage(spec) : loadCatalog({ ...(form ? { form } : {}), ...(direction ? { direction } : {}) }))}><RefreshCw size={15}/>Обновить методички</button></div>
+    <div className="panel-heading"><div className="help-heading"><h2>Методички для подготовки</h2><HelpTip label="О разделе «Методички для подготовки»">Выберите методпакет; форма обучения и направление необязательны. Текущий урок и список учеников для подготовки не нужны.</HelpTip></div><button className="button secondary" disabled={locked} onClick={() => void (spec ? loadPackage(spec) : loadCatalog({ ...(form ? { form } : {}), ...(direction ? { direction } : {}) }))}><RefreshCw size={15}/>Обновить методички</button></div>
     <div className="method-filters">
       <SearchableSelect label="Форма обучения" value={form} disabled={locked || !catalog} placeholder="Все формы обучения"
         options={rows(catalog?.forms.data).map(item => ({ value: label(item.id_form), label: label(item.name_form) }))}
@@ -82,7 +83,7 @@ export function TeachingMaterials({ accountId, disabled, onConnectionError }: {
     {busy && <div className="method-status" role="status"><LoaderCircle className="spin" size={17}/>Загружаю методички…</div>}
     {error && <div className="warning" role="alert">{error}</div>}
     {sectionErrors.map((message, index) => <div className="warning" role="alert" key={index}>{message}</div>)}
-    {!busy && !error && !sectionErrors.length && !spec && <div className="empty"><BookOpen size={28}/><h3>{form && !packages.length ? 'Для выбранной формы методпакеты не найдены' : 'Выберите методпакет для подготовки'}</h3><p>Текущая пара и список учеников для этого не нужны.</p></div>}
+    {!busy && !error && !sectionErrors.length && !spec && <div className="empty"><BookOpen size={28}/><h3>{form && !packages.length ? 'Для выбранной формы методпакеты не найдены' : 'Выберите методпакет для подготовки'}</h3></div>}
     {pack && !pack.materials.error && <>
       <div className="method-filters method-search"><label>Поиск по темам и материалам<input type="search" value={search} onChange={event => setSearch(event.target.value)} placeholder="Название урока или методички"/></label><label>Тип материала<select aria-label="Тип материала" value={type} onChange={event => setType(event.target.value)}><option value="">Все материалы</option>{types.map(item => <option key={label(item.id)} value={label(item.id)}>{label(item.name)}</option>)}</select></label></div>
       <div className="method-topics">{visible.map((topic, index) => <details className="method-topic" key={topic.week} open={index === 0 || !!query}>

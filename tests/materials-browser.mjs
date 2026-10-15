@@ -80,7 +80,7 @@ try {
   });
   await page.goto('http://127.0.0.1:5184/', { waitUntil: 'domcontentloaded' });
   await page.getByRole('heading', { name: 'Мой урок' }).waitFor();
-  await page.getByText('Подключено', { exact: true }).waitFor();
+  await page.locator('.act-as select').waitFor();
   await page.waitForFunction(() => !Array.from(document.querySelectorAll('button')).find(button => button.textContent === 'Обновить')?.disabled);
   let releaseSnapshot;
   snapshotGate = new Promise(resolve => { releaseSnapshot = resolve; });

@@ -1,6 +1,8 @@
 import { useState } from 'react';
+import { CircleAlert } from 'lucide-react';
 import { label, record, type RemoteRecord } from '../../services/omni-client';
 import { attendanceLessonInfo } from './attendance';
+import { HelpTip } from '../../components/ui/HelpTip';
 
 export type ThemeChoice = { theme: string; publicWeekId: string | null; issueHomework: boolean; issueLabwork: boolean; previousTheme: string };
 export type ThemeData = { presents: RemoteRecord; themes: RemoteRecord[] };
@@ -18,6 +20,7 @@ export function LessonThemeEditor({ busy, unavailable, currentTheme, draft, onLo
   const permission = data?.presents.can_set_theme;
   const denied = permission === false || permission === 0 || permission === '0';
   const theme = selected ? label(selected.theme) : manual;
+  const needsLesson = unavailable === 'Выберите доступное занятие в Omni и загрузите урок.';
   async function load() {
     try {
       const next = await onLoad();
@@ -38,9 +41,9 @@ export function LessonThemeEditor({ busy, unavailable, currentTheme, draft, onLo
     } catch { setBlocked(true); }
   }
   return <section className="panel lesson-theme-editor" aria-label="Тема урока">
-    <div className="panel-heading"><div><h2>Тема урока</h2><p>Выберите тему, нажмите «В черновик», затем «Сохранить» для отправки урока в Omni</p></div><button className="button secondary" disabled={busy || !!unavailable} onClick={() => void load()}>{data ? 'Обновить список тем' : 'Выбрать тему'}</button></div>
-    {!data && <p className="attendance-help">{draft ? `Тема в черновике: ${draft.theme}` : currentTheme ? `Текущая тема: ${currentTheme}` : 'Тема ещё не сохранена.'}</p>}
-    {unavailable && <p className="attendance-help">{unavailable}</p>}
+    <div className="panel-heading"><div className="help-heading"><h2>Тема урока</h2><HelpTip label="О разделе «Тема урока»" icon={!currentTheme && !draft ? <CircleAlert size={16} aria-hidden="true"/> : undefined}>{!currentTheme && !draft && <>Тема ещё не сохранена. </>}{needsLesson ? unavailable : 'Выберите тему и добавьте её в черновик. Отправка в Omni — по кнопке «Сохранить».'}</HelpTip></div><button className="button secondary" disabled={busy || !!unavailable} onClick={() => void load()}>{data ? 'Обновить список тем' : 'Выбрать тему'}</button></div>
+    {!data && (draft || currentTheme) && <p className="attendance-help">{draft ? `Тема в черновике: ${draft.theme}` : `Текущая тема: ${currentTheme}`}</p>}
+    {unavailable && !needsLesson && <p className="attendance-help">{unavailable}</p>}
     {data && <form onSubmit={event => { event.preventDefault(); void save(); }}>
       {denied && <p role="status">Omni не разрешает изменять тему этого занятия.</p>}
       <fieldset disabled={busy || !!denied}>

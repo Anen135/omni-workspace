@@ -1,5 +1,6 @@
-import { ArrowRight, ExternalLink, LogIn, ShieldCheck } from 'lucide-react';
+import { ArrowRight, ExternalLink, LogIn } from 'lucide-react';
 import { LoginForm } from '../../features/auth/LoginForm';
+import { HelpTip } from '../../components/ui/HelpTip';
 
 export function ConnectionCard({ busy, waiting, extension, changingAccount, connectionState, onLogin, onConnect, onDemo }: {
   busy: boolean; waiting: boolean; extension: boolean; changingAccount: boolean; connectionState: string;
@@ -16,10 +17,9 @@ export function ConnectionCard({ busy, waiting, extension, changingAccount, conn
           : 'Можно завершить вход в официальном окне или использовать форму ниже.'
         : 'Введите данные аккаунта академии. Для подключения используйте форму ниже или официальное окно входа.';
   return <section className="panel connection-card">
-    <span className="lesson-icon"><LogIn size={26}/></span><h2>{title}</h2><p>{explanation}</p>
+    <span className="lesson-icon"><LogIn size={26}/></span><div className="help-heading"><h2>{title}</h2><HelpTip label="О подключении к Omni">Сессия остаётся на этом компьютере. Демонстрация использует отдельные вымышленные данные.</HelpTip></div><p>{explanation}</p>
     {!changingAccount && <LoginForm busy={busy} onLogin={onLogin}/>}
     <button className="button secondary" disabled={busy} onClick={onConnect}><ExternalLink size={17}/>Открыть официальный вход</button>
-    <div className="connection-help"><ShieldCheck size={16}/>Сессия остаётся на этом компьютере. Демо-данные не попадают в реальный аккаунт.</div>
     <button className="text-button" onClick={onDemo}>Пока посмотреть демонстрацию<ArrowRight size={15}/></button>
   </section>;
 }

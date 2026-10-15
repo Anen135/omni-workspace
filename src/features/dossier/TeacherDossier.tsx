@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { HelpTip } from '../../components/ui/HelpTip';
 import { LoaderCircle, RefreshCw, UserRound } from 'lucide-react';
 import { ConnectionError, omniRequest } from '../../services/omni-client';
 import { dossierModel, type TeacherDossierData } from './dossier-model';
@@ -48,7 +49,7 @@ export function TeacherDossier({ accountId, accountName, branch, schedule, today
   const model = dossier ? dossierModel(dossier) : null;
   const retry = disabled ? undefined : () => void load();
   return <section className="panel teacher-dossier" aria-label="Досье преподавателя" aria-busy={busy}>
-    <div className="panel-heading"><div><h2><UserRound size={19}/>{dossier?.account.name || accountName}</h2><p>Досье преподавателя · данные Omni</p></div><button className="button secondary" disabled={locked} onClick={() => void load()}><RefreshCw size={15}/>Обновить досье</button></div>
+    <div className="panel-heading"><div className="help-heading"><h2><UserRound size={19}/>{dossier?.account.name || accountName}</h2><HelpTip label="О досье преподавателя">Профиль, показатели и результаты студентов из Omni.</HelpTip></div><button className="button secondary" disabled={locked} onClick={() => void load()}><RefreshCw size={15}/>Обновить досье</button></div>
     {(busy || disabled && !dossier && !error) && <div className="dossier-status" role="status"><LoaderCircle className="spin" size={17}/>{dossier ? 'Обновляем досье…' : 'Загружаем досье…'}</div>}
     {error && <div className="dossier-error"><div className="warning" role="alert">{error}</div><button className="button secondary" disabled={locked} onClick={() => void load()}>Повторить загрузку</button></div>}
     {dossier && model && <>

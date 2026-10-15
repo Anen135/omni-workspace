@@ -3,6 +3,7 @@ import { Copy, X } from 'lucide-react';
 import { attendanceLabels, attendanceStatus } from './attendance';
 import { matchingLessonStudents, transferableMark, type CopySelection, type CopySource, type PreviousLessonData } from './lesson-copy';
 import { rewardLevel } from './lesson-reward';
+import { HelpTip } from '../../components/ui/HelpTip';
 
 const text = (value: unknown) => typeof value === 'string' || typeof value === 'number' ? String(value) : '';
 export function PreviousLessonCopy({ busy, unavailable, students, date, slot, dayLessons, onLoad, onCopy }: {
@@ -26,7 +27,7 @@ export function PreviousLessonCopy({ busy, unavailable, students, date, slot, da
     catch (reason) { setError(reason instanceof Error ? reason.message : 'Не удалось загрузить предыдущую пару.'); }
   }
   return <section className="panel lesson-copy" aria-label="Перенос с прошлой пары">
-    <div className="panel-heading"><div><h2>С прошлой пары</h2><p>Перенос в черновик этого урока · отправка по кнопке «Сохранить»</p></div>
+    <div className="panel-heading"><div className="help-heading"><h2>С прошлой пары</h2><HelpTip label="О разделе «С прошлой пары»">{unavailable === 'Выберите доступное занятие в Omni и загрузите урок.' ? unavailable : 'Данные совпавших учеников переносятся в черновик. Отправка в Omni — по кнопке «Сохранить».'}</HelpTip></div>
       <button className="button secondary" disabled={busy || !!unavailable} title={unavailable} aria-expanded={open} onClick={() => setOpen(!open)}><Copy size={15}/>Перенести с прошлой пары</button>
     </div>
     {open && <div className="workspace-table-tools"><label>Дата прошлой пары<input type="date" aria-label="Дата прошлой пары" max={date} value={sourceDate} disabled={busy} onChange={event => { setSourceDate(event.target.value); setSourceSlot(''); }}/></label>
@@ -34,16 +35,16 @@ export function PreviousLessonCopy({ busy, unavailable, students, date, slot, da
       <button className="button secondary" disabled={busy || !!unavailable || !sourceDate || sourceDate > date || (sourceDate === date && !sourceSlot)} onClick={() => void load()}>Загрузить прошлую пару</button>
       {!earlier && sourceDate === date && <span>На этой дате более ранних пар нет. Выберите дату предыдущего занятия.</span>}
     </div>}
-    {error && <p className="attendance-help" role="alert">{error}</p>}
+    {error && <div className="attendance-help">{error === 'Выберите доступное занятие в Omni и загрузите урок.' ? <HelpTip label="Как выбрать доступное занятие">{error}</HelpTip> : <p role="alert">{error}</p>}</div>}
     {open && data && <>
       <div className="workspace-table-tools"><strong>{data.description}</strong><span>Совпали ученики: {matched.length} из {students.length}</span><button className="text-button" disabled={busy} aria-label="Закрыть перенос с прошлой пары" onClick={() => { setData(null); setOpen(false); }}><X size={15}/>Закрыть</button></div>
       {!selectedLoaded && <p className="attendance-help" role="status">Загрузите выбранную пару перед переносом.</p>}
       <div className="workspace-table-tools"><label><input type="checkbox" checked={selection.attendance} disabled={busy} onChange={event => setSelection(current => ({ ...current, attendance: event.target.checked }))}/>Посещаемость</label><label><input type="checkbox" checked={selection.marks} disabled={busy} onChange={event => setSelection(current => ({ ...current, marks: event.target.checked }))}/>Оценки</label></div>
-      <div className="workspace-table-tools"><label><input type="checkbox" checked={!!selection.rewards} disabled={busy} onChange={event => setSelection(current => ({ ...current, rewards: event.target.checked }))}/>Топкойны</label><span>Награды переносятся только присутствующим и опоздавшим ученикам.</span></div>
-      <div className="workspace-table-tools"><label><input type="checkbox" checked={!!selection.overwrite} disabled={busy} onChange={event => setSelection(current => ({ ...current, overwrite: event.target.checked }))}/>Заменить заполненные значения</label><span>Включая текущие значения в черновике.</span></div>
+      <div className="workspace-table-tools"><label><input type="checkbox" checked={!!selection.rewards} disabled={busy} onChange={event => setSelection(current => ({ ...current, rewards: event.target.checked }))}/>Топкойны</label></div>
+      <div className="workspace-table-tools"><label><input type="checkbox" checked={!!selection.overwrite} disabled={busy} onChange={event => setSelection(current => ({ ...current, overwrite: event.target.checked }))}/>Заменить заполненные значения</label></div>
       <div className="table-scroll"><table><thead><tr><th>Ученик</th>{selection.attendance && <th>Присутствие</th>}{selection.marks && <><th>Контрольная</th><th>Работа на уроке</th></>}{selection.rewards && <th>Топкойны</th>}</tr></thead><tbody>{matched.map(match => <tr key={text(match.target.id_stud)}><td>{text(match.target.fio_stud) || 'Имя не получено'}</td>{selection.attendance && <td>{attendanceStatus(match.source.was) === null ? '—' : attendanceLabels[attendanceStatus(match.source.was)!]}</td>}{selection.marks && <>{([2, 4] as const).map(type => <td key={type}>{transferableMark(match.source[`mark${type}`]) ?? '—'}</td>)}</>}{selection.rewards && <td>{rewardLevel(match.source.prize) || '—'}</td>}</tr>)}</tbody></table></div>
       {!matched.length && <p className="attendance-help">На прошлой паре нет учеников, которых можно однозначно сопоставить с этой группой.</p>}
-      <div className="workspace-table-tools"><button className="button primary" disabled={busy || !!unavailable || !selectedLoaded || !matched.length || (!selection.attendance && !selection.marks && !selection.rewards)} onClick={() => { onCopy(data, selection); }}>В черновик</button><span>{selection.overwrite ? 'Заполненные значения будут заменены.' : 'Будут заполнены только пустые значения.'} Пустые оценки и снятые награды не переносятся.</span></div>
+      <div className="workspace-table-tools"><button className="button primary" disabled={busy || !!unavailable || !selectedLoaded || !matched.length || (!selection.attendance && !selection.marks && !selection.rewards)} onClick={() => { onCopy(data, selection); }}>В черновик</button><span>{selection.overwrite ? 'Заполненные значения будут заменены, включая черновик.' : 'Будут заполнены только пустые значения.'}</span></div>
     </>}
   </section>;
 }

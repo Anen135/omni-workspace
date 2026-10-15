@@ -32,6 +32,7 @@ import { WorkspaceQuickActions } from './components/WorkspaceQuickActions';
 import type { WorkspaceTab } from './components/workspace-tabs';
 import './live.css';
 import './workspace.css';
+import { HelpPage } from '../features/help/HelpPage';
 
 const emptySection: Section = { data: null, error: null };
 
@@ -534,7 +535,7 @@ export function LiveWorkspace({ onDemo }: { onDemo: () => void }) {
       const stud = label(student.id_stud);
       return { ...student, ...(draft.attendance[stud] ? { was: draft.attendance[stud].was } : {}), ...(draft.marks[`${stud}:2`] ? { mark2: draft.marks[`${stud}:2`].mark } : {}), ...(draft.marks[`${stud}:4`] ? { mark4: draft.marks[`${stud}:4`].mark } : {}), ...(draft.rewards?.[stud] ? { prize: draft.rewards[stud].reward } : {}) };
     }) : items;
-    return <StudentTable key={`${tab}:${groupId}:${draftKey}`} items={displayed} busy={busy} onOpen={student => void openStudent(student)} marks={tab === 'lesson' && isExtension() ? { unavailable: attendanceReason, allowDraft: true, onChange: stageMark } : undefined} rewards={tab === 'lesson' && isExtension() ? { unavailable: attendanceReason, onChange: stageReward } : undefined} attendance={tab === 'lesson' && isExtension() ? { unavailable: attendanceReason, saving: attendanceSaving, onChange: (student, was) => markAttendance([student], was), onAll: () => markAttendance(displayed, 1, true) } : undefined}/>;
+    return <StudentTable key={`${tab}:${groupId}:${draftKey}`} items={displayed} busy={busy} lessonView={tab === 'lesson'} onOpen={student => void openStudent(student)} marks={tab === 'lesson' && isExtension() ? { unavailable: attendanceReason, allowDraft: true, onChange: stageMark } : undefined} rewards={tab === 'lesson' && isExtension() ? { unavailable: attendanceReason, onChange: stageReward } : undefined} attendance={tab === 'lesson' && isExtension() ? { unavailable: attendanceReason, saving: attendanceSaving, onChange: (student, was) => markAttendance([student], was), onAll: () => markAttendance(displayed, 1, true) } : undefined}/>;
   };
   function openDemo() {
     if (operation.current) return;
@@ -558,34 +559,37 @@ export function LiveWorkspace({ onDemo }: { onDemo: () => void }) {
         {error && <WorkspaceError message={error} busy={busy} authNeeded={authNeeded}
           onRetry={() => void (authNeeded ? connect() : snapshot ? refresh() : connect())}/>}
         {switchingTeacher && <TeacherSwitchingState/>}
-        {!snapshot && !switchingTeacher && <ConnectionCard busy={busy} waiting={waiting}
+        {tab === 'help' && <HelpPage/>}
+        {!snapshot && !switchingTeacher && tab !== 'help' && <ConnectionCard busy={busy} waiting={waiting}
           extension={isExtension()} changingAccount={changingAccount} connectionState={connectionState}
           onLogin={login} onConnect={() => void connect()} onDemo={onDemo}/>}
         {snapshot && <>
-          {tab === 'lesson' && <>
+          {tab === 'lesson' && <div className="lesson-workspace">
+            {isExtension() && <LessonSaveBar busy={busy} saving={attendanceSaving} draft={draft} hasTheme={hasTheme}
+              unavailable={attendanceReason} onSave={() => void saveLessonDraft()}
+              onDiscard={() => { if (window.confirm('Удалить локальный черновик этого урока?')) clearLessonDraft(); }}/>}
             <LessonBanner account={snapshot.account} fetchedAt={snapshot.fetchedAt} date={selectedDate} students={lessonStudents} theme={currentTheme} draft={draft}/>
-            {isExtension() && <>
-              <LessonSaveBar busy={busy} saving={attendanceSaving} draft={draft} hasTheme={hasTheme}
-                hasDrafts={hasDrafts} unavailable={attendanceReason} onSave={() => void saveLessonDraft()}
-                onDiscard={() => { if (window.confirm('Удалить локальный черновик этого урока?')) clearLessonDraft(); }}/>
+            <LessonSelectors date={selectedDate} today={today} presents={presentData} dayLessons={dayLessons}
+              busy={busy} onDatePick={date => void loadLesson(undefined, undefined, date)}
+              onSchedule={() => setTab('schedule')} onSlotPick={slot => void loadLesson(undefined, slot)}/>
+            {isExtension() && <div className="lesson-preparation">
               <LessonThemeEditor key={draftKey} busy={busy} unavailable={attendanceReason} currentTheme={currentTheme} draft={draft?.theme}
                 onLoad={loadLessonThemes} onSave={stageTheme}/>
               <PreviousLessonCopy key={`copy:${draftKey}`} busy={busy} unavailable={attendanceReason} students={lessonStudents}
                 date={selectedDate} slot={label(presentData.cur_lenta)} dayLessons={dayLessons}
                 onLoad={loadPreviousLesson} onCopy={stagePreviousLesson}/>
-            </>}
-            <LessonSelectors date={selectedDate} today={today} presents={presentData} dayLessons={dayLessons}
-              busy={busy} onDatePick={date => void loadLesson(undefined, undefined, date)}
-              onSchedule={() => setTab('schedule')} onSlotPick={slot => void loadLesson(undefined, slot)}/>
-          </>}
-          {busy && <WorkspaceLoading/>}
-          {tab === 'lesson' && <LessonStudentsPanel busy={busy} date={selectedDate} students={lessonStudents}
-            groups={rows(presentData.groups)} presentsError={!lesson && snapshot.presents.error ? snapshot.presents : undefined}
-            hasDayLessons={dayLessons.length > 0}
-            onReload={() => void loadLesson(label(presentData.cur_group), label(presentData.cur_lenta))}
-            onGroupPick={group => void loadLesson(group, label(presentData.cur_lenta))}>
-            {studentTable(lessonStudents)}
-          </LessonStudentsPanel>}
+            </div>}
+            {busy && <WorkspaceLoading/>}
+            <LessonStudentsPanel busy={busy} date={selectedDate} students={lessonStudents}
+              groups={rows(presentData.groups)} selectedGroup={label(presentData.cur_group)}
+              presentsError={!lesson && snapshot.presents.error ? snapshot.presents : undefined}
+              hasDayLessons={dayLessons.length > 0}
+              onReload={() => void loadLesson(label(presentData.cur_group), label(presentData.cur_lenta))}
+              onGroupPick={group => void loadLesson(group, label(presentData.cur_lenta))}>
+              {studentTable(lessonStudents)}
+            </LessonStudentsPanel>
+          </div>}
+          {busy && tab !== 'lesson' && <WorkspaceLoading/>}
           {tab === 'schedule' && <section className="panel">{snapshot.schedule.error
             ? <SectionView section={snapshot.schedule}/>
             : <ScheduleView data={schedule} today={today} busy={busy} onOpen={(date, slot) => void loadLesson(undefined, slot, date)}/>}
