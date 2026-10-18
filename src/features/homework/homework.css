@@ -38,6 +38,14 @@
 .homework-details h4 { font-size: 12px; margin: 0 0 8px; color: var(--muted, #697386); font-weight: 500; }
 .homework-details p { margin: 0; font-size: 13px; line-height: 1.6; }
 .homework-details .remote-data { padding: 0; }
+.homework-teacher-response { grid-column: 1 / -1; white-space: normal; }
+.homework-teacher-response > p { white-space: pre-wrap; }
+.homework-response-editor { display: grid; gap: 10px; }
+.homework-response-editor label { display: grid; gap: 6px; font-size: 13px; }
+.homework-response-editor textarea { margin: 0; color: inherit; background: var(--surface, #fff); }
+.homework-response-editor textarea:disabled { opacity: .55; cursor: not-allowed; }
+.homework-response-actions { display: flex; align-items: end; gap: 12px; flex-wrap: wrap; }
+.homework-response-actions input { width: 72px; }
 .homework-review .homework-details .remote-field { margin: 4px 0; }
 .homework-pagination { display: flex; justify-content: flex-end; align-items: center; flex-wrap: wrap; gap: 12px; padding: 16px 20px; font-size: 12px; color: var(--muted, #697386); }
 .homework-pagination > span:first-child { margin-right: auto; }

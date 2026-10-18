@@ -23,7 +23,18 @@ export function validateInput(action, input) {
     // Homework grades are whole numbers 1-12: Omni's server rejects anything above 12, so this mirrors
     // its limit and does not choose a scale. (Lesson marks below use a technical 1-100 bound instead;
     // the real scale and the right to write are decided by Omni.) See extension/README.md, «Шкала оценок».
-    if (Object.keys(input).some(key => !['accountId', 'mark', 'items'].includes(key)) || typeof input.accountId !== 'string' || !/^[1-9]\d{0,11}$/.test(input.accountId) || !Number.isInteger(input.mark) || input.mark < 1 || input.mark > 12 || !Array.isArray(input.items) || !input.items.length || input.items.length > 100 || input.items.some(item => !item || typeof item !== 'object' || Array.isArray(item) || Object.keys(item).some(key => !['key', 'previousMark', 'submittedAt'].includes(key)) || typeof item.key !== 'string' || !/^(homework|lab_work):[1-9]\d{0,11}:[1-9]\d{0,11}:[1-9]\d{0,11}$/.test(item.key) || !(item.previousMark === null || Number.isFinite(item.previousMark) && item.previousMark > 0 && item.previousMark <= 100) || typeof item.submittedAt !== 'string' || item.submittedAt.length > 100) || new Set(input.items.map(item => item.key)).size !== input.items.length) throw new BridgeError('BAD_INPUT', 'Выберите до 100 работ и целую оценку от 1 до 12.', 400);
+    if (Object.keys(input).some(key => !['accountId', 'mark', 'items', 'response'].includes(key)) || typeof input.accountId !== 'string' || !/^[1-9]\d{0,11}$/.test(input.accountId) || !Number.isInteger(input.mark) || input.mark < 1 || input.mark > 12 || !Array.isArray(input.items) || !input.items.length || input.items.length > 100 || input.items.some(item => !item || typeof item !== 'object' || Array.isArray(item) || Object.keys(item).some(key => !['key', 'previousMark', 'submittedAt'].includes(key)) || typeof item.key !== 'string' || !/^(homework|lab_work):[1-9]\d{0,11}:[1-9]\d{0,11}:[1-9]\d{0,11}$/.test(item.key) || !(item.previousMark === null || Number.isFinite(item.previousMark) && item.previousMark > 0 && item.previousMark <= 100) || typeof item.submittedAt !== 'string' || item.submittedAt.length > 100) || new Set(input.items.map(item => item.key)).size !== input.items.length) throw new BridgeError('BAD_INPUT', 'Выберите до 100 работ и целую оценку от 1 до 12.', 400);
+    // A response belongs to one identified submission and always accompanies an explicit grade.
+    // Bound both strings so even JSON-escaped control characters fit the extension message limit.
+    if (Object.hasOwn(input, 'response')) {
+      const response = input.response;
+      if (input.items.length !== 1 || !response || typeof response !== 'object' || Array.isArray(response) ||
+          Object.keys(response).some(key => !['comment', 'previousComment'].includes(key)) ||
+          typeof response.comment !== 'string' || response.comment.length > 4000 ||
+          !(response.previousComment === null || typeof response.previousComment === 'string' && response.previousComment.length <= 4000)) {
+        throw new BridgeError('BAD_INPUT', 'Ответ преподавателя должен относиться к одной работе и содержать до 4000 символов.', 400);
+      }
+    }
     return input;
   }
   if (action === 'set-lesson-mark') {

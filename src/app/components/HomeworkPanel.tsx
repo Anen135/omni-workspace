@@ -4,7 +4,7 @@ import { HomeworkTable } from '../../features/homework/HomeworkTable';
 import { DataValue, hasData } from '../../components/data/RemoteData';
 import { HelpTip } from '../../components/ui/HelpTip';
 
-export function HomeworkPanel({ busy, onRefresh, ...tableProps }: Pick<ComponentProps<typeof HomeworkTable>, 'section' | 'items' | 'grading'> & {
+export function HomeworkPanel({ busy, onRefresh, ...tableProps }: Pick<ComponentProps<typeof HomeworkTable>, 'section' | 'items' | 'grading' | 'responseDraftContext'> & {
   busy: boolean; onRefresh: () => void;
 }) {
   return <section className="panel">

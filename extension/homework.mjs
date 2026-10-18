@@ -4,7 +4,7 @@ import { homeworkItems } from '../src/features/homework/homework.ts';
 // Official homeWorkCtrl.saveStudHw/updateMarks and homeworks-factory.js:
 // POST /homework/save-homework with { HomeworkForm: freshSubmission }, including
 // marks: { key: { id: id_domzad, mark, ospr, stud: id_stud } }.
-// Preserve server-owned answer, comment and attachment fields; never accept them from the UI.
+// Preserve fresh answer/attachment fields and comments unless a single response is explicitly edited.
 //
 // Batch semantics (user-facing description: extension/README.md, «Оценки за домашние работы»):
 // - Not atomic. Omni has no transaction, so submissions are written one at a time, in order.
@@ -27,7 +27,8 @@ export async function saveHomeworkMarks(input, { request, identity }) {
   const find = (rows, expected) => {
     const matches = rows.filter(row => row.key === expected.key);
     const row = matches[0];
-    if (matches.length !== 1 || !row.canGrade || row.mark !== expected.previousMark || row.submittedAt !== expected.submittedAt) {
+    if (matches.length !== 1 || !row.canGrade || row.mark !== expected.previousMark || row.submittedAt !== expected.submittedAt ||
+        input.response && (row.source.comment ?? null) !== input.response.previousComment) {
       throw new BridgeError('HOMEWORK_CHANGED', 'Работа уже проверена или изменилась. Обновите список перед сохранением.');
     }
     return row;
@@ -44,6 +45,7 @@ export async function saveHomeworkMarks(input, { request, identity }) {
       await checkAccount();
       const form = { ...row.source, id_domzad: row.source.id_domzad || row.source.id_domzad_teach,
         id_stud: row.source.id_stud || row.source.stud_stud, mark: input.mark };
+      if (input.response) form.comment = input.response.comment;
       form.marks = { 0: { id: form.id_domzad, mark: input.mark, ospr: form.ospr, stud: form.id_stud } };
       const response = await request('/homework/save-homework', { HomeworkForm: form });
       if (!response?.success || response.error) throw new BridgeError('HOMEWORK_REJECTED',
@@ -53,7 +55,13 @@ export async function saveHomeworkMarks(input, { request, identity }) {
       const after = await read();
       account = await checkAccount();
       const remaining = after.filter(item => item.key === expected.key);
-      if (remaining.length > 1 || remaining.length === 1 && remaining[0].mark !== input.mark) {
+      // Leaving the pending queue confirms the existing grade flow, but cannot prove
+      // the server persisted the response. Require an exact response readback.
+      if (input.response && (remaining.length !== 1 || remaining[0].mark !== input.mark || remaining[0].source.comment !== input.response.comment)) {
+        throw new BridgeError('HOMEWORK_UNCONFIRMED', 'Оценка отправлена, но сохранение ответа не подтверждено. Проверьте работу в Omni.');
+      }
+      if (remaining.length > 1 || remaining.length === 1 && (remaining[0].mark !== input.mark ||
+          input.response && remaining[0].source.comment !== input.response.comment)) {
         throw new BridgeError('HOMEWORK_UNCONFIRMED', 'Omni не подтвердил оценку. Обновите список перед повторной отправкой.');
       }
       confirmedKeys.push(expected.key);

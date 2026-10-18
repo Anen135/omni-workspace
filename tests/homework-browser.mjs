@@ -38,8 +38,8 @@ try {
     window.gradeCalls = [];
     window.gradingMode = 'success';
     window.releaseGrade = null;
-    const onGrade = async (selected, mark) => {
-      window.gradeCalls.push({ keys: selected.map(item => item.key), studentIds: selected.map(item => item.studentId), mark });
+    const onGrade = async (selected, mark, response) => {
+      window.gradeCalls.push({ keys: selected.map(item => item.key), studentIds: selected.map(item => item.studentId), mark, ...(response ? { response } : {}) });
       if (window.gradingMode === 'pending') await new Promise(resolve => { window.releaseGrade = resolve; });
       if (window.gradingMode === 'error') throw new Error('Вымышленная ошибка сохранения');
       const keys = selected.map(item => item.key);
@@ -50,6 +50,27 @@ try {
       section: { data: [], error: null }, render: value => React.createElement('span', null, value.answer_text || 'файл'), items,
       grading: { busy: false, onGrade },
     }));
+    let responseFixtureContext;
+    let responseFixtureItems;
+    const renderResponseFixture = (readOnly = false, unavailable = false) => {
+      root.render(React.createElement(HomeworkTable, {
+        key: 'response-fixture', section: { data: responseFixtureItems.map(item => item.source), error: null },
+        render: value => React.createElement('span', null, Object.values(value).join(' ')),
+        items: responseFixtureItems, responseDraftContext: responseFixtureContext,
+        grading: readOnly ? undefined : { busy: false, onGrade, unavailable: unavailable ? 'Reload and check Omni' : undefined },
+      }));
+    };
+    window.showResponseFixture = (replacement = false, readOnly = false) => {
+      const source = { answer_text: 'Student answer stays separate', comment: replacement ? 'Updated baseline response' : 'Existing teacher response' };
+      responseFixtureItems = [{ ...make('response-item', 'student-response', 'Response student', 0), source }];
+      responseFixtureContext = {};
+      renderResponseFixture(readOnly);
+    };
+    window.overlayResponseFixture = (graded = false) => {
+      responseFixtureItems = responseFixtureItems.map(item => ({ ...item, ...(graded ? { mark: 11, canGrade: false } : {}) }));
+      renderResponseFixture();
+    };
+    window.responseUnavailable = () => renderResponseFixture(false, true);
     window.showGroupFixture = fallback => {
       const sources = [
         { group: '  Группа Альфа  ', theme: 'Тема Альфа' },
@@ -133,6 +154,64 @@ try {
   await page.evaluate(() => window.releaseGrade());
   await page.locator('.homework-result').waitFor();
 
+  await page.evaluate(() => { window.gradingMode = 'success'; window.showResponseFixture(); });
+  await page.locator('.homework-table tbody tr').first().getByRole('button').click();
+  const response = page.getByRole('textbox', { name: /Ответ преподавателя:/ });
+  const responseGrade = page.getByRole('spinbutton', { name: /Оценка к ответу преподавателя:/ });
+  const responseSave = page.getByRole('button', { name: 'Сохранить ответ и оценку', exact: true });
+  assert.equal(await response.inputValue(), 'Existing teacher response');
+  assert.equal(await page.locator('.homework-response').innerText(), 'Ответ студента\nStudent answer stays separate');
+  const callsBeforeResponse = await page.evaluate(() => window.gradeCalls.length);
+  await response.fill('Teacher draft\nSecond line');
+  await response.press('Enter');
+  assert.equal(await page.evaluate(() => window.gradeCalls.length), callsBeforeResponse, 'typing and Enter in textarea never write');
+  assert.equal(await responseSave.isDisabled(), true, 'response requires an explicit valid grade');
+  await responseGrade.fill('13');
+  assert.equal(await responseSave.isDisabled(), true, 'invalid grade cannot save response');
+  await responseGrade.fill('9');
+  assert.equal(await responseSave.isEnabled(), true);
+  await page.locator('.homework-table tbody tr').first().getByRole('button').click();
+  await page.locator('.homework-table tbody tr').first().getByRole('button').click();
+  assert.equal(await response.inputValue(), 'Teacher draft\nSecond line\n', 'closing details retains the current dataset draft');
+  await page.evaluate(() => window.overlayResponseFixture());
+  await page.locator('.homework-table tbody tr').first().getByRole('button').click();
+  assert.equal(await response.inputValue(), 'Teacher draft\nSecond line\n', 'local grade overlay arrays retain unrelated response drafts');
+  await page.evaluate(() => { window.gradingMode = 'error'; });
+  await responseSave.click();
+  await page.waitForFunction(count => window.gradeCalls.length === count + 1, callsBeforeResponse);
+  assert.equal(await response.inputValue(), 'Teacher draft\nSecond line\n', 'failed response save retains draft');
+  assert.equal(await page.locator('.homework-result').count(), 0);
+  await page.evaluate(() => { window.gradingMode = 'pending'; });
+  await responseSave.click();
+  await page.waitForFunction(() => typeof window.releaseGrade === 'function');
+  assert.equal(await response.isDisabled(), true);
+  assert.equal(await responseGrade.isDisabled(), true);
+  assert.equal(await responseSave.isDisabled(), true, 'pending response blocks repeated submit');
+  assert.equal(await page.locator('.homework-result').count(), 0);
+  const responseCall = await page.evaluate(() => window.gradeCalls.at(-1));
+  assert.deepEqual(responseCall.keys, ['response-item']);
+  assert.equal(responseCall.mark, 9);
+  assert.deepEqual(responseCall.response, { comment: 'Teacher draft\nSecond line\n', previousComment: 'Existing teacher response' });
+  await page.evaluate(() => window.releaseGrade());
+  await page.locator('.homework-result').waitFor();
+  await response.fill('Stale dataset draft');
+  await page.evaluate(() => window.responseUnavailable());
+  assert.equal(await response.inputValue(), 'Stale dataset draft', 'unconfirmed save keeps response draft visible');
+  assert.equal(await response.isEditable(), false, 'uncertainty blocks another write');
+  assert.equal(await response.isEnabled(), true, 'retained draft can still be selected and copied');
+  await page.evaluate(() => window.overlayResponseFixture(true));
+  await page.locator('.homework-table tbody tr').first().getByRole('button').click();
+  assert.equal(await response.inputValue(), 'Stale dataset draft', 'grade-only confirmation keeps unsaved response text');
+  assert.equal(await response.isEditable(), false);
+  await page.evaluate(() => window.showResponseFixture(true));
+  await page.locator('.homework-table tbody tr').first().getByRole('button').click();
+  assert.equal(await response.inputValue(), 'Updated baseline response', 'replacement dataset drops stale response drafts');
+  assert.equal(await responseGrade.inputValue(), '', 'replacement dataset drops stale grade draft');
+  await page.evaluate(() => window.showResponseFixture(true, true));
+  await page.locator('.homework-table tbody tr').first().getByRole('button').click();
+  assert.equal(await page.locator('.homework-teacher-response textarea').count(), 0, 'read-only views cannot edit responses');
+  assert.match(await page.locator('.homework-teacher-response').innerText(), /Updated baseline response/);
+
   for (const fallback of [false, true]) {
     await page.evaluate(useFallback => window.showGroupFixture(useFallback), fallback);
     await page.locator(`[data-group-fixture="${fallback ? 'fallback' : 'normalized'}"] .homework-table tbody tr small`).filter({ hasText: 'Группа Альфа' }).waitFor();
@@ -156,5 +235,5 @@ try {
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'mobile table must scroll inside its own wrapper');
   assert.ok(await page.locator('.homework-scroll').evaluate(el => el.scrollWidth > el.clientWidth), 'mobile overflow belongs to table wrapper');
   assert.deepEqual(errors, []);
-  console.log('PASS: compact details, duplicate-name identity filtering, all filtered pages selected, grade 12 bulk callback, filter reset, inline grade, pending/error/partial states, official groups display/search/filter in both normalizers, missing/ambiguous groups and mobile table overflow.');
+  console.log('PASS: response drafts, explicit grade/save, busy/error/success, dataset invalidation, read-only response; compact details, duplicate-name identity filtering, all filtered pages selected, grade 12 bulk callback, filter reset, inline grade, pending/error/partial states, official groups display/search/filter in both normalizers, missing/ambiguous groups and mobile table overflow.');
 } finally { await browser?.close(); await server.close(); }

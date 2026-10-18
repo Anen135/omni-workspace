@@ -7,7 +7,7 @@ import { TeacherDossier } from '../features/dossier/TeacherDossier';
 import { isDesktop } from '../services/desktop-client';
 import { isExtension, onExtensionSessionChange } from '../services/extension-client';
 import { StudentTable } from '../features/lesson/StudentTable';
-import { homeworkItems, type HomeworkReviewItem } from '../features/homework/homework';
+import { homeworkItems, type HomeworkResponseDraft, type HomeworkReviewItem } from '../features/homework/homework';
 import { LessonThemeEditor, type ThemeChoice, type ThemeData } from '../features/lesson/LessonThemeEditor';
 import { scheduleDays } from '../features/schedule/schedule';
 import { presentLessons } from '../features/lesson/present-lessons';
@@ -24,7 +24,7 @@ import { WorkspaceMobileNav, WorkspacePageHeading } from './components/Workspace
 import { ScheduleToolbar } from './components/ScheduleToolbar';
 import { LessonBanner, LessonSaveBar, LessonSelectors } from './components/LessonOverview';
 import { LessonStudentsPanel } from './components/LessonStudentsPanel';
-import { GroupStudentsPanel } from './components/GroupStudentsPanel';
+import { StudentsPage } from '../features/students/StudentsPage';
 import { HomeworkPanel } from './components/HomeworkPanel';
 import { IssuedMaterialsPanel } from './components/IssuedMaterialsPanel';
 import { StudentDetailDialog, TeacherSwitchingState, WorkspaceError, WorkspaceLoading, WorkspaceToast } from './components/WorkspaceFeedback';
@@ -51,11 +51,11 @@ export function LiveWorkspace({ onDemo }: { onDemo: () => void }) {
   const [groupStudents, setGroupStudents] = useState<Section | null>(null);
   const [groupName, setGroupName] = useState('');
   const [groupId, setGroupId] = useState('');
-  const [detail, setDetail] = useState<{ title: string; sections: Section[] } | null>(null);
+  const [detail, setDetail] = useState<{ title: string; student: RemoteRecord; sections: Section[] } | null>(null);
   const [notice, setNotice] = useState('');
   const [switchingTeacher, setSwitchingTeacher] = useState(false);
   const [changingAccount, setChangingAccount] = useState(false);
-  const [homeworkSaved, setHomeworkSaved] = useState<Record<string, number>>({});
+  const [homeworkSaved, setHomeworkSaved] = useState<Record<string, { mark: number; comment?: string }>>({});
   const [homeworkNeedsReload, setHomeworkNeedsReload] = useState(false);
   const [homeworkSaving, setHomeworkSaving] = useState(false);
   const [attendanceSaving, setAttendanceSaving] = useState(false);
@@ -79,7 +79,7 @@ export function LiveWorkspace({ onDemo }: { onDemo: () => void }) {
   const schedule = record(snapshot?.schedule.data);
   const scheduleDates = scheduleDays(schedule).map(day => day.date);
   const reviewItems = useMemo(() => homeworkItems(snapshot?.newHomework.data).map(item =>
-    Object.hasOwn(homeworkSaved, item.key) ? { ...item, mark: homeworkSaved[item.key], canGrade: false } : item), [snapshot?.newHomework.data, homeworkSaved]);
+    Object.hasOwn(homeworkSaved, item.key) ? { ...item, mark: homeworkSaved[item.key].mark, source: { ...item.source, ...(homeworkSaved[item.key].comment !== undefined ? { comment: homeworkSaved[item.key].comment } : {}) }, canGrade: false } : item), [snapshot?.newHomework.data, homeworkSaved]);
   const scheduleRange = scheduleDates.length ? `${scheduleDates[0].split("-").reverse().join(".")} — ${scheduleDates[scheduleDates.length - 1].split("-").reverse().join(".")}` : "";
   const today = new Intl.DateTimeFormat('sv-SE', { timeZone: snapshot?.account.timezone || 'Europe/Moscow' }).format(new Date());
   function weekForDate(value: string) {
@@ -252,7 +252,12 @@ export function LiveWorkspace({ onDemo }: { onDemo: () => void }) {
       const result = await omniRequest<{ account: { id: string }; students: unknown }>('group', { group: id });
       if (version !== sessionVersion.current) return;
       ensureAccount(result.account); setGroupStudents({ data: result.students, error: null }); setGroupName(label(group.name_tgroups));
-    } catch (reason) { if (version === sessionVersion.current) failed(reason); }
+    } catch (reason) {
+      if (version === sessionVersion.current) {
+        setGroupStudents({ data: null, error: reason instanceof Error ? reason.message : 'Не удалось загрузить студентов.' });
+        if (reason instanceof ConnectionError && ['AUTH_REQUIRED', 'ACCOUNT_CHANGED', 'CHALLENGE'].includes(reason.code)) failed(reason);
+      }
+    }
     finally { operation.current = false; setBusy(false); }
   }
   async function openStudent(student: RemoteRecord) {
@@ -263,7 +268,7 @@ export function LiveWorkspace({ onDemo }: { onDemo: () => void }) {
     try {
       const result = await omniRequest<{ account: { id: string }; details: Section; attendance: Section }>('student', { stud: id });
       if (version !== sessionVersion.current) return;
-      ensureAccount(result.account); setDetail({ title: label(student.fio_stud) || 'Ученик', sections: [result.details, result.attendance] });
+      ensureAccount(result.account); setDetail({ title: label(student.fio_stud) || 'Студент', student, sections: [result.details, result.attendance] });
     } catch (reason) { if (version === sessionVersion.current) failed(reason); }
     finally { operation.current = false; setBusy(false); }
   }
@@ -275,7 +280,7 @@ export function LiveWorkspace({ onDemo }: { onDemo: () => void }) {
     setTimeout(() => URL.revokeObjectURL(url), 1000); setNotice('Снимок реальных данных экспортирован в файл.');
   }
   const attendanceReason = draft?.needsReload ? 'Перед следующей правкой загрузите урок заново.' : attendanceUnavailable(presentData);
-  async function gradeHomework(items: HomeworkReviewItem[], mark: number): Promise<{ confirmedKeys: string[] }> {
+  async function gradeHomework(items: HomeworkReviewItem[], mark: number, response?: HomeworkResponseDraft): Promise<{ confirmedKeys: string[] }> {
     if (!snapshot || operation.current || homeworkNeedsReload) throw new Error('Обновите список работ перед сохранением.');
     if (items.length > 100) throw new Error('За один раз можно оценить до 100 работ. Выберите меньше строк.');
     if (items.length > 1 && !window.confirm(`Поставить оценку ${mark} выбранным работам: ${items.length}?\nСтудентов: ${new Set(items.map(item => item.studentId)).size}. Работы вне выбора не изменятся.`)) throw new Error('Выставление оценок отменено.');
@@ -283,12 +288,12 @@ export function LiveWorkspace({ onDemo }: { onDemo: () => void }) {
     operation.current = true; setBusy(true); setHomeworkSaving(true); setError('');
     try {
       const result = await omniRequest<{ account: { id: string }; confirmedKeys: string[]; error?: { code: string; message: string } }>('set-homework-marks', {
-        accountId: snapshot.account.id, mark,
+        accountId: snapshot.account.id, mark, ...(response ? { response } : {}),
         items: items.map(item => ({ key: item.key, previousMark: item.mark, submittedAt: item.submittedAt })),
       });
       if (version !== sessionVersion.current) throw new Error('Сессия изменилась. Обновите список работ.');
       ensureAccount(result.account);
-      setHomeworkSaved(current => ({ ...current, ...Object.fromEntries(result.confirmedKeys.map(key => [key, mark])) }));
+      if (result.confirmedKeys.length) setHomeworkSaved(current => ({ ...current, ...Object.fromEntries(result.confirmedKeys.map(key => [key, { mark, ...(response ? { comment: response.comment } : {}) }])) }));
       if (result.error) {
         setHomeworkNeedsReload(true);
         const saved = result.confirmedKeys.length;
@@ -594,11 +599,14 @@ export function LiveWorkspace({ onDemo }: { onDemo: () => void }) {
             ? <SectionView section={snapshot.schedule}/>
             : <ScheduleView data={schedule} today={today} busy={busy} onOpen={(date, slot) => void loadLesson(undefined, slot, date)}/>}
           </section>}
-          {tab === 'groups' && <GroupStudentsPanel groupsSection={snapshot.groups} groups={groups} name={groupName}
+          {tab === 'groups' && <StudentsPage key={`${snapshot.account.id}:${snapshot.account.branch}:${groupId}`}
+            groupsSection={snapshot.groups} groups={groups} groupName={groupName}
             groupId={groupId} studentsSection={groupStudents} busy={busy} onGroupPick={group => void openGroup(group)}
-            renderStudents={studentTable}/>}
+            onOpen={student => void openStudent(student)}
+            onRefresh={() => { const group = groups.find(item => label(item.id_tgroups) === groupId); if (group) void openGroup(group); }}/>}
           {tab === 'homework' && <HomeworkPanel busy={busy} onRefresh={() => void refresh()}
             section={snapshot.newHomework} items={reviewItems}
+            responseDraftContext={snapshot?.newHomework.data}
             grading={isExtension() ? { busy, unavailable: homeworkNeedsReload ? 'Перед следующей оценкой нажмите «Обновить работы».' : undefined, onGrade: gradeHomework } : undefined}/>}
           {tab === 'dossier' && <TeacherDossier key={`${snapshot.account.id}:${snapshot.account.branch}:${sessionVersion.current}`}
             accountId={snapshot.account.id} accountName={snapshot.account.name} branch={snapshot.account.branch} schedule={snapshot.schedule} today={today} disabled={busy} onConnectionError={failed} onIncomeLoading={setIncomeBusy}/>}

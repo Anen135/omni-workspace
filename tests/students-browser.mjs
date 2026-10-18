@@ -1,0 +1,153 @@
+import assert from 'node:assert/strict';
+import { mkdir } from 'node:fs/promises';
+import { chromium } from 'playwright';
+import { createServer } from 'vite';
+
+// Component fixtures use fictional data and never call Omni.
+const fixture = `
+import React, { useState } from 'react';
+import { createRoot } from 'react-dom/client';
+import { StudentsPage } from '/src/features/students/StudentsPage.tsx';
+import { StudentProfile } from '/src/features/students/StudentProfile.tsx';
+import '/src/styles/styles.css';
+import '/src/app/live.css';
+import '/src/app/workspace.css';
+const section = data => ({ data, error: null });
+const students = Array.from({ length: 113 }, (_, index) => ({ id_stud: index + 1, fio_stud: 'Студент ' + String(index + 1).padStart(3, '0'), gpa: index === 0 ? 0 : index === 1 ? null : index % 12, percent_vizit: index === 0 ? 0 : 80, age: index === 0 ? 0 : 16, st_email: 'student' + (index + 1) + '@example.invalid', phone_stud: '+7 000 100-' + String(index + 1).padStart(4, '0'), st_login: 'test_login_' + (index + 1), last_date_vizit: index === 0 ? '2026-01-30 10:00:05' : index === 1 ? '2025-12-31 23:59:00' : index === 2 ? null : '2026-02-01 01:00:00', DIAMOND: 0, COIN: 12, count_comment: 0, achieves: 3, adr_stud: 'Тестовый адрес 1' }));
+students[2].fio_stud = '<img src=x onerror="window.injected=true">';
+const details = { name_tgroups: 'Уточнённая группа', name_streams: 'Тестовый поток', dir_name: 'Тестовое направление', birthdat_stud: '2010-01-02', st_mob1: '+7 000 555-00-01' };
+const visits = Array.from({ length: 26 }, (_, index) => ({ date_vizit: '2026-10-18', name_spec: 'Тестовый предмет', theme: 'Тестовая тема ' + (index + 1), fio_teach: 'Тестовый Преподаватель', was: index % 3, homework_mark: 0, control_mark: 10, work_in_class: null, labwork_mark: 9, mark5: 8, comments: 'Тестовый комментарий' }));
+const groups = [{ id_tgroups: 1, name_tgroups: 'Тестовая группа A' }, { id_tgroups: 2, name_tgroups: 'Тестовая группа B' }];
+function Fixture() {
+  const [mode, setMode] = useState('normal');
+  const [group, setGroup] = useState(groups[0]);
+  const [opened, setOpened] = useState(null);
+  const [profileMode, setProfileMode] = useState('normal');
+  window.setStudentsMode = setMode;
+  window.setStudentProfileMode = setProfileMode;
+  window.studentCallbacks ??= { refresh: 0, groups: [] };
+  return <div className="live-workspace" style={{ padding: 16 }}><StudentsPage groupsSection={mode === 'groupsError' ? { data: null, error: 'Ошибка списка групп' } : section(groups)} groups={mode === 'noGroups' ? [] : groups} groupId={String(group.id_tgroups)} groupName={group.name_tgroups} studentsSection={mode === 'loading' || mode === 'initial' ? null : mode === 'error' ? { data: null, error: 'Ошибка списка студентов' } : section(mode === 'empty' ? [] : students)} busy={mode === 'loading'} onGroupPick={value => { setGroup(value); window.studentCallbacks.groups.push(value.id_tgroups); }} onRefresh={() => window.studentCallbacks.refresh++} onOpen={setOpened}/>{opened && <div role="dialog" aria-label="Карточка студента"><button onClick={() => setOpened(null)}>Закрыть карточку</button><StudentProfile student={opened} details={profileMode === 'error' ? { data: null, error: 'Ошибка карточки' } : section(profileMode === 'mismatch' ? { ...details, id_stud: 999, st_mob1: 'WRONG_CONTACT' } : details)} attendance={profileMode === 'error' ? { data: null, error: 'Ошибка посещаемости' } : section(profileMode === 'empty' ? [] : visits)}/></div>}</div>;
+}
+createRoot(document.getElementById('root')).render(<Fixture/>);
+`;
+const server = await createServer({ configFile: false, server: { host: '127.0.0.1', port: 5197, strictPort: true, watch: { ignored: ['**/.omni-browser/**'] } }, plugins: [{
+  name: 'students-fixture',
+  resolveId(id) { if (id === '/students-fixture.tsx') return id; },
+  load(id) { if (id === '/students-fixture.tsx') return fixture; },
+}] });
+let browser;
+try {
+  await server.listen();
+  browser = await chromium.launch({ channel: 'msedge', headless: true });
+  const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+  page.setDefaultTimeout(10000);
+  const errors = [], apiRequests = [];
+  page.on('pageerror', error => errors.push(error.message));
+  page.on('request', request => { if (request.url().includes('/api/omni/')) apiRequests.push(request.url()); });
+  await page.route('https://fonts.googleapis.com/**', route => route.abort());
+  await page.route('**/students-fixture.html', route => route.fulfill({ contentType: 'text/html', body: '<html lang="ru"><meta name="viewport" content="width=device-width,initial-scale=1"><div id="root"></div><script type="module" src="/students-fixture.tsx"></script></html>' }));
+  await page.goto('http://127.0.0.1:5197/students-fixture.html');
+  const bodyRows = page.locator('.students-table tbody tr');
+  await bodyRows.first().waitFor();
+  assert.equal(await bodyRows.count(), 25);
+  assert.equal(await page.getByRole('columnheader').count(), 8);
+  const zeroRow = bodyRows.filter({ hasText: 'Студент 001' });
+  assert.equal((await zeroRow.locator('td').allTextContents())[1], '0');
+  assert.equal((await zeroRow.locator('td').allTextContents())[2], '0');
+  assert.equal((await zeroRow.locator('td').allTextContents())[3], '0');
+  assert.equal((await zeroRow.locator('td').allTextContents())[7], '30.01.2026 10:00:05');
+  assert.equal((await bodyRows.filter({ hasText: 'Студент 002' }).locator('td').allTextContents())[1], '—');
+  assert.equal(await page.evaluate(() => window.injected), undefined);
+  await page.getByRole('button', { name: 'Студент 001', exact: true }).click();
+  await page.getByRole('dialog', { name: 'Карточка студента' }).waitFor();
+  assert.match(await page.locator('.student-profile').textContent(), /Средний балл0/);
+  const profile = page.locator('.student-profile');
+  for (const value of ['Уточнённая группа', 'Тестовый поток', 'Тестовое направление', '02.01.2010', '+7 000 555-00-01', 'Тестовый адрес 1', 'Тестовый Преподаватель', 'Тестовый комментарий']) assert.equal(await profile.getByText(value, { exact: true }).count() > 0, true, value);
+  for (const [name, value] of [['TopCoins', '0'], ['Монеты', '12'], ['Комментарии', '0'], ['Достижения', '3']]) assert.equal(await profile.locator('dl > div').filter({ has: page.locator('dt', { hasText: name }) }).locator('dd').textContent(), value);
+  assert.equal(await profile.locator('dl').getByText('+7 000 100-0001', { exact: true }).count(), 0, 'detail mobile phone overrides list phone');
+  assert.equal(await profile.locator('.student-history tbody tr').count(), 25);
+  assert.equal((await profile.locator('.student-history tbody tr').first().locator('td').allTextContents())[4], '—', 'zero history grade means ungraded');
+  assert.equal(await profile.getByText('Отсутствовал', { exact: true }).count() > 0, true);
+  assert.equal(await profile.getByText('Присутствовал', { exact: true }).count() > 0, true);
+  assert.equal(await profile.getByText('Опоздал', { exact: true }).count() > 0, true);
+  await profile.getByRole('button', { name: 'Далее', exact: true }).click();
+  assert.equal(await profile.locator('.student-history tbody tr').count(), 1);
+  await profile.getByRole('button', { name: 'Назад', exact: true }).click();
+  await page.evaluate(() => window.setStudentProfileMode('mismatch'));
+  await profile.getByRole('alert').filter({ hasText: 'другого ученика' }).waitFor();
+  assert.equal(await profile.getByText('WRONG_CONTACT', { exact: true }).count(), 0);
+  await page.evaluate(() => window.setStudentProfileMode('error'));
+  await profile.getByRole('alert').filter({ hasText: 'Ошибка карточки' }).waitFor();
+  await profile.getByRole('alert').filter({ hasText: 'Ошибка посещаемости' }).waitFor();
+  await page.evaluate(() => window.setStudentProfileMode('empty'));
+  await profile.getByRole('heading', { name: 'Данные о посещаемости недоступны' }).waitFor();
+  await page.evaluate(() => window.setStudentProfileMode('normal'));
+  await mkdir('tmp/students', { recursive: true });
+  await profile.screenshot({ path: 'tmp/students/profile.png' });
+  await page.getByRole('button', { name: 'Закрыть карточку' }).click();
+  await page.getByRole('button', { name: 'Следующая страница учеников' }).click();
+  assert.equal(await page.getByLabel('Страница учеников', { exact: true }).textContent(), '2 / 5');
+  await page.getByRole('searchbox', { name: 'Поиск студентов' }).fill('Студент 113');
+  assert.equal(await bodyRows.count(), 1);
+  assert.equal(await page.getByLabel('Страница учеников', { exact: true }).textContent(), '1 / 1');
+  for (const query of ['student113@example.invalid', '+7 000 100-0113', 'test_login_113', 'Студент test_login_113']) {
+    await page.getByRole('searchbox', { name: 'Поиск студентов' }).fill(query);
+    assert.equal(await bodyRows.count(), 1, query);
+    assert.match(await bodyRows.textContent(), /Студент 113/);
+  }
+  await page.getByRole('searchbox').fill('ничего такого нет');
+  await page.getByRole('heading', { name: 'Ученики не найдены' }).waitFor();
+  await page.getByRole('searchbox').fill('');
+  await page.getByLabel('Учеников на странице').selectOption('50');
+  assert.equal(await bodyRows.count(), 50);
+  await page.getByLabel('Учеников на странице').selectOption('100');
+  assert.equal(await bodyRows.count(), 100);
+  await page.getByRole('columnheader', { name: 'Средний балл' }).getByRole('button').click();
+  assert.equal((await bodyRows.first().locator('td').allTextContents())[1], '0');
+  await page.getByRole('columnheader', { name: 'Средний балл' }).getByRole('button').click();
+  assert.equal((await bodyRows.first().locator('td').allTextContents())[1], '11');
+  await page.getByRole('columnheader', { name: 'Последний вход в MyStat' }).getByRole('button').click();
+  assert.equal((await bodyRows.first().locator('td').allTextContents())[7], '31.12.2025 23:59:00');
+  await page.getByRole('columnheader', { name: 'Последний вход в MyStat' }).getByRole('button').click();
+  assert.equal((await bodyRows.first().locator('td').allTextContents())[7], '01.02.2026 01:00:00');
+  await page.getByRole('button', { name: 'Обновить группу' }).click();
+  assert.equal(await page.evaluate(() => window.studentCallbacks.refresh), 1);
+  await page.getByLabel('Выбор группы').selectOption('2');
+  assert.deepEqual(await page.evaluate(() => window.studentCallbacks.groups), [2]);
+  assert.equal(await page.getByLabel('Учеников на странице').inputValue(), '25', 'group switch resets local table state');
+  await page.evaluate(() => window.setStudentsMode('loading'));
+  await page.getByRole('status').filter({ hasText: 'Загружаем учеников' }).waitFor();
+  assert.equal(await page.getByRole('button', { name: 'Обновить группу' }).isDisabled(), true);
+  await page.evaluate(() => window.setStudentsMode('initial'));
+  await page.getByRole('heading', { name: 'Выберите группу', exact: true }).waitFor();
+  await page.evaluate(() => window.setStudentsMode('error'));
+  await page.getByRole('alert').filter({ hasText: 'Ошибка списка студентов' }).waitFor();
+  await page.evaluate(() => window.setStudentsMode('groupsError'));
+  await page.getByRole('alert').filter({ hasText: 'Ошибка списка групп' }).waitFor();
+  await page.evaluate(() => window.setStudentsMode('empty'));
+  await page.getByRole('heading', { name: 'В группе нет доступных учеников' }).waitFor();
+  await page.evaluate(() => window.setStudentsMode('noGroups'));
+  await page.getByRole('heading', { name: 'Omni пока не возвращает группы' }).waitFor();
+  await page.evaluate(() => window.setStudentsMode('normal'));
+  await bodyRows.first().waitFor();
+  await mkdir('tmp/students', { recursive: true });
+  await page.screenshot({ path: 'tmp/students/desktop.png', fullPage: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true, 'page does not overflow on mobile');
+  assert.equal(await page.locator('.students-table-scroll').evaluate(element => element.scrollWidth > element.clientWidth), true, 'table scrolls horizontally');
+  await page.screenshot({ path: 'tmp/students/mobile.png', fullPage: true });
+  await page.locator('.students-table-scroll').evaluate(element => { element.scrollLeft = element.scrollWidth; });
+  assert.ok(await page.locator('.students-table-scroll').evaluate(element => element.scrollLeft > 0));
+  await page.screenshot({ path: 'tmp/students/mobile-contacts.png', fullPage: true });
+  await page.locator('.students-table-scroll').evaluate(element => { element.scrollLeft = 0; });
+  await page.getByRole('button', { name: 'Студент 001', exact: true }).click();
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true, 'profile does not overflow on mobile');
+  assert.equal(await profile.locator('.student-history-scroll').evaluate(element => element.scrollWidth > element.clientWidth), true, 'history scrolls horizontally');
+  await profile.screenshot({ path: 'tmp/students/profile-mobile.png' });
+  assert.deepEqual(errors, []);
+  assert.deepEqual(apiRequests, []);
+  console.log('PASS students component: official-schema contacts/stats, zero/missing, XSS text, profile detail merge/identity guard/history, contact search, chronological sorting, 25/50/100 pagination, callbacks, loading/errors/empty, mobile scrolling; no Omni calls.');
+} finally {
+  await browser?.close();
+  await server.close();
+}

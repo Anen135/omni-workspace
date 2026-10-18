@@ -3,7 +3,7 @@ import { BookOpen, CalendarDays, CircleHelp, ClipboardCheck, FolderOpen, UserRou
 export const workspaceTabs = [
   { key: 'lesson', icon: BookOpen, title: 'Мой урок', eyebrow: 'ТЕКУЩАЯ РАБОТА' },
   { key: 'schedule', icon: CalendarDays, title: 'Расписание', eyebrow: 'НЕДЕЛЬНЫЙ ОБЗОР' },
-  { key: 'groups', icon: Users, title: 'Ученики', eyebrow: 'УЧЕБНЫЕ ГРУППЫ' },
+  { key: 'groups', icon: Users, title: 'Студенты', eyebrow: 'Статистика и контакты' },
   { key: 'homework', icon: ClipboardCheck, title: 'Домашние задания', eyebrow: 'ПРОВЕРКА РАБОТ' },
   { key: 'materials', icon: FolderOpen, title: 'Материалы', eyebrow: 'БИБЛИОТЕКА' },
   { key: 'dossier', icon: UserRound, title: 'Досье преподавателя', eyebrow: 'ПРОФИЛЬ ПРЕПОДАВАТЕЛЯ' },

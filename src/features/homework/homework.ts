@@ -1,5 +1,8 @@
 import type { RemoteRecord } from '../../services/omni-client';
 
+export const HOMEWORK_RESPONSE_LIMIT = 4000;
+export type HomeworkResponseDraft = { comment: string; previousComment: string | null };
+
 export type HomeworkReviewItem = {
   key: string;
   studentId: string;

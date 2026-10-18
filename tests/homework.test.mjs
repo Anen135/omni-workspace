@@ -20,11 +20,13 @@ function fixture(entries = [row(), row(2), row(3, 20)], mode = 'success') {
     const form = input.HomeworkForm;
     const expected = data.homework.find(item => item.id === form.id);
     assert.ok(expected);
-    assert.equal(form.comment, expected.comment);
     assert.equal(form.comment_attach, expected.comment_attach);
     assert.equal(form.answer_text, expected.answer_text);
     assert.deepEqual(form.marks, { 0: { id: expected.id_domzad_teach, stud: expected.stud_stud, ospr: 0, mark: form.mark } });
-    if (mode !== 'mismatch') data.homework = data.homework.filter(item => item.id !== form.id);
+    if (mode === 'response-retain' || mode === 'response-mismatch') {
+      expected.mark = form.mark;
+      if (mode === 'response-retain') expected.comment = form.comment;
+    } else if (mode !== 'mismatch') data.homework = data.homework.filter(item => item.id !== form.id);
     return { success: 'Оценка сохранена' };
   };
   const input = { accountId: '1', mark: 12, items: homeworkItems(data).slice(0, 2).map(item => ({ key: item.key, previousMark: item.mark, submittedAt: item.submittedAt })) };
@@ -75,6 +77,7 @@ test('homework grade 12 affects only selected submissions, preserving answers/co
   const result = await saveHomeworkMarks(f.input, f);
   assert.deepEqual(result.confirmedKeys, f.input.items.map(item => item.key));
   assert.equal(f.writes.length, 2);
+  assert.ok(f.writes.every(write => write.HomeworkForm.comment === row().comment));
   assert.deepEqual(f.data().homework.map(item => item.stud_stud), [20]);
 });
 test('homework preflight rejects whole stale selection without writing', async () => {
@@ -131,4 +134,102 @@ test('homework session loss before any confirmation is thrown for transport-leve
   const f = fixture();
   const request = async path => { if (path === '/homework/save-homework') throw new BridgeError('AUTH_REQUIRED', 'Сессия истекла. Войдите снова.'); return f.request(path, {}); };
   await assert.rejects(saveHomeworkMarks(f.input, { ...f, request }), { code: 'AUTH_REQUIRED' });
+});
+
+function responseInput(f, comment = 'Teacher response\nSecond line') {
+  return { ...f.input, items: [f.input.items[0]], response: { comment, previousComment: row().comment } };
+}
+
+test('homework response protocol requires one bounded explicit response and baseline with valid grade', () => {
+  const f = fixture();
+  const input = responseInput(f);
+  for (const comment of ['', 'Response', '\u0000'.repeat(4000)]) {
+    assert.doesNotThrow(() => validateInput('set-homework-marks', { ...input, response: { comment, previousComment: null } }));
+  }
+  const invalid = [undefined, null, [], {}, { comment: 'text' }, { previousComment: null },
+    { comment: 123, previousComment: null }, { comment: 'text', previousComment: 123 },
+    { comment: 'x'.repeat(4001), previousComment: null }, { comment: '', previousComment: 'x'.repeat(4001) },
+    { comment: 'text', previousComment: null, answer_text: 'injected' }];
+  for (const response of invalid) assert.throws(() => validateInput('set-homework-marks', { ...input, response }), { code: 'BAD_INPUT' });
+  assert.throws(() => validateInput('set-homework-marks', { ...input, items: f.input.items }), { code: 'BAD_INPUT' });
+  assert.throws(() => validateInput('set-homework-marks', { ...input, mark: null }), { code: 'BAD_INPUT' });
+});
+
+for (const mode of ['response-retain']) {
+  test(`homework response explicit save preserves answer/attachment fields with ${mode} readback`, async () => {
+    const f = fixture(undefined, mode);
+    const input = responseInput(f);
+    const result = await saveHomeworkMarks(input, f);
+    assert.deepEqual(result.confirmedKeys, [input.items[0].key]);
+    assert.equal(f.writes.length, 1);
+    assert.equal(f.writes[0].HomeworkForm.comment, input.response.comment);
+    assert.equal(f.writes[0].HomeworkForm.answer_text, row().answer_text);
+    assert.equal(f.writes[0].HomeworkForm.comment_attach, row().comment_attach);
+  });
+}
+
+test('homework response can explicitly clear an existing response or start an absent response', async () => {
+  for (const baseline of [undefined, null, '']) {
+    const f = fixture([{ ...row(), comment: baseline }], 'response-retain');
+    const input = responseInput(f, 'New response');
+    input.response.previousComment = baseline ?? null;
+    assert.deepEqual((await saveHomeworkMarks(input, f)).confirmedKeys, [input.items[0].key]);
+    assert.equal(f.writes[0].HomeworkForm.comment, 'New response');
+  }
+  const f = fixture(undefined, 'response-retain');
+  const input = responseInput(f, '');
+  assert.deepEqual((await saveHomeworkMarks(input, f)).confirmedKeys, [input.items[0].key]);
+  assert.equal(f.writes[0].HomeworkForm.comment, '');
+});
+
+test('homework response stale baseline rejects preflight without writes', async () => {
+  const f = fixture();
+  const input = responseInput(f);
+  f.data().homework[0].comment = 'Changed by another teacher';
+  await assert.rejects(saveHomeworkMarks(input, f), { code: 'HOMEWORK_CHANGED' });
+  assert.equal(f.writes.length, 0);
+});
+
+test('homework response checks fresh baseline again immediately before writing', async () => {
+  const f = fixture();
+  const input = responseInput(f);
+  let reads = 0;
+  const request = async (path, body) => {
+    if (path === '/homework/get-new-homeworks' && ++reads === 2) f.data().homework[0].comment = 'Concurrent response';
+    return f.request(path, body);
+  };
+  const result = await saveHomeworkMarks(input, { ...f, request });
+  assert.deepEqual(result.confirmedKeys, []);
+  assert.equal(result.error.code, 'HOMEWORK_CHANGED');
+  assert.equal(f.writes.length, 0);
+});
+
+test('homework grade-only save preserves a newer fresh response', async () => {
+  const f = fixture();
+  f.data().homework[0].comment = 'Newer server response';
+  await saveHomeworkMarks(f.input, f);
+  assert.equal(f.writes[0].HomeworkForm.comment, 'Newer server response');
+});
+
+for (const mode of ['lost', 'reject', 'response-mismatch', 'success']) {
+  test(`homework response ${mode} never confirms or retries a write`, async () => {
+    const f = fixture(undefined, mode);
+    const result = await saveHomeworkMarks(responseInput(f), f);
+    assert.deepEqual(result.confirmedKeys, []);
+    assert.ok(result.error);
+    if (mode === 'success') {
+      assert.equal(result.error.code, 'HOMEWORK_UNCONFIRMED');
+      assert.match(result.error.message, /ответа не подтверждено/);
+    }
+    assert.equal(f.writes.length, 1);
+  });
+}
+
+test('homework response retains account and submission identity protections', async () => {
+  const f = fixture();
+  const input = responseInput(f);
+  await assert.rejects(saveHomeworkMarks(input, { ...f, identity: async () => ({ id: '2' }) }), { code: 'ACCOUNT_CHANGED' });
+  f.data().homework.push(structuredClone(f.data().homework[0]));
+  await assert.rejects(saveHomeworkMarks(input, f), { code: 'HOMEWORK_CHANGED' });
+  assert.equal(f.writes.length, 0);
 });

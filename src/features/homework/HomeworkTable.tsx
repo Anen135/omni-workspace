@@ -1,16 +1,39 @@
 import { Fragment, useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
 import { label, rows, type RemoteRecord, type Section } from '../../services/omni-client';
-import { homeworkGroupName, type HomeworkReviewItem } from './homework';
+import { HOMEWORK_RESPONSE_LIMIT, homeworkGroupName, type HomeworkResponseDraft, type HomeworkReviewItem } from './homework';
 import { materialLink } from '../materials/teaching-materials';
 import './homework.css';
 
 type Grading = {
   busy: boolean;
   unavailable?: string;
-  onGrade: (items: HomeworkReviewItem[], mark: number) => Promise<{ confirmedKeys: string[] }>;
+  onGrade: (items: HomeworkReviewItem[], mark: number, response?: HomeworkResponseDraft) => Promise<{ confirmedKeys: string[] }>;
 };
 type SortField = 'studentName' | 'groupName' | 'theme' | 'submittedAt' | 'mark';
 type Selection = { data: HomeworkReviewItem[]; keys: Set<string> };
+type ResponseEdit = { comment: string; mark: string };
+
+function ResponseEditor({ item, name, disabled, readOnly, draft, onChange, onSave }: {
+  item: HomeworkReviewItem; name: string; disabled: boolean; readOnly: boolean; draft: ResponseEdit;
+  onChange: (draft: ResponseEdit) => void; onSave: (mark: number, response: HomeworkResponseDraft) => Promise<void>;
+}) {
+  const previousComment = item.source.comment ?? null;
+  const baselineValid = previousComment === null || typeof previousComment === 'string' && previousComment.length <= HOMEWORK_RESPONSE_LIMIT;
+  const mark = Number(draft.mark);
+  const valid = draft.mark.trim() !== '' && Number.isInteger(mark) && mark >= 1 && mark <= 12 && draft.comment.length <= HOMEWORK_RESPONSE_LIMIT;
+  const changed = draft.comment !== (previousComment ?? '') || mark !== item.mark;
+  const locked = disabled || readOnly || !baselineValid;
+  const helpId = useId();
+  return <form className="homework-response-editor" onSubmit={event => {
+    event.preventDefault();
+    if (!locked && valid && changed) void onSave(mark, { comment: draft.comment, previousComment: previousComment as string | null });
+  }}>
+    <label>Ответ преподавателя<textarea aria-label={'Ответ преподавателя: ' + name} aria-describedby={helpId} rows={4} maxLength={HOMEWORK_RESPONSE_LIMIT} value={draft.comment} disabled={disabled} readOnly={readOnly || !baselineValid} onChange={event => onChange({ ...draft, comment: event.target.value })}/></label>
+    <p id={helpId} className="homework-muted">{baselineValid ? 'Ответ сохраняется вместе с оценкой от 1 до 12. До 4000 символов.' : 'Редактирование этого ответа недоступно. Проверьте работу в Omni.'}</p>
+    <div className="homework-response-actions"><label>Оценка<input type="number" aria-label={'Оценка к ответу преподавателя: ' + name} min={1} max={12} step={1} value={draft.mark} disabled={locked} onChange={event => onChange({ ...draft, mark: event.target.value })}/></label>
+      <button type="submit" className="button primary" disabled={locked || !valid || !changed}>Сохранить ответ и оценку</button></div>
+  </form>;
+}
 
 function studentFilterKey(item: HomeworkReviewItem): string {
   return item.studentId ? 'id:' + item.studentId : 'view:' + JSON.stringify([item.studentName, item.groupName]);
@@ -57,8 +80,8 @@ function GradeEditor({ item, name, disabled, onSave }: {
   </form>;
 }
 
-export function HomeworkTable({ section, render, items: suppliedItems, grading }: {
-  section: Section; render: (value: unknown) => ReactNode; items?: HomeworkReviewItem[]; grading?: Grading;
+export function HomeworkTable({ section, render, items: suppliedItems, grading, responseDraftContext }: {
+  section: Section; render: (value: unknown) => ReactNode; items?: HomeworkReviewItem[]; grading?: Grading; responseDraftContext?: unknown;
 }) {
   const [query, setQuery] = useState('');
   const [group, setGroup] = useState('');
@@ -72,9 +95,11 @@ export function HomeworkTable({ section, render, items: suppliedItems, grading }
   const [message, setMessage] = useState('');
   const [failure, setFailure] = useState('');
   const [opened, setOpened] = useState<{ data: HomeworkReviewItem[]; key: string } | null>(null);
+  const [responseDrafts, setResponseDrafts] = useState<{ data: unknown; values: Record<string, ResponseEdit> } | null>(null);
   const submittingRef = useRef(false);
   const tableId = useId();
   const items = useMemo(() => suppliedItems ?? fallbackItems(section.data), [suppliedItems, section.data]);
+  const responseContext = responseDraftContext ?? items;
   // A replacement dataset invalidates selection synchronously, before any event can submit it.
   const selectedKeys = selection?.data === items ? selection.keys : new Set<string>();
   const locked = submitting || !!grading?.busy;
@@ -138,15 +163,16 @@ export function HomeworkTable({ section, render, items: suppliedItems, grading }
     setSelection({ data: items, keys: new Set(checked ? eligible.map(item => item.key) : []) });
     setMessage(''); setFailure('');
   }
-  async function saveGrades(submitted: HomeworkReviewItem[], mark: number) {
+  async function saveGrades(submitted: HomeworkReviewItem[], mark: number, response?: HomeworkResponseDraft) {
     if (locked || submittingRef.current || !grading || !Number.isInteger(mark) || mark < 1 || mark > 12 || !submitted.length || submitted.some(item => !canSelect(item))) return;
     submittingRef.current = true;
     setSubmitting(true); setMessage(''); setFailure('');
     try {
-      const result = await grading.onGrade(submitted, mark);
+      const result = await grading.onGrade(submitted, mark, response);
       const confirmed = new Set(result.confirmedKeys);
       const savedCount = submitted.filter(item => confirmed.has(item.key)).length;
       setSelection(previous => previous?.data === items ? { data: items, keys: new Set([...previous.keys].filter(key => !confirmed.has(key))) } : previous);
+      if (response) setResponseDrafts(previous => previous?.data === responseContext ? { data: responseContext, values: Object.fromEntries(Object.entries(previous.values).filter(([key]) => !confirmed.has(key))) } : previous);
       if (savedCount) setMessage('Оценка ' + mark + ' сохранена: ' + savedCount + ' из ' + submitted.length + '.');
       if (savedCount < submitted.length) setFailure('Сохранение ' + (submitted.length - savedCount) + ' работ не подтверждено. Проверьте данные перед повторной отправкой.');
     } catch (reason) {
@@ -200,7 +226,8 @@ export function HomeworkTable({ section, render, items: suppliedItems, grading }
         <th scope="col"><span className="homework-sr-only">Просмотр работы</span></th>
       </tr></thead><tbody>{visible.map((item, index) => {
         const selectable = canSelect(item);
-        const info = pick(item.source, ['answer_text', 'text', 'comment', 'description']);
+        const info = pick(item.source, ['answer_text', 'text', 'description']);
+        const responseDraft = responseDrafts?.data === responseContext ? responseDrafts.values[item.key] : undefined;
         const workLabel = (item.studentName || 'Без имени') + ', ' + (item.theme || 'Работа без темы') + ', строка ' + ((currentPage - 1) * pageSize + index + 1);
         const rowKey = item.key + '-' + ((currentPage - 1) * pageSize + index);
         const expanded = opened?.data === items && opened.key === rowKey;
@@ -218,6 +245,7 @@ export function HomeworkTable({ section, render, items: suppliedItems, grading }
             <section className="homework-response"><h4>Ответ студента</h4>{Object.values(info).some(value => label(value)) ? render(info) : <p className="homework-muted">Текст ответа не добавлен.</p>}</section>
             <section><h4>Файл студента</h4>{attachments(item.source, true)}</section>
             <section><h4>Задание</h4>{attachments(item.source, false)}</section>
+            <section className="homework-teacher-response">{selectable || responseDraft ? <ResponseEditor item={item} name={workLabel} disabled={locked} readOnly={!selectable} draft={responseDraft ?? { comment: label(item.source.comment), mark: item.mark === null ? '' : String(item.mark) }} onChange={next => setResponseDrafts(previous => ({ data: responseContext, values: { ...(previous?.data === responseContext ? previous.values : {}), [item.key]: next } }))} onSave={(mark, response) => saveGrades([item], mark, response)}/> : <><h4>Ответ преподавателя</h4><p className={label(item.source.comment) ? undefined : 'homework-muted'}>{label(item.source.comment) || 'Ответ преподавателя не добавлен.'}</p></>}</section>
           </div></td></tr>}
         </Fragment>;
       })}</tbody></table></div>

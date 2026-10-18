@@ -56,6 +56,12 @@ try {
   let homeworkQueue = [201, 202, 203].map((id, index) => ({ id, id_domzad_teach: id + 1000, stud_stud: index < 2 ? 101 : 102, fio_stud: index < 2 ? 'Тестовый ученик А' : 'Тестовый ученик Б', name_tgroups: 'Тест', name_spec: 'Веб', theme: `ДЗ ${id}`, stud_date: '2026-10-10 10:00:00', ospr: 0, mark: null, answer_text: 'Вымышленный ответ', comment: 'Не менять', filename: 'fixture.pdf', download_url_stud: index === 1 ? 'https://fs.top-academy.ru/api/v1/files/png-fixture' : 'https://fs.top-academy.ru/api/v1/files/pdf-fixture' }));
   const homeworkWrites = [];
   let rejectHomework = false;
+  let expectedHomeworkResponse = null;
+  let dropHomeworkResponse = false;
+  const directoryStudents = [
+    { id_stud: 301, id_tgroups: 10, fio_stud: 'Студент каталога А', gpa: 0, percent_vizit: 0, age: 16, st_email: 'student-a@example.invalid', phone_stud: '+7 000 111-22-33', st_login: 'student_fixture_a', last_date_vizit: '2026-10-08 15:20:00', DIAMOND: 0, COIN: 4, count_comment: 0, achieves: 2 },
+    { id_stud: 302, id_tgroups: 10, fio_stud: 'Студент каталога Б', gpa: '10.5', percent_vizit: 85, age: 17, st_email: 'student-b@example.invalid', phone_stud: '+7 000 444-55-66', st_login: 'student_fixture_b', last_date_vizit: '2026-09-30 09:00:00' },
+  ];
   const empty = {};
   // All Omni responses are fictional: no real login, cookies or academic data.
   await context.route('https://omni.top-academy.ru/**', async route => {
@@ -101,7 +107,19 @@ try {
       data = { success: !rejectSwitch };
     }
     if (path === '/auth/get-start-info') data = { branch: { name: 'Тестовая академия' } };
-    if (path === '/students/get-groups-list') data = [];
+    if (path === '/students/get-groups-list') data = [{ id_tgroups: 10, name_tgroups: 'Группа каталога' }];
+    if (path === '/students/get-students') {
+      assert.deepEqual(request.postDataJSON(), { group: '10' });
+      data = directoryStudents;
+    }
+    if (path === '/students/get-details-stud') {
+      assert.deepEqual(request.postDataJSON(), { stud: '301' });
+      data = { name_tgroups: 'Группа каталога', name_streams: 'Поток каталога', dir_name: 'Веб-разработка', birthdat_stud: '2010-01-02', st_mob1: '+7 000 999-88-77' };
+    }
+    if (path === '/students/get-stud-vizit') {
+      assert.deepEqual(request.postDataJSON(), { stud: '301' });
+      data = [{ date_vizit: '2026-10-01', name_spec: 'Предмет каталога', theme: 'Тема каталога', fio_teach: 'Преподаватель каталога', was: 0, homework_mark: 8, control_mark: 9, work_in_class: 10, labwork_mark: 11, mark5: 12, comments: 'Комментарий занятия' }];
+    }
     if (path === '/bind/get-public-form') data = [{ id_form: 4, name_form: 'Форма каталога' }];
     if (path === '/bind/get-public-direction') data = [{ id: 16, dir_name: 'Направление каталога' }];
     if (path === '/bind/get-public-spec') {
@@ -170,11 +188,14 @@ try {
     if (path === '/homework/get-new-homeworks') data = { homework: homeworkQueue, lab_work: [], requests: [] };
     if (path === '/homework/save-homework') {
       const { HomeworkForm: form } = request.postDataJSON();
-      assert.equal(form.comment, 'Не менять');
+      assert.equal(form.comment, expectedHomeworkResponse ?? homeworkQueue.find(item => item.id === form.id).comment);
       assert.equal(form.answer_text, 'Вымышленный ответ');
       assert.deepEqual(form.marks, { 0: { id: form.id_domzad_teach, stud: form.stud_stud, mark: form.mark, ospr: 0 } });
       homeworkWrites.push({ id: form.id, student: form.stud_stud, mark: form.mark });
-      if (!rejectHomework) homeworkQueue = homeworkQueue.filter(item => item.id !== form.id);
+      if (!rejectHomework) {
+        if (expectedHomeworkResponse !== null && !dropHomeworkResponse) Object.assign(homeworkQueue.find(item => item.id === form.id), { mark: form.mark, comment: form.comment });
+        else homeworkQueue = homeworkQueue.filter(item => item.id !== form.id);
+      }
       data = rejectHomework ? { success: false, message: 'ДЗ отклонено сервером' } : { success: 'Сохранено' };
     }
     return route.fulfill({ json: data });
@@ -264,6 +285,34 @@ try {
   assert.equal(await ui.getByRole('tooltip').evaluate(node => getComputedStyle(node).position), 'fixed');
   await ui.keyboard.press('Escape');
   await ui.getByRole('tooltip').waitFor({ state: 'detached' });
+  // Students uses the existing authenticated read commands in the actual extension worker.
+  await ui.getByRole('button', { name: 'Студенты', exact: true }).click();
+  await ui.getByLabel('Выбор группы', { exact: true }).selectOption('10');
+  const directory = ui.locator('.students-page');
+  await directory.getByRole('button', { name: 'Студент каталога А', exact: true }).waitFor();
+  const firstStudent = directory.locator('tbody tr').filter({ hasText: 'Студент каталога А' });
+  assert.equal(await firstStudent.locator('td').nth(1).innerText(), '0');
+  assert.match(await firstStudent.locator('td').nth(2).innerText(), /^0\s*%?$/);
+  assert.match(await firstStudent.innerText(), /student-a@example.invalid/);
+  assert.match(await firstStudent.innerText(), /student_fixture_a/);
+  // Move the pointer into the content so the hover-expanded sidebar collapses.
+  await directory.getByLabel('Поиск студентов', { exact: true }).click();
+  await directory.getByLabel('Поиск студентов', { exact: true }).fill('student_fixture_a');
+  assert.equal(await directory.locator('tbody tr').count(), 1, 'search uses the official login field');
+  await directory.getByRole('button', { name: 'Студент каталога А', exact: true }).click();
+  const studentDialog = ui.getByRole('dialog', { name: 'Студент каталога А', exact: true });
+  await studentDialog.waitFor();
+  assert.match(await studentDialog.innerText(), /Поток каталога/);
+  assert.match(await studentDialog.innerText(), /Веб-разработка/);
+  assert.match(await studentDialog.innerText(), /\+7 000 999-88-77/);
+  assert.match(await studentDialog.innerText(), /Предмет каталога/);
+  await ui.screenshot({ path: 'tmp/students-extension-profile.png' });
+  await studentDialog.getByRole('button', { name: 'Закрыть', exact: true }).click();
+  await studentDialog.waitFor({ state: 'detached' });
+  assert.equal(await directory.locator('table').evaluate(node => getComputedStyle(node).fontSize), '12px', 'students CSS is injected into Shadow DOM');
+  assert.equal(paths.filter(path => path === '/students/get-details-stud').length, 1, 'details load only on explicit open');
+  assert.equal(paths.some(path => /^\/students\/(set-|send-|delete-)/.test(path)), false, 'students page never writes');
+  await ui.screenshot({ path: 'tmp/students-extension-list.png' });
   await ui.getByRole('button', { name: 'Справка', exact: true }).click();
   await ui.locator('.help-page').waitFor();
   await ui.getByRole('link', { name: 'Расчёт дохода', exact: true }).click();
@@ -633,10 +682,42 @@ try {
   rejectHomework = false;
   await ui.getByRole('button', { name: 'Обновить работы', exact: true }).click();
   await ui.locator('.homework-grade-editor input').waitFor();
-  await ui.locator('.homework-grade-editor input').fill('10');
-  await ui.locator('.homework-grade-editor input').press('Enter');
+  await ui.getByRole('button', { name: 'Открыть работу', exact: true }).click();
+  const teacherResponse = ui.getByRole('textbox', { name: /Ответ преподавателя:/ });
+  assert.equal(await teacherResponse.inputValue(), homeworkQueue[0].comment);
+  expectedHomeworkResponse = 'Detailed teacher response\nNext steps';
+  await teacherResponse.fill(expectedHomeworkResponse);
+  assert.equal(homeworkWrites.length, 3, 'response draft never writes before explicit Save');
+  const saveTeacherResponse = ui.getByRole('button', { name: 'Сохранить ответ и оценку', exact: true });
+  assert.equal(await saveTeacherResponse.isDisabled(), true, 'response requires a grade');
+  await ui.getByRole('spinbutton', { name: /Оценка к ответу преподавателя:/ }).fill('10');
+  await saveTeacherResponse.click();
   await ui.getByRole('status').filter({ hasText: 'Оценка 10 сохранена: 1 из 1' }).waitFor();
   assert.deepEqual(homeworkWrites.at(-1), { id: 203, student: 102, mark: 10 });
+  await ui.getByRole('button', { name: 'Открыть работу', exact: true }).click();
+  assert.equal(await ui.locator('.homework-teacher-response p').innerText(), expectedHomeworkResponse, 'confirmed response remains visible after local overlay');
+  assert.equal(await ui.locator('.homework-teacher-response textarea').count(), 0, 'confirmed work cannot be submitted again');
+
+  // Acknowledgement plus disappearance confirms neither the response nor an exact readback.
+  homeworkQueue.push({ ...homeworkQueue[0], id: 204, id_domzad_teach: 1204, theme: 'ДЗ 204', mark: null });
+  await ui.getByRole('button', { name: 'Обновить работы', exact: true }).click();
+  const uncertainHomework = ui.locator('.homework-table tbody tr').filter({ hasText: 'ДЗ 204' });
+  await uncertainHomework.getByRole('button', { name: 'Открыть работу', exact: true }).click();
+  expectedHomeworkResponse = 'Keep this unconfirmed response draft';
+  dropHomeworkResponse = true;
+  await ui.getByRole('textbox', { name: /Ответ преподавателя:/ }).fill(expectedHomeworkResponse);
+  await ui.getByRole('spinbutton', { name: /Оценка к ответу преподавателя:/ }).fill('8');
+  await ui.getByRole('button', { name: 'Сохранить ответ и оценку', exact: true }).click();
+  await ui.getByRole('alert').filter({ hasText: 'Оценка отправлена, но сохранение ответа не подтверждено. Проверьте работу в Omni.' }).waitFor();
+  assert.equal(await ui.locator('.homework-result').count(), 0, 'absent response readback cannot show success');
+  const retainedResponse = ui.getByRole('textbox', { name: /Ответ преподавателя:/ });
+  assert.equal(await retainedResponse.inputValue(), expectedHomeworkResponse, 'uncertain response draft remains visible');
+  assert.equal(await retainedResponse.isEditable(), false, 'uncertainty prevents retry without reload');
+  assert.equal(await retainedResponse.isEnabled(), true, 'uncertain draft remains available to copy');
+  assert.equal(await ui.getByRole('button', { name: 'Сохранить ответ и оценку', exact: true }).isDisabled(), true);
+  assert.equal(homeworkWrites.length, 5, 'uncertain write is attempted once');
+  assert.equal(homeworkQueue.some(item => item.id === 204), false);
+
 
   const external = await extensionMessage({ action: 'status', input: {} });
   assert.equal(external.data.connected, true);
@@ -726,7 +807,7 @@ try {
   assert.equal(status.data.connected, true);
   assert.deepEqual(errors, []);
   assert.equal(requests.some(url => url.startsWith('chrome-extension://') || /localhost|127\.0\.0\.1/.test(url)), false);
-  console.log('PASS: same-tab UI mount, native login/challenge preservation, Shadow DOM styling/calendar, attendance drafts, topic save, marks, previous-lesson copy, materials/PDF, teacher/account switching, logout-warning recovery and second-tab invalidation. All data fictional.');
+  console.log('PASS: same-tab UI mount, native login/challenge preservation, Shadow DOM styling/calendar, students/contact search/profile/history, attendance drafts, topic save, marks, previous-lesson copy, materials/PDF, teacher/account switching, logout-warning recovery and second-tab invalidation. All data fictional.');
 } finally {
   await context?.close();
   // Only the unique temporary test profile created above is removed.

@@ -13,6 +13,7 @@ import login from '../../features/auth/login.css?inline';
 import schedule from '../../features/schedule/schedule.css?inline';
 import materials from '../../features/materials/teaching-materials.css?inline';
 import homework from '../../features/homework/homework.css?inline';
+import students from '../../features/students/students.css?inline';
 import dossier from '../../features/dossier/teacher-dossier.css?inline';
 import income from '../../features/dossier/income.css?inline';
 import searchableSelect from '../../components/ui/searchable-select.css?inline';
@@ -67,7 +68,7 @@ function start() {
     host = document.createElement('div'); host.id = hostId;
     const shadow = host.attachShadow({ mode: 'open' });
     const style = document.createElement('style');
-    style.textContent = `:host{all:initial;display:block;position:fixed;inset:0;z-index:2147483647;overflow:auto;isolation:isolate;color-scheme:light} ${styles}\n${help}\n${pages}\n${live}\n${workspace}\n${login}\n${schedule}\n${materials}\n${homework}\n${dossier}\n${income}\n${preview}\n${searchableSelect}\n@media print{:host{position:static!important;overflow:visible!important;height:auto!important}}`;
+    style.textContent = `:host{all:initial;display:block;position:fixed;inset:0;z-index:2147483647;overflow:auto;isolation:isolate;color-scheme:light} ${styles}\n${help}\n${pages}\n${live}\n${workspace}\n${login}\n${schedule}\n${materials}\n${homework}\n${students}\n${dossier}\n${income}\n${preview}\n${searchableSelect}\n@media print{:host{position:static!important;overflow:visible!important;height:auto!important}}`;
     const container = document.createElement('div'); container.id = 'root';
     shadow.append(style);
     if (warning) {
