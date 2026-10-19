@@ -1,5 +1,5 @@
 import { CheckCheck, LoaderCircle, X } from 'lucide-react';
-import type { RefObject } from 'react';
+import { useEffect, useState, type RefObject } from 'react';
 import type { RemoteRecord, Section } from '../../services/omni-client';
 import { SectionView } from '../../components/data/RemoteData';
 import { StudentProfile } from '../../features/students/StudentProfile';
@@ -26,5 +26,12 @@ export function StudentDetailDialog({ dialogRef, detail, onClose }: {
 }
 
 export function WorkspaceToast({ message, onClose }: { message: string; onClose: () => void }) {
-  return <div className="toast" role="status"><CheckCheck size={17}/>{message}<button className="icon" aria-label="Закрыть уведомление" onClick={onClose}><X size={16}/></button></div>;
+  const [closing, setClosing] = useState(false);
+  useEffect(() => { setClosing(false); }, [message]);
+  useEffect(() => {
+    if (!closing) return;
+    const timer = window.setTimeout(onClose, 180);
+    return () => window.clearTimeout(timer);
+  }, [closing, onClose]);
+  return <div className={`toast workspace-toast${closing ? ' closing' : ''}`} role="status"><CheckCheck size={17}/>{message}<button className="icon" aria-label="Закрыть уведомление" onClick={() => setClosing(true)}><X size={16}/></button></div>;
 }

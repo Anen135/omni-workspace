@@ -45,6 +45,15 @@ try {
   let rejectMark = false;
   let rejectReward = false;
   let ignoreReward = false;
+  let rejectRoster = false;
+  let nextRosterHold = null;
+  function holdNextRoster(delayMs = 400) {
+    let onStart, release;
+    const started = new Promise(resolve => { onStart = resolve; });
+    const released = new Promise(resolve => { release = resolve; });
+    nextRosterHold = { delayMs, onStart, released };
+    return { started, release };
+  }
   const lessonWrites = [];
   const lessonStudents = [{ id_stud: 101, fio_stud: 'Тестовый ученик А', was: null, id_vizit: null, theme: '', primary_teach: 0, prize: 0 }, { id_stud: 102, fio_stud: 'Тестовый ученик Б', was: 2, id_vizit: 9, theme: '', primary_teach: 0, prize: 0 }];
   const copySourceDate = '2026-09-28';
@@ -74,6 +83,7 @@ try {
       return route.fulfill({ contentType: 'text/html', body: '<!doctype html><script>location.replace("/login/index")</script>' });
     }
     if (request.isNavigationRequest()) return route.fulfill({ contentType: 'text/html', body: `<!doctype html><meta name="csrf-token" content="fixture-csrf"><title>Fixture Omni</title>${signedIn ? '' : '<form><input type="password"></form><div data-login-challenge="fixture">Complete verification</div>'}<script>globalThis.angular = { element: () => ({ injector: () => ({ get: () => ({ clearLocalStorage: () => sessionStorage.setItem('switch-cleaned', 'yes') }) }) }) };</script>` });
+    if (path === '/fixtures/student-101.png') return route.fulfill({ contentType: 'image/png', body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=', 'base64') });
     if (path === '/favicon.ico') return route.fulfill({ status: 404, body: '' });
     if (path.startsWith('/dossier/')) {
       assert.equal(request.method(), 'GET');
@@ -110,7 +120,14 @@ try {
     if (path === '/students/get-groups-list') data = [{ id_tgroups: 10, name_tgroups: 'Группа каталога' }];
     if (path === '/students/get-students') {
       assert.deepEqual(request.postDataJSON(), { group: '10' });
-      data = directoryStudents;
+      const hold = nextRosterHold;
+      nextRosterHold = null;
+      if (hold) {
+        hold.onStart();
+        await Promise.all([hold.released, new Promise(resolve => setTimeout(resolve, hold.delayMs))]);
+      }
+      if (rejectRoster) return route.fulfill({ status: 503, json: { error: 'Fixture roster unavailable' } });
+      data = [...directoryStudents, { id_stud: 102, fio_stud: 'Тестовый ученик Б', gpa: '10.5', photo_pas: '/fixtures/missing-student.png' }, { id_stud: 101, fio_stud: 'Тестовый ученик А', gpa: 0, photo_pas: '/fixtures/student-101.png' }];
     }
     if (path === '/students/get-details-stud') {
       assert.deepEqual(request.postDataJSON(), { stud: '301' });
@@ -244,6 +261,7 @@ try {
   // Simulates completion of Omni's own login and challenge without a real credential.
   await official.evaluate(() => { document.querySelector('input[type=password]').closest('form')?.remove(); document.querySelector('[data-login-challenge="fixture"]')?.remove(); sessionStorage.setItem('IdLocalHash', 'fixture-hash'); });
   signedIn = true;
+  const initialRoster = holdNextRoster();
   await official.reload();
   await official.locator('#omni-workspace-root #root').waitFor();
   assert.equal(await context.pages().length, 1, 'the extension should mount the interface in the current Omni tab');
@@ -258,9 +276,20 @@ try {
   assert.equal(appearance.sidebar, 'rgb(255, 255, 255)');
   await ui.locator('.act-as select').waitFor();
   await ui.getByRole('heading', { name: 'Мой урок' }).waitFor();
+  await initialRoster.started;
+  const refreshWorkspace = ui.getByRole('button', { name: 'Обновить', exact: true });
+  assert.equal(await refreshWorkspace.isDisabled(), true, 'the pending roster read locks workspace refresh');
+  assert.equal(await ui.locator('.act-as select').isDisabled(), true, 'the pending roster read locks teacher switching');
   assert.ok(paths.includes('/schedule/get-schedule'));
   assert.ok(paths.filter(path => path === '/profile/get-profile').length >= 2);
+  const dossierReadsBeforeHold = paths.filter(path => path.startsWith('/dossier/')).length;
   await ui.getByRole('button', { name: 'Досье преподавателя', exact: true }).click();
+  await ui.waitForTimeout(450);
+  assert.equal(await refreshWorkspace.isDisabled(), true, 'navigation retains the roster lock until its transport settles');
+  assert.equal(await ui.getByRole('button', { name: 'Обновить досье', exact: true }).isDisabled(), true, 'dossier waits for the pending roster');
+  assert.equal(paths.filter(path => path.startsWith('/dossier/')).length, dossierReadsBeforeHold, 'dossier sends no overlapping read');
+  assert.equal(await ui.locator('.dossier-error').count(), 0, 'waiting for the roster must not surface a BUSY error');
+  initialRoster.release();
   await ui.locator('.dossier-summary-card').filter({ hasText: 'Количество пар' }).getByText('42', { exact: true }).waitFor();
   await ui.getByText('Группа досье', { exact: true }).waitFor();
   for (const endpoint of ['get-single-data', 'get-data-graphics', 'get-all-data']) assert.ok(paths.includes('/dossier/' + endpoint));
@@ -277,6 +306,30 @@ try {
   await calendar.waitFor({ state: 'detached' });
   await calendarTrigger.click();
   await ui.locator('nav button').nth(0).click();
+  const lessonTable = ui.locator('.lesson-students');
+  await lessonTable.getByRole('columnheader', { name: 'Средняя оценка', exact: true }).waitFor();
+  await lessonTable.locator('tbody tr').filter({ hasText: 'Тестовый ученик А' }).locator('td:last-child').filter({ hasText: /^0$/ }).waitFor();
+  assert.equal(await lessonTable.locator('tbody tr').filter({ hasText: 'Тестовый ученик Б' }).locator('td:last-child').innerText(), '10.5', 'lesson averages use the Students roster matched by ID, independent of roster order');
+  const lessonAvatar = lessonTable.locator('tbody tr').filter({ hasText: 'Тестовый ученик А' }).locator('.student-avatar img');
+  await lessonAvatar.waitFor();
+  await ui.waitForFunction(() => document.querySelector('#omni-workspace-root')?.shadowRoot?.querySelector('.lesson-students .student-avatar img')?.naturalWidth === 1);
+  assert.equal(await lessonAvatar.getAttribute('src'), 'https://omni.top-academy.ru/fixtures/student-101.png', 'lesson uses roster photo_pas by student ID');
+  const missingLessonAvatar = lessonTable.locator('tbody tr').filter({ hasText: 'Тестовый ученик Б' }).locator('.student-avatar');
+  await missingLessonAvatar.locator('img').waitFor({ state: 'detached' });
+  assert.match(await missingLessonAvatar.innerText(), /Ту/);
+  rejectRoster = true;
+  const rosterReadsBeforeFailure = paths.filter(path => path === '/students/get-students').length;
+  const failedRoster = ui.waitForResponse(response => new URL(response.url()).pathname === '/students/get-students' && response.status() === 503);
+  await refreshWorkspace.click();
+  await failedRoster;
+  await ui.waitForFunction(() => !document.querySelector('#omni-workspace-root')?.shadowRoot?.querySelector('.topbar button')?.disabled);
+  assert.equal(paths.filter(path => path === '/students/get-students').length, rosterReadsBeforeFailure + 1, 'a fresh snapshot attempts one roster read');
+  assert.deepEqual(await lessonTable.locator('tbody tr td:last-child').allTextContents(), ['—', '—'], 'failed fresh roster reads clear previously displayed averages');
+  assert.equal(await lessonTable.locator('.student-avatar img').count(), 0, 'failed fresh roster reads clear previously displayed roster photos');
+  rejectRoster = false;
+  await refreshWorkspace.click();
+  await lessonTable.locator('tbody tr').filter({ hasText: 'Тестовый ученик А' }).locator('td:last-child').filter({ hasText: /^0$/ }).waitFor();
+  assert.equal(await lessonTable.locator('tbody tr').filter({ hasText: 'Тестовый ученик Б' }).locator('td:last-child').innerText(), '10.5', 'a later refresh recovers roster averages');
   await calendar.waitFor({ state: 'detached' });
   const helpTip = ui.locator('.lesson-context .help-tip-trigger');
   await helpTip.focus();
@@ -338,7 +391,7 @@ try {
   assert.equal(await presence.isEnabled(), true); // Empty lesson theme must not block attendance.
   assert.equal(await reward.isDisabled(), true, 'rewards need present or late attendance');
   await presence.selectOption('1');
-  assert.equal(await lessonSave.count(), 0, 'attendance draft without a theme cannot expose Save');
+  assert.equal(await lessonSave.isDisabled(), true, 'attendance draft without a theme keeps Save disabled');
   assert.equal(await reward.isEnabled(), true, 'draft attendance enables staging a reward before an official visit exists');
   await ui.getByText(/Черновик: 1 отметок/).waitFor();
   assert.equal(paths.filter(path => path === '/presents/set-was').length, 0);
@@ -363,23 +416,43 @@ try {
   await lessonSave.waitFor({ state: 'visible' });
   assert.equal(await lessonSave.textContent(), '', 'Save has an accessible name and no visible label');
   assert.equal(await lessonSave.locator('svg').count(), 1);
+  const draftRoster = holdNextRoster();
+  await refreshWorkspace.click();
+  await draftRoster.started;
+  assert.equal(await lessonSave.isDisabled(), true, 'a pending roster read disables an otherwise actionable Save draft');
+  assert.equal(await refreshWorkspace.isDisabled(), true);
+  assert.equal(await ui.locator('.act-as select').isDisabled(), true);
+  const catalogReadsBeforeHold = paths.filter(path => path.startsWith('/bind/get-public-')).length;
+  await ui.getByRole('button', { name: 'Материалы', exact: true }).click();
+  await ui.waitForTimeout(450);
+  assert.equal(await refreshWorkspace.isDisabled(), true, 'leaving a draft retains the pending roster lock');
+  assert.equal(await ui.getByRole('button', { name: 'Обновить методички', exact: true }).isDisabled(), true, 'materials waits for the pending roster');
+  assert.equal(paths.filter(path => path.startsWith('/bind/get-public-')).length, catalogReadsBeforeHold, 'materials sends no overlapping catalog read');
+  assert.equal(await ui.locator('.teaching-materials [role=alert]').count(), 0, 'waiting for the roster must not surface a materials BUSY error');
+  draftRoster.release();
+  await ui.waitForFunction(() => document.querySelector('#omni-workspace-root')?.shadowRoot?.querySelector('.teaching-materials input[role=combobox]')?.disabled === false);
+  assert.ok(paths.filter(path => path.startsWith('/bind/get-public-')).length > catalogReadsBeforeHold, 'materials loads after the roster releases its lock');
+  await ui.locator('nav button').nth(0).click();
+  await ui.waitForFunction(() => document.querySelector('#omni-workspace-root')?.shadowRoot?.querySelector('.lesson-save-icon')?.disabled === false);
+  assert.deepEqual(lessonWrites, [], 'refreshing and navigating around an actionable draft sends no lesson write');
   await ui.locator('#omni-workspace-root').evaluate(node => { node.scrollTop = node.scrollHeight; });
   const desktopSave = await lessonSave.boundingBox();
-  assert.ok(desktopSave.y >= 64 && desktopSave.y < 130, 'Save sticks below the desktop header');
-  await ui.screenshot({ path: 'tmp/lesson-save-sticky-desktop.png' });
+  assert.equal(await ui.locator('.lesson-save-actions').evaluate(node => getComputedStyle(node).position), 'fixed');
+  assert.ok(desktopSave.x >= 1180 && desktopSave.x + desktopSave.width <= 1280 && desktopSave.y >= 620 && desktopSave.y + desktopSave.height <= 720, 'Save floats inside the lower-right desktop viewport');
+  await ui.screenshot({ path: 'tmp/lesson-save-floating-desktop.png' });
   await ui.setViewportSize({ width: 390, height: 844 });
   await ui.mouse.move(200, 200);
   await ui.locator('#omni-workspace-root').evaluate(node => { node.scrollTop = node.scrollHeight; });
   const mobileSave = await lessonSave.boundingBox();
-  await ui.screenshot({ path: 'tmp/lesson-save-sticky-mobile.png' });
+  await ui.screenshot({ path: 'tmp/lesson-save-floating-mobile.png' });
   assert.ok(await ui.locator('#omni-workspace-root').evaluate(node => node.scrollWidth <= node.clientWidth), 'draft actions must not widen the mobile shadow host');
-  assert.ok(mobileSave.x + mobileSave.width <= 390 && mobileSave.y >= 56 && mobileSave.y < 130, `Save fits and sticks below the mobile header: ${JSON.stringify(mobileSave)}`);
+  assert.ok(mobileSave.x >= 290 && mobileSave.x + mobileSave.width <= 390 && mobileSave.y >= 744 && mobileSave.y + mobileSave.height <= 844, `Save floats inside the lower-right mobile viewport: ${JSON.stringify(mobileSave)}`);
   await ui.setViewportSize({ width: 1280, height: 720 });
   await lessonSave.click();
   await ui.getByRole('alert').filter({ hasText: 'Тестовый отказ темы' }).waitFor();
   assert.equal(paths.filter(path => path === '/presents/set-was').length, 0);
   assert.equal(await presence.inputValue(), '1');
-  assert.equal(await lessonSave.count(), 0);
+  assert.equal(await lessonSave.isDisabled(), true, 'an unconfirmed draft requires rereading before Save');
   rejectTheme = false;
   await ui.getByRole('button', { name: 'Загрузить урок', exact: true }).click();
   await ui.waitForFunction(() => document.querySelector('#omni-workspace-root')?.shadowRoot?.querySelector('.attendance-select')?.value === '1');
@@ -432,7 +505,7 @@ try {
   await ui.getByRole('alert').filter({ hasText: 'Отметка запрещена сервером' }).waitFor();
   assert.equal(await presence.inputValue(), '0', 'failed save keeps the local draft visible');
   assert.equal(lessonWrites.length, beforeRejectedAttendance + 1);
-  assert.equal(await lessonSave.count(), 0);
+  assert.equal(await lessonSave.isDisabled(), true, 'an unconfirmed draft requires rereading before Save');
   rejectAttendance = false;
   await ui.getByRole('button', { name: 'Загрузить урок', exact: true }).click();
   await lessonSave.waitFor({ state: 'visible' });
@@ -448,7 +521,7 @@ try {
   await ui.getByRole('alert').filter({ hasText: 'Omni не подтвердил все отметки' }).waitFor();
   assert.equal(await presence.inputValue(), '1');
   assert.equal(lessonWrites.length, beforeUnconfirmed + 1);
-  assert.equal(await lessonSave.count(), 0);
+  assert.equal(await lessonSave.isDisabled(), true, 'an unconfirmed draft requires rereading before Save');
   ignoreAttendance = false;
   await ui.getByRole('button', { name: 'Загрузить урок', exact: true }).click();
   await lessonSave.waitFor({ state: 'visible' });
@@ -551,7 +624,7 @@ try {
   assert.equal(lessonStudents[0].prize, 1);
   assert.equal(await reward.inputValue(), '2', 'a rejected reward remains visible in the local draft');
   assert.equal(lessonWrites.length, beforeRewards + 1);
-  assert.equal(await lessonSave.count(), 0);
+  assert.equal(await lessonSave.isDisabled(), true, 'an unconfirmed draft requires rereading before Save');
   rejectReward = false;
   await ui.getByRole('button', { name: 'Загрузить урок', exact: true }).click();
   await lessonSave.waitFor({ state: 'visible' });
@@ -656,7 +729,18 @@ try {
   assert.equal(await ui.getByRole('listbox').count(), 0);
   await ui.getByRole('button', { name: 'Домашние задания', exact: true }).click();
   assert.equal(await ui.locator('.homework-table tbody tr').count(), 3);
+  const homeworkAvatar = ui.locator('.homework-table tbody tr').filter({ hasText: 'ДЗ 201' }).locator('.student-avatar img');
+  await homeworkAvatar.waitFor();
+  assert.equal(await homeworkAvatar.getAttribute('src'), 'https://omni.top-academy.ru/fixtures/student-101.png', 'homework reuses ID-matched roster photo_pas');
+
   assert.equal(await ui.locator('.live-details').count(), 0);
+  await ui.getByRole('button', { name: /^Превью работы:/ }).first().hover();
+  const homeworkHover = ui.locator('.homework-quick-preview');
+  await homeworkHover.locator('canvas[data-rendered="true"]').waitFor();
+  assert.equal(await homeworkHover.evaluate(node => node.getRootNode() instanceof ShadowRoot), true, 'homework hover preview stays styled inside extension Shadow DOM');
+  assert.equal(await ui.locator('.homework-teacher-response').count(), 0, 'hover does not open the grading editor');
+  await ui.keyboard.press('Escape');
+  await homeworkHover.waitFor({ state: 'detached' });
   await ui.getByRole('button', { name: 'Открыть работу', exact: true }).first().click();
   await ui.locator('.remote-attachment').getByRole('button', { name: 'Превью', exact: true }).click();
   await ui.locator('.remote-attachment canvas[data-rendered="true"]').waitFor();
@@ -665,7 +749,8 @@ try {
   await ui.waitForFunction(() => document.querySelector('#omni-workspace-root')?.shadowRoot?.querySelector('.remote-attachment img')?.naturalWidth === 1);
   await ui.getByLabel('Студент домашних работ').selectOption('id:101');
   assert.equal(await ui.locator('.homework-table tbody tr').count(), 2);
-  await ui.getByRole('button', { name: 'Выбрать все найденные (2)', exact: true }).click();
+  await ui.getByRole('checkbox', { name: 'Выбрать все доступные работы по фильтрам, на всех страницах', exact: true }).check();
+  assert.equal(await ui.locator('.homework-table tbody input[type=checkbox]:checked').count(), 2, 'the header checkbox selects both filtered eligible works');
   ui.once('dialog', dialog => { assert.match(dialog.message(), /12.*2/); return dialog.accept(); });
   await ui.getByRole('button', { name: 'Поставить оценку (2)', exact: true }).click();
   await ui.getByRole('status').filter({ hasText: 'Оценка 12 сохранена: 2 из 2' }).waitFor();
@@ -752,6 +837,8 @@ try {
   await secondUi.locator('.act-as select').waitFor();
   const secondActAs = secondUi.getByLabel('Работаю от имени', { exact: true });
   assert.equal(await secondActAs.inputValue(), '1');
+  await ui.locator('nav button').nth(1).click();
+  await ui.locator('.schedule-tools').waitFor();
   await actAs.selectOption('2');
   await secondUi.getByRole('heading', { name: 'Завершите вход в этой вкладке' }).waitFor();
   assert.equal(await secondUi.locator('.act-as select').count(), 0);
@@ -761,7 +848,8 @@ try {
   assert.equal(await secondActAs.inputValue(), '2');
   assert.equal(await official.evaluate(() => sessionStorage.getItem('switch-cleaned')), 'yes');
   assert.equal(await ui.locator('.file-preview-full').count(), 0);
-  assert.equal(await ui.getByRole('heading', { name: 'Мой урок' }).count(), 1);
+  assert.equal(await ui.locator('.schedule-tools').count(), 1, 'teacher switching preserves the selected schedule tab');
+  assert.equal(await ui.locator('.lesson-workspace').count(), 0, 'teacher switching must not navigate back to My lesson');
   rejectSwitch = true;
   await actAs.selectOption('1');
   await ui.getByRole('alert').filter({ hasText: 'Omni отклонил переключение' }).waitFor();
@@ -787,7 +875,10 @@ try {
   retainLogout = false;
   ui.once('dialog', dialog => dialog.accept());
   await ui.getByRole('button', { name: 'Сменить аккаунт', exact: true }).click();
-  await official.waitForURL('https://omni.top-academy.ru/login/index');
+  await official.waitForURL('https://omni.top-academy.ru/login/index').catch(async error => {
+    console.error('Fictional logout fixture state:', JSON.stringify({ url: official.url(), secondUrl: secondUi.url(), signedIn, retainLogout, logoutRequests: paths.filter(path => path === '/auth/logout').length, alerts: await ui.getByRole('alert').allTextContents() }));
+    throw error;
+  });
   await secondUi.waitForURL('https://omni.top-academy.ru/login/index');
   await secondUi.locator('input[type=password]').waitFor();
   await official.locator('#omni-workspace-root').waitFor({ state: 'detached' });

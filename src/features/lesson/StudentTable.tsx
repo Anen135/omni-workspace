@@ -4,8 +4,11 @@ import { MarkEditor } from './MarkEditor';
 import { RewardEditor } from './RewardEditor';
 import { lessonRewardBudget, LESSON_REWARD_LIMIT, rewardMaximum, rewardLevel, type LessonReward } from './lesson-reward';
 import { HelpTip } from '../../components/ui/HelpTip';
+import { studentId, studentRow } from '../students/students';
+import { studentPhotoUrl } from '../students/student-photo';
+import { StudentAvatar } from '../../components/ui/StudentAvatar';
 
-export function StudentTable({ items, busy, onOpen, attendance, marks, rewards, lessonView = false }: { items: Record<string, unknown>[]; busy: boolean; onOpen: (item: Record<string, unknown>) => void; attendance?: { unavailable: string; saving: boolean; onChange: (item: Record<string, unknown>, was: AttendanceStatus) => void; onAll: () => void }; marks?: { unavailable: string; allowDraft?: boolean; onChange: (item: Record<string, unknown>, type: 2 | 4, mark: number) => void }; rewards?: { unavailable: string; onChange: (item: Record<string, unknown>, reward: LessonReward) => void }; lessonView?: boolean }) {
+export function StudentTable({ items, busy, onOpen, attendance, marks, rewards, lessonView = false, studentAverages, studentPhotos }: { items: Record<string, unknown>[]; busy: boolean; onOpen: (item: Record<string, unknown>) => void; attendance?: { unavailable: string; saving: boolean; onChange: (item: Record<string, unknown>, was: AttendanceStatus) => void; onAll: () => void }; marks?: { unavailable: string; allowDraft?: boolean; onChange: (item: Record<string, unknown>, type: 2 | 4, mark: number) => void }; rewards?: { unavailable: string; onChange: (item: Record<string, unknown>, reward: LessonReward) => void }; lessonView?: boolean; studentAverages?: ReadonlyMap<string, string>; studentPhotos?: ReadonlyMap<string, string> }) {
   const [query, setQuery] = useState('');
   const [ascending, setAscending] = useState(true);
   const [page, setPage] = useState(0);
@@ -13,7 +16,8 @@ export function StudentTable({ items, busy, onOpen, attendance, marks, rewards, 
   const filtered = items.filter(item => text(item.fio_stud).toLocaleLowerCase('ru').includes(query.trim().toLocaleLowerCase('ru'))).sort((a, b) => text(a.fio_stud).localeCompare(text(b.fio_stud), 'ru') * (ascending ? 1 : -1));
   const last = Math.max(0, Math.ceil(filtered.length / 25) - 1);
   const current = Math.min(page, last);
-  const average = items.some(item => item.average !== undefined || item.avg_mark !== undefined);
+  const averageGrade = (student: Record<string, unknown>) => studentAverages?.get(studentId(student)) || studentRow(student).values.average;
+  const average = lessonView || items.some(item => !!averageGrade(item));
   const showRewards = !!rewards || items.some(item => Object.hasOwn(item, 'prize'));
   const rewardBudget = lessonRewardBudget(items);
   return <>
@@ -26,15 +30,17 @@ export function StudentTable({ items, busy, onOpen, attendance, marks, rewards, 
     {attendance?.saving && <p className="attendance-help" role="status">Сохраняю изменения и проверяю ответ Omni…</p>}
     <div className="table-scroll" tabIndex={lessonView ? 0 : undefined} role={lessonView ? 'region' : undefined} aria-label={lessonView ? 'Таблица учеников' : undefined}><table><thead><tr><th aria-sort={ascending ? 'ascending' : 'descending'}><button className="text-button" onClick={() => setAscending(!ascending)}>Ученик {ascending ? '↑' : '↓'}</button></th><th>Присутствие</th><th>Контрольная</th><th>Работа на уроке</th>{showRewards && <th>Топкойны</th>}{average && <th>Средняя оценка</th>}</tr></thead><tbody>{filtered.slice(current * 25, (current + 1) * 25).map((student, index) => {
       const was = attendanceStatus(student.was);
+      const id = studentId(student);
+      const photo = studentPhotoUrl(id ? studentPhotos?.get(id) : undefined) || student.photo_pas;
       return <tr key={text(student.id_stud) || index}>
-        <td><button className="student-name" disabled={busy || !student.id_stud} onClick={() => onOpen(student)}><span className="avatar purple" aria-hidden="true">{text(student.fio_stud).split(' ').slice(0, 2).map(word => word[0]).join('')}</span>{text(student.fio_stud) || 'Имя не получено'}</button></td>
+        <td><button className="student-name" disabled={busy || !student.id_stud} onClick={() => onOpen(student)}><StudentAvatar name={text(student.fio_stud)} photo={photo}/>{text(student.fio_stud) || 'Имя не получено'}</button></td>
         <td>{attendance ? <select className={`attendance-select attendance-${was ?? 'unknown'}`} aria-label={`Присутствие: ${text(student.fio_stud)}`} value={was ?? ''} disabled={busy || !!attendance.unavailable || !student.id_stud} onChange={event => attendance.onChange(student, Number(event.target.value) as AttendanceStatus)}>
           <option value="" disabled>Не отмечено</option>
           {([1, 2, 0] as const).map(value => <option key={value} value={value}>{attendanceLabels[value]}</option>)}
         </select> : was === null ? 'Не отмечено' : attendanceLabels[was]}</td>
         {([2, 4] as const).map(type => <td key={type}>{marks ? <MarkEditor key={`${text(student.id_vizit)}:${text(student[`mark${type}`])}`} value={student[`mark${type}`]} label={`${type === 2 ? 'Контрольная' : 'Работа на уроке'}: ${text(student.fio_stud)}`} disabled={busy || !!marks.unavailable || (!marks.allowDraft && !(Number(student.id_vizit) > 0))} reason={marks.unavailable || (!marks.allowDraft && !(Number(student.id_vizit) > 0) ? 'Сначала сохраните тему и посещаемость этого урока.' : '')} onSave={mark => marks.onChange(student, type, mark)}/> : text(student[`mark${type}`]) || '—'}</td>)}
         {showRewards && <td>{rewards ? <RewardEditor value={student.prize} maximum={rewardMaximum(student.prize, rewardBudget.remaining)} label={`Топкойны: ${text(student.fio_stud)}`} disabled={busy || !!rewards.unavailable || !student.id_stud || (was !== 1 && was !== 2)} reason={rewards.unavailable || (was !== 1 && was !== 2 ? 'Топкойны доступны присутствующим и опоздавшим ученикам. Сначала отметьте посещаемость.' : '')} onChange={reward => rewards.onChange(student, reward)}/> : rewardLevel(student.prize) || '—'}</td>}
-        {average && <td>{text(student.average ?? student.avg_mark) || '—'}</td>}
+        {average && <td>{averageGrade(student) || '—'}</td>}
       </tr>;
     })}</tbody></table></div>
     {!filtered.length && <div className="empty">Ученики не найдены</div>}

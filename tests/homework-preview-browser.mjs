@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { mkdir } from 'node:fs/promises';
 import { chromium } from 'playwright';
 import { createServer } from 'vite';
 
@@ -16,7 +17,7 @@ let browser;
 try {
   await server.listen();
   browser = await chromium.launch({ channel: 'msedge', headless: true });
-  const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+  const page = await browser.newPage({ viewport: { width: 1440, height: 1000 }, hasTouch: true });
   page.setDefaultTimeout(10000);
   const errors = [];
   const previewRequests = [];
@@ -64,8 +65,11 @@ try {
     };
     window.showHomeworkAttachment('png');
   });
-  async function studentAttachment() {
-    await page.getByRole('button', { name: 'Открыть работу', exact: true }).click();
+  async function studentAttachment(quick = false) {
+    const trigger = page.getByRole('button', { name: quick ? /^Превью работы:/ : 'Открыть работу', exact: !quick });
+    if (quick) { await page.mouse.move(0, 0); await trigger.hover(); await page.locator('.homework-quick-preview').waitFor(); }
+    else await trigger.click();
+    if (quick) assert.equal(await page.locator('.homework-teacher-response').count(), 0, 'eye preview never opens full response editor');
     return page.locator('.homework-details > section').filter({ has: page.getByRole('heading', { name: 'Файл студента', exact: true }) });
   }
   let attachment = await studentAttachment();
@@ -77,31 +81,77 @@ try {
 
   await page.evaluate(() => window.showHomeworkAttachment('direct-png', 'pdf'));
   await page.getByRole('button', { name: 'Открыть работу', exact: true }).waitFor();
-  attachment = await studentAttachment();
-  await attachment.getByRole('button', { name: 'Превью', exact: true }).click();
+  attachment = await studentAttachment(true);
   await page.waitForFunction(() => document.querySelector('.file-preview-full img')?.naturalWidth > 0);
   assert.equal(await attachment.locator('img').evaluate(image => image.naturalWidth), 1, 'student PNG URL is not misclassified as the teacher PDF');
   assert.equal(previewRequests.length, 1, 'direct images keep the direct preview path');
+  assert.equal(await attachment.getByRole('button', { name: 'Превью', exact: true }).count(), 0, 'hover shows the image without another preview button');
+  await page.locator('.homework-quick-preview').hover();
+  assert.equal(await attachment.locator('img').isVisible(), true, 'preview remains usable when pointer enters it');
+  await page.mouse.move(0, 0);
+  await page.locator('.homework-quick-preview').waitFor({ state: 'detached' });
+  const eye = page.getByRole('button', { name: /^Превью работы:/ });
+  await page.keyboard.press('Tab');
+  await eye.focus();
+  await page.locator('.homework-quick-preview').waitFor();
+  await page.keyboard.press('Tab');
+  assert.equal(await attachment.getByRole('link', { name: 'Открыть файл', exact: true }).evaluate(link => link === document.activeElement), true, 'Tab reaches the student attachment link in the portal');
+  await page.keyboard.press('Escape');
+  await page.locator('.homework-quick-preview').waitFor({ state: 'detached' });
+  assert.equal(await eye.evaluate(button => button === document.activeElement), true, 'Escape returns focus from the portal to the eye without reopening');
+  await eye.blur();
+  await eye.tap();
+  await page.locator('.homework-quick-preview img').waitFor();
+  await page.waitForTimeout(250);
+  assert.equal(await page.locator('.homework-quick-preview img').isVisible(), true, 'touch preview stays open after the finger leaves the screen');
+  await eye.tap();
+  await page.locator('.homework-quick-preview').waitFor({ state: 'detached' });
 
   await page.evaluate(() => window.showHomeworkAttachment('pdf'));
   await page.getByRole('button', { name: 'Открыть работу', exact: true }).waitFor();
-  attachment = await studentAttachment();
-  await attachment.getByRole('button', { name: 'Превью', exact: true }).click();
+  attachment = await studentAttachment(true);
   await attachment.locator('canvas[data-rendered="true"]').waitFor();
   assert.equal(previewRequests.at(-1), 'https://fs.top-academy.ru/api/v1/files/student-pdf');
+  await mkdir('.omni-browser/homework-hover', { recursive: true });
+  await page.screenshot({ path: '.omni-browser/homework-hover/desktop.png' });
+  await page.setViewportSize({ width: 1440, height: 450 });
+  await page.locator('.homework-quick-preview').waitFor({ state: 'detached' });
+  attachment = await studentAttachment(true);
+  await attachment.locator('canvas[data-rendered="true"]').waitFor();
+  await page.keyboard.press('Escape');
+  await page.locator('.homework-quick-preview').waitFor({ state: 'detached', timeout: 1000 });
+  await page.waitForTimeout(250);
+  assert.equal(await page.locator('.homework-quick-preview').count(), 0, 'Escape stays dismissed with pointer parked at the eye when the PDF is taller than available space');
+  await page.mouse.move(0, 0);
+  await eye.hover();
+  await page.locator('.homework-quick-preview canvas[data-rendered="true"]').waitFor();
+  await page.screenshot({ path: '.omni-browser/homework-hover/short.png' });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.locator('.homework-quick-preview').waitFor({ state: 'detached' });
+  await eye.tap();
+  await page.locator('.homework-quick-preview canvas[data-rendered="true"]').waitFor();
+  const bounds = await page.locator('.homework-quick-preview').boundingBox();
+  assert.ok(bounds.x >= 0 && bounds.y >= 0 && bounds.x + bounds.width <= 390 && bounds.y + bounds.height <= 844, 'touch preview is clamped inside the narrow viewport');
+  await page.screenshot({ path: '.omni-browser/homework-hover/narrow.png' });
+  await page.keyboard.press('Escape');
+  await page.setViewportSize({ width: 1440, height: 1000 });
 
   await page.evaluate(() => window.showHomeworkAttachment('direct-zip'));
   await page.getByRole('button', { name: 'Открыть работу', exact: true }).waitFor();
-  attachment = await studentAttachment();
+  attachment = await studentAttachment(true);
   assert.equal(await attachment.getByRole('button', { name: 'Превью', exact: true }).count(), 0, 'unsupported student ZIP does not gain a preview');
   assert.equal(await attachment.getByRole('link', { name: 'Открыть файл', exact: true }).getAttribute('href'), 'https://example.com/student.zip');
+  const requestCount = previewRequests.length;
+  await page.evaluate(() => window.showHomeworkAttachment('archive.zip'));
+  attachment = await studentAttachment(true);
+  assert.equal(await attachment.locator('.file-preview-full').count(), 0, 'known unsupported Academy archive keeps only its safe link');
+  assert.equal(previewRequests.length, requestCount, 'known unsupported Academy archive does not start a preview request');
 
   await page.evaluate(() => window.showHomeworkAttachment('unsupported'));
   await page.getByRole('button', { name: 'Открыть работу', exact: true }).waitFor();
-  attachment = await studentAttachment();
-  await attachment.getByRole('button', { name: 'Превью', exact: true }).click();
+  attachment = await studentAttachment(true);
   await attachment.getByText('Формат файла не поддерживается для превью.', { exact: true }).waitFor();
   assert.equal(await attachment.getByRole('link', { name: 'Открыть файл', exact: true }).getAttribute('href'), 'https://fs.top-academy.ru/api/v1/files/student-unsupported');
   assert.deepEqual(errors, []);
-  console.log('PASS: raw homework attachment metadata isolation, Academy/direct PNG decode, PDF canvas and unsupported-file links/error.');
+  console.log('PASS: hover PNG/PDF preview without extra clicks, pointer transfer/leave, keyboard Tab/Escape, touch toggle/narrow viewport, raw attachment metadata isolation, default full preview and unsupported-file links/error.');
 } finally { await browser?.close(); await server.close(); }

@@ -1,7 +1,13 @@
-import { Fragment, useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Fragment, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
+import { Eye } from 'lucide-react';
+import { FilePreview } from '../../components/files/FilePreview';
 import { label, rows, type RemoteRecord, type Section } from '../../services/omni-client';
 import { HOMEWORK_RESPONSE_LIMIT, homeworkGroupName, type HomeworkResponseDraft, type HomeworkReviewItem } from './homework';
 import { materialLink } from '../materials/teaching-materials';
+import { StudentAvatar } from '../../components/ui/StudentAvatar';
+import { studentId } from '../students/students';
+import { studentPhotoUrl } from '../students/student-photo';
 import './homework.css';
 
 type Grading = {
@@ -12,6 +18,114 @@ type Grading = {
 type SortField = 'studentName' | 'groupName' | 'theme' | 'submittedAt' | 'mark';
 type Selection = { data: HomeworkReviewItem[]; keys: Set<string> };
 type ResponseEdit = { comment: string; mark: string };
+
+function HomeworkPreview({ name, open, onOpen, onClose, children }: {
+  name: string; open: boolean; onOpen: () => void; onClose: () => void; children: ReactNode;
+}) {
+  const id = useId();
+  const trigger = useRef<HTMLButtonElement>(null);
+  const panel = useRef<HTMLDivElement>(null);
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const keyboardFocus = useRef(false);
+  const pointerType = useRef('');
+  const skipFocus = useRef(false);
+  const dismissedHover = useRef(false);
+  const [position, setPosition] = useState({ left: 8, top: 8 });
+  const cancelClose = () => clearTimeout(timer.current);
+  const show = () => { cancelClose(); onOpen(); };
+  const leave = () => {
+    cancelClose();
+    timer.current = setTimeout(() => {
+      if (!keyboardFocus.current && !trigger.current?.matches(':hover') && !panel.current?.matches(':hover')) onClose();
+    }, 180);
+  };
+  const blur = (target: EventTarget | null) => {
+    if (target instanceof Node && (trigger.current?.contains(target) || panel.current?.contains(target))) return;
+    keyboardFocus.current = false;
+    leave();
+  };
+  useEffect(() => () => clearTimeout(timer.current), []);
+  useLayoutEffect(() => {
+    if (!open) return;
+    const update = () => {
+      const anchor = trigger.current?.getBoundingClientRect();
+      const box = panel.current?.getBoundingClientRect();
+      if (!anchor || !box) return;
+      setPosition({
+        left: Math.max(8, Math.min(anchor.right - box.width, window.innerWidth - box.width - 8)),
+        top: anchor.bottom + box.height + 16 <= window.innerHeight ? anchor.bottom + 8 : Math.max(8, anchor.top - box.height - 8),
+      });
+    };
+    update();
+    const observer = new ResizeObserver(update);
+    if (panel.current) observer.observe(panel.current);
+    return () => observer.disconnect();
+  }, [open]);
+  useEffect(() => {
+    if (!open) return;
+    const outside = (event: PointerEvent) => {
+      const path = event.composedPath();
+      if (!path.includes(trigger.current!) && !path.includes(panel.current!)) onClose();
+    };
+    const escape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      // Removing a card over its trigger can generate pointerenter without any mouse movement.
+      dismissedHover.current = true;
+      const tree = trigger.current?.getRootNode() as Document | ShadowRoot | undefined;
+      if (panel.current?.contains(tree?.activeElement || null)) {
+        skipFocus.current = true;
+        trigger.current?.focus();
+        skipFocus.current = false;
+      }
+      cancelClose(); onClose();
+    };
+    const scroll = (event: Event) => {
+      if (event.target instanceof Node && panel.current?.contains(event.target)) return;
+      onClose();
+    };
+    document.addEventListener('pointerdown', outside);
+    document.addEventListener('keydown', escape);
+    document.addEventListener('scroll', scroll, true);
+    window.addEventListener('resize', onClose);
+    return () => {
+      document.removeEventListener('pointerdown', outside);
+      document.removeEventListener('keydown', escape);
+      document.removeEventListener('scroll', scroll, true);
+      window.removeEventListener('resize', onClose);
+    };
+  }, [open, onClose]);
+  const tree = trigger.current?.getRootNode();
+  return <>
+    <button ref={trigger} type="button" className="homework-preview-button" aria-label={'Превью работы: ' + name}
+      aria-expanded={open} aria-controls={open ? id : undefined}
+      onPointerDown={event => { pointerType.current = event.pointerType; }}
+      onPointerEnter={event => { if (event.pointerType !== 'touch' && !dismissedHover.current) show(); }}
+      onPointerLeave={() => { dismissedHover.current = false; leave(); }}
+      onFocus={event => {
+        if (!skipFocus.current && event.currentTarget.matches(':focus-visible')) { keyboardFocus.current = true; show(); }
+      }} onBlur={event => blur(event.relatedTarget)}
+      onKeyDown={event => {
+        if (open && event.key === 'Tab' && !event.shiftKey) {
+          const first = panel.current?.querySelector<HTMLElement>('a[href], button:not(:disabled), [tabindex="0"]');
+          if (first) { event.preventDefault(); first.focus(); }
+        }
+      }}
+      onClick={event => {
+        if (pointerType.current === 'touch' || event.detail === 0) { cancelClose(); if (open) onClose(); else show(); }
+        else show();
+      }}><Eye size={17} aria-hidden="true"/></button>
+    {open && createPortal(<div ref={panel} id={id} className="homework-details homework-quick-preview" role="region"
+      aria-label={'Превью работы: ' + name} style={position}
+      onPointerEnter={cancelClose} onPointerLeave={leave}
+      onFocus={() => { keyboardFocus.current = true; cancelClose(); }} onBlur={event => blur(event.relatedTarget)}
+      onKeyDown={event => {
+        if (event.key !== 'Tab') return;
+        const controls = panel.current?.querySelectorAll<HTMLElement>('a[href], button:not(:disabled), [tabindex="0"]');
+        if (event.shiftKey && event.target === controls?.[0]) { event.preventDefault(); trigger.current?.focus(); }
+        else if (!event.shiftKey && event.target === controls?.[controls.length - 1]) { trigger.current?.focus(); onClose(); }
+      }}>{children}</div>, tree instanceof ShadowRoot ? tree : document.body)}
+  </>;
+}
 
 function ResponseEditor({ item, name, disabled, readOnly, draft, onChange, onSave }: {
   item: HomeworkReviewItem; name: string; disabled: boolean; readOnly: boolean; draft: ResponseEdit;
@@ -80,8 +194,8 @@ function GradeEditor({ item, name, disabled, onSave }: {
   </form>;
 }
 
-export function HomeworkTable({ section, render, items: suppliedItems, grading, responseDraftContext }: {
-  section: Section; render: (value: unknown) => ReactNode; items?: HomeworkReviewItem[]; grading?: Grading; responseDraftContext?: unknown;
+export function HomeworkTable({ section, render, items: suppliedItems, grading, responseDraftContext, studentAverages, studentPhotos }: {
+  section: Section; render: (value: unknown) => ReactNode; items?: HomeworkReviewItem[]; grading?: Grading; responseDraftContext?: unknown; studentAverages?: ReadonlyMap<string, string>; studentPhotos?: ReadonlyMap<string, string>;
 }) {
   const [query, setQuery] = useState('');
   const [group, setGroup] = useState('');
@@ -95,6 +209,7 @@ export function HomeworkTable({ section, render, items: suppliedItems, grading, 
   const [message, setMessage] = useState('');
   const [failure, setFailure] = useState('');
   const [opened, setOpened] = useState<{ data: HomeworkReviewItem[]; key: string } | null>(null);
+  const [previewed, setPreviewed] = useState<{ data: HomeworkReviewItem[]; key: string } | null>(null);
   const [responseDrafts, setResponseDrafts] = useState<{ data: unknown; values: Record<string, ResponseEdit> } | null>(null);
   const submittingRef = useRef(false);
   const tableId = useId();
@@ -150,7 +265,7 @@ export function HomeworkTable({ section, render, items: suppliedItems, grading, 
   const gradeValid = grade.trim() !== '' && Number.isInteger(numericGrade) && numericGrade >= 1 && numericGrade <= 12;
 
   function resetSelection() {
-    setSelection(null); setOpened(null); setPage(1); setMessage(''); setFailure('');
+    setSelection(null); setOpened(null); setPreviewed(null); setPage(1); setMessage(''); setFailure('');
   }
   function toggleRow(item: HomeworkReviewItem, checked: boolean) {
     if (locked || !canSelect(item)) return;
@@ -209,7 +324,6 @@ export function HomeworkTable({ section, render, items: suppliedItems, grading, 
       <span>Работы: <strong>{filtered.length}</strong>{filtered.length !== items.length && <span className="homework-muted"> из {items.length}</span>}</span>
       {gradingAvailable && <>
         <span>Выбрано: <strong>{selected.length}</strong></span>
-        {eligible.length > 0 && <button type="button" className="homework-text-button" disabled={locked} onClick={() => toggleAll(selected.length !== eligible.length)}>{selected.length === eligible.length ? 'Снять выбор' : 'Выбрать все найденные (' + eligible.length + ')'}</button>}
         <label className="homework-grade-label">Оценка выбранным<input type="number" aria-label="Оценка для выбранных работ" min={1} max={12} step={1} value={grade} disabled={locked} onChange={event => setGrade(event.target.value)}/></label>
         <button type="button" className="button primary" disabled={locked || !selected.length || !gradeValid} onClick={() => void saveGrades([...selected], numericGrade)}>{locked ? 'Сохранение…' : 'Поставить оценку' + (selected.length ? ' (' + selected.length + ')' : '')}</button>
       </>}
@@ -223,6 +337,7 @@ export function HomeworkTable({ section, render, items: suppliedItems, grading, 
       <div className="table-scroll homework-scroll"><table className="homework-table"><caption className="homework-sr-only">Домашние работы. Найдено {filtered.length}, выбрано {selected.length}.</caption><thead><tr>
         {gradingAvailable && <th scope="col" className="homework-selection"><SelectAll checked={eligible.length > 0 && selected.length === eligible.length} mixed={selected.length > 0 && selected.length < eligible.length} disabled={locked || !eligible.length} onChange={toggleAll}/></th>}
         {sortHeading('studentName', 'Студент')}{sortHeading('theme', 'Работа')}{sortHeading('submittedAt', 'Отправлено')}{sortHeading('mark', 'Оценка')}
+        <th scope="col">Средний балл</th>
         <th scope="col"><span className="homework-sr-only">Просмотр работы</span></th>
       </tr></thead><tbody>{visible.map((item, index) => {
         const selectable = canSelect(item);
@@ -231,17 +346,25 @@ export function HomeworkTable({ section, render, items: suppliedItems, grading, 
         const workLabel = (item.studentName || 'Без имени') + ', ' + (item.theme || 'Работа без темы') + ', строка ' + ((currentPage - 1) * pageSize + index + 1);
         const rowKey = item.key + '-' + ((currentPage - 1) * pageSize + index);
         const expanded = opened?.data === items && opened.key === rowKey;
+        const previewExpanded = previewed?.data === items && previewed.key === rowKey;
         const detailId = tableId + '-detail-' + index;
+        const average = item.studentId ? studentAverages?.get(item.studentId) : undefined;
+        const photoId = studentId({ id_stud: item.studentId });
+        const photo = studentPhotoUrl(photoId ? studentPhotos?.get(photoId) : undefined) || item.source.photo_pas;
         return <Fragment key={item.key + '-' + index}>
           <tr className={selectedKeys.has(item.key) && selectable ? 'homework-selected' : undefined}>
             {gradingAvailable && <td className="homework-selection">{selectable ? <input type="checkbox" aria-label={'Выбрать работу: ' + workLabel} checked={selectedKeys.has(item.key)} disabled={locked} onChange={event => toggleRow(item, event.target.checked)}/> : <span className="homework-muted" title="Для этой работы оценка недоступна">—</span>}</td>}
-            <td><strong>{item.studentName || 'Студент не указан'}</strong>{item.groupName && <small>{item.groupName}</small>}{duplicateNames.has(item.studentName) && item.studentId && <small>ID {item.studentId}</small>}</td>
+            <td><div className="homework-student"><StudentAvatar name={item.studentName} photo={photo}/><div className="homework-student-label"><strong>{item.studentName || 'Студент не указан'}</strong>{item.groupName && <small>{item.groupName}</small>}{duplicateNames.has(item.studentName) && item.studentId && <small>ID {item.studentId}</small>}</div></div></td>
             <td>{item.theme || 'Без темы'}{item.subject && <small>{item.subject}</small>}</td>
             <td className="homework-date">{item.submittedAt || '—'}</td>
             <td className="homework-grade-cell">{selectable ? <GradeEditor item={item} name={workLabel} disabled={locked} onSave={mark => saveGrades([item], mark)}/> : <span className={item.mark === null ? 'homework-muted' : 'homework-mark'}>{item.mark ?? '—'}</span>}</td>
-            <td className="homework-open-cell"><button type="button" className="homework-text-button" aria-expanded={expanded} aria-controls={expanded ? detailId : undefined} onClick={() => setOpened(expanded ? null : { data: items, key: rowKey })}>{expanded ? 'Закрыть работу' : 'Открыть работу'}</button></td>
+            <td className={average ? 'homework-average-cell' : 'homework-average-cell homework-muted'}>{average || '—'}</td>
+            <td className="homework-open-cell"><div className="homework-row-actions"><button type="button" className="homework-text-button" aria-expanded={expanded} aria-controls={expanded ? detailId : undefined} onClick={() => { setPreviewed(null); setOpened(expanded ? null : { data: items, key: rowKey }); }}>{expanded ? 'Закрыть работу' : 'Открыть работу'}</button><HomeworkPreview name={workLabel} open={previewExpanded} onOpen={() => setPreviewed(previous => previous?.data === items && previous.key === rowKey ? previous : { data: items, key: rowKey })} onClose={() => setPreviewed(previous => previous?.data === items && previous.key === rowKey ? null : previous)}>
+              <section className="homework-response"><h4>Ответ студента</h4>{Object.values(info).some(value => label(value)) ? render(info) : <p className="homework-muted">Текст ответа не добавлен.</p>}</section>
+              <section><h4>Файл студента</h4>{materialLink(label(item.source.download_url_stud)) ? <FilePreview url={label(item.source.download_url_stud)} inline/> : <span className="homework-muted">—</span>}</section>
+            </HomeworkPreview></div></td>
           </tr>
-          {expanded && <tr className="homework-detail-row"><td colSpan={gradingAvailable ? 6 : 5}><div className="homework-details" id={detailId}>
+          {expanded && <tr className="homework-detail-row"><td colSpan={gradingAvailable ? 7 : 6}><div className="homework-details" id={detailId}>
             <section className="homework-response"><h4>Ответ студента</h4>{Object.values(info).some(value => label(value)) ? render(info) : <p className="homework-muted">Текст ответа не добавлен.</p>}</section>
             <section><h4>Файл студента</h4>{attachments(item.source, true)}</section>
             <section><h4>Задание</h4>{attachments(item.source, false)}</section>

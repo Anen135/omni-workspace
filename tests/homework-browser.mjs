@@ -12,6 +12,7 @@ try {
   page.setDefaultTimeout(10000);
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
+  await page.route('https://fonts.googleapis.com/**', route => route.abort());
   await page.goto('http://127.0.0.1:5188/');
   await page.setContent('<div id="root" class="live-workspace"></div>');
   await page.evaluate(async () => {
@@ -48,7 +49,7 @@ try {
     const root = createRoot(document.getElementById('root'));
     root.render(React.createElement(HomeworkTable, {
       section: { data: [], error: null }, render: value => React.createElement('span', null, value.answer_text || 'файл'), items,
-      grading: { busy: false, onGrade },
+      grading: { busy: false, onGrade }, studentAverages: new Map([['student-a', '8.75'], ['student-b', '0'], ['Мария Петрова', '12']]),
     }));
     let responseFixtureContext;
     let responseFixtureItems;
@@ -92,16 +93,33 @@ try {
   const sameName = optionValues.filter(option => option.text.includes('Иван Иванов'));
   assert.equal(sameName.length, 2, 'same-name students must remain separate filter choices');
   assert.notEqual(sameName[0].value, sameName[1].value);
+  assert.equal(await page.locator('.homework-bulk').getByRole('button', { name: /Выбрать все|Снять выбор/ }).count(), 0, 'header checkbox is the sole select-all control');
   await studentFilter.selectOption('id:student-a');
   assert.equal(await page.locator('.homework-table tbody tr').count(), 25);
   assert.equal(await page.locator('.homework-table tbody tr strong').first().innerText(), 'Иван Иванов');
   assert.equal(await page.locator('.homework-table tbody tr small').first().innerText(), 'Тестовая группа');
   assert.equal(await page.locator('.homework-table details').count(), 0, 'submission details stay compact until opened');
-  await page.locator('.homework-table tbody tr').first().getByRole('button').click();
+  assert.equal(await page.locator('.homework-average-cell').first().innerText(), '8.75', 'average comes from the student ID map');
+  const quickPreview = page.locator('.homework-table tbody tr').first().getByRole('button', { name: /^Превью работы:/ });
+  await quickPreview.hover();
+  assert.equal(await quickPreview.getAttribute('aria-expanded'), 'true');
+  assert.match(await page.getByRole('region', { name: /^Превью работы:/ }).innerText(), /Ответ 0/);
+  assert.equal(await page.locator('.homework-teacher-response').count(), 0, 'quick preview does not open the full work editor');
+  assert.equal(await page.locator('.homework-detail-row').count(), 0, 'hover preview never expands a table row');
+  await page.locator('.homework-quick-preview').hover();
+  assert.equal(await quickPreview.getAttribute('aria-expanded'), 'true', 'pointer may enter the preview');
+  await page.mouse.move(0, 0);
+  await page.locator('.homework-quick-preview').waitFor({ state: 'detached' });
+  await quickPreview.focus();
+  await page.locator('.homework-quick-preview').waitFor();
+  await page.keyboard.press('Escape');
+  await page.locator('.homework-quick-preview').waitFor({ state: 'detached' });
+  assert.equal(await quickPreview.evaluate(button => button === document.activeElement), true, 'Escape keeps keyboard focus on the eye');
+  await page.locator('.homework-table tbody tr').first().getByRole('button', { name: /^(Открыть|Закрыть) работу$/ }).click();
   assert.equal(await page.locator('.homework-detail-row').count(), 1);
   assert.match(await page.locator('.homework-detail-row').innerText(), /Ответ 0/);
 
-  await page.locator('.homework-table tbody tr').first().getByRole('button').click();
+  await page.locator('.homework-table tbody tr').first().getByRole('button', { name: /^(Открыть|Закрыть) работу$/ }).click();
   await page.locator('.homework-pagination select').selectOption('25');
   const tableCheckboxes = page.locator('.homework-table input[type="checkbox"]');
   await tableCheckboxes.first().check();
@@ -119,6 +137,7 @@ try {
 
   await studentFilter.selectOption('id:student-b');
   assert.equal(await page.locator('.homework-bulk strong').nth(1).innerText(), '0', 'changing filters clears prior selection');
+  assert.equal(await page.locator('.homework-average-cell').first().innerText(), '0', 'zero remains a real average for the other same-name student');
   const row = page.locator('.homework-table tbody tr').first();
   await row.locator('input[type="number"]').fill('10');
   await row.getByRole('button', { name: /Сохранить/ }).click();
@@ -129,6 +148,7 @@ try {
 
   await page.locator('.homework-filters button').click();
   await page.locator('.homework-filters select').first().selectOption('id:student-c');
+  assert.equal(await page.locator('.homework-average-cell').first().innerText(), '—', 'missing ID average is never matched by name or computed from homework grades');
   await page.locator('.homework-table input[type="checkbox"]').first().check();
   await page.evaluate(() => { window.gradingMode = 'partial'; });
   await page.getByRole('button', { name: /Поставить оценку/ }).click();
@@ -155,7 +175,7 @@ try {
   await page.locator('.homework-result').waitFor();
 
   await page.evaluate(() => { window.gradingMode = 'success'; window.showResponseFixture(); });
-  await page.locator('.homework-table tbody tr').first().getByRole('button').click();
+  await page.locator('.homework-table tbody tr').first().getByRole('button', { name: /^(Открыть|Закрыть) работу$/ }).click();
   const response = page.getByRole('textbox', { name: /Ответ преподавателя:/ });
   const responseGrade = page.getByRole('spinbutton', { name: /Оценка к ответу преподавателя:/ });
   const responseSave = page.getByRole('button', { name: 'Сохранить ответ и оценку', exact: true });
@@ -170,11 +190,11 @@ try {
   assert.equal(await responseSave.isDisabled(), true, 'invalid grade cannot save response');
   await responseGrade.fill('9');
   assert.equal(await responseSave.isEnabled(), true);
-  await page.locator('.homework-table tbody tr').first().getByRole('button').click();
-  await page.locator('.homework-table tbody tr').first().getByRole('button').click();
+  await page.locator('.homework-table tbody tr').first().getByRole('button', { name: /^(Открыть|Закрыть) работу$/ }).click();
+  await page.locator('.homework-table tbody tr').first().getByRole('button', { name: /^(Открыть|Закрыть) работу$/ }).click();
   assert.equal(await response.inputValue(), 'Teacher draft\nSecond line\n', 'closing details retains the current dataset draft');
   await page.evaluate(() => window.overlayResponseFixture());
-  await page.locator('.homework-table tbody tr').first().getByRole('button').click();
+  await page.locator('.homework-table tbody tr').first().getByRole('button', { name: /^(Открыть|Закрыть) работу$/ }).click();
   assert.equal(await response.inputValue(), 'Teacher draft\nSecond line\n', 'local grade overlay arrays retain unrelated response drafts');
   await page.evaluate(() => { window.gradingMode = 'error'; });
   await responseSave.click();
@@ -200,15 +220,15 @@ try {
   assert.equal(await response.isEditable(), false, 'uncertainty blocks another write');
   assert.equal(await response.isEnabled(), true, 'retained draft can still be selected and copied');
   await page.evaluate(() => window.overlayResponseFixture(true));
-  await page.locator('.homework-table tbody tr').first().getByRole('button').click();
+  await page.locator('.homework-table tbody tr').first().getByRole('button', { name: /^(Открыть|Закрыть) работу$/ }).click();
   assert.equal(await response.inputValue(), 'Stale dataset draft', 'grade-only confirmation keeps unsaved response text');
   assert.equal(await response.isEditable(), false);
   await page.evaluate(() => window.showResponseFixture(true));
-  await page.locator('.homework-table tbody tr').first().getByRole('button').click();
+  await page.locator('.homework-table tbody tr').first().getByRole('button', { name: /^(Открыть|Закрыть) работу$/ }).click();
   assert.equal(await response.inputValue(), 'Updated baseline response', 'replacement dataset drops stale response drafts');
   assert.equal(await responseGrade.inputValue(), '', 'replacement dataset drops stale grade draft');
   await page.evaluate(() => window.showResponseFixture(true, true));
-  await page.locator('.homework-table tbody tr').first().getByRole('button').click();
+  await page.locator('.homework-table tbody tr').first().getByRole('button', { name: /^(Открыть|Закрыть) работу$/ }).click();
   assert.equal(await page.locator('.homework-teacher-response textarea').count(), 0, 'read-only views cannot edit responses');
   assert.match(await page.locator('.homework-teacher-response').innerText(), /Updated baseline response/);
 

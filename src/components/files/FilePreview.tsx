@@ -18,8 +18,8 @@ function fileKind(url: string, filename: string, mime: string, fallback?: 'pdf')
   return fallback || 'unknown';
 }
 
-export function FilePreview({ url, filename = '', mime = '', fallback, linkLabel = 'Открыть файл', localObjectUrl = false }: {
-  url: string; filename?: string; mime?: string; fallback?: 'pdf'; linkLabel?: string; localObjectUrl?: boolean;
+export function FilePreview({ url, filename = '', mime = '', fallback, linkLabel = 'Открыть файл', localObjectUrl = false, inline = false }: {
+  url: string; filename?: string; mime?: string; fallback?: 'pdf'; linkLabel?: string; localObjectUrl?: boolean; inline?: boolean;
 }) {
   const safeUrl = localObjectUrl && url.startsWith(`blob:${location.origin}/`) ? url : materialLink(url);
   const id = useId();
@@ -50,7 +50,7 @@ export function FilePreview({ url, filename = '', mime = '', fallback, linkLabel
   const title = filename || 'Вложение';
   return <div className="file-preview" ref={container}>
     <div className="file-preview-actions">
-      {kind !== 'unsupported' && <button type="button" className="file-preview-toggle" aria-expanded={expanded} aria-controls={id} aria-describedby={hover ? `${id}-hover` : undefined}
+      {!inline && kind !== 'unsupported' && <button type="button" className="file-preview-toggle" aria-expanded={expanded} aria-controls={id} aria-describedby={hover ? `${id}-hover` : undefined}
         onClick={() => { hide(); setExpanded(value => !value); }}
         onPointerEnter={event => {
           if (expanded || event.pointerType === 'touch') return;
@@ -68,7 +68,7 @@ export function FilePreview({ url, filename = '', mime = '', fallback, linkLabel
       </button>}
       <a href={safeUrl} target="_blank" rel="noopener noreferrer">{linkLabel}<ExternalLink size={13}/></a>
     </div>
-    {expanded && <div className="file-preview-full" id={id}><Preview key={safeUrl} url={safeUrl} kind={kind} title={title}/><small>Если встроенный просмотр недоступен, используйте ссылку «{linkLabel}».</small></div>}
+    {(inline && kind !== 'unsupported' || expanded) && <div className="file-preview-full" id={id}><Preview key={safeUrl} url={safeUrl} kind={kind} title={title}/><small>Если встроенный просмотр недоступен, используйте ссылку «{linkLabel}».</small></div>}
     {hover && !expanded && createPortal(<div className="file-preview-hover" id={`${id}-hover`} role="tooltip" style={{
       left: Math.max(8, Math.min(hover.x + 16, window.innerWidth - 328)),
       top: Math.max(8, hover.y + 246 > window.innerHeight ? hover.y - 246 : hover.y + 16),

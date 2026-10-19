@@ -18,6 +18,10 @@
 .homework-review .homework-table th { padding: 10px 12px; text-align: left; white-space: nowrap; background: var(--background, #f7f8fc); border-block: 1px solid var(--border, #e7e9f2); }
 .homework-review .homework-table td { padding: 9px 12px; height: 54px; border-bottom: 1px solid var(--border, #e7e9f2); vertical-align: middle; font-size: 13px; max-width: 340px; }
 .homework-review .homework-table td > strong { font-weight: 500; }
+.homework-student { display: flex; align-items: center; gap: 10px; }
+.homework-student-label { min-width: 0; }
+.homework-student-label strong { font-weight: 500; }
+.homework-student-label small { display: block; }
 .homework-review .homework-table td small { margin-top: 5px; font-size: 11px; }
 .homework-review .homework-table .homework-selection { width: 44px; min-width: 44px; text-align: center; padding-inline: 12px; }
 .homework-review .homework-table tr.homework-selected { background: var(--primary-soft, #f1edff); }
@@ -26,7 +30,11 @@
 .homework-mark { display: inline-block; min-width: 30px; padding: 4px 8px; text-align: center; border-radius: 6px; background: var(--primary-soft, #f1edff); color: var(--purple, #6c4df6); font-weight: 600; }
 .homework-muted { color: var(--muted, #697386); }
 .homework-text-button { border: 0; background: none; color: var(--purple, #6c4df6); font: inherit; font-size: 12px; padding: 4px 0; cursor: pointer; text-align: left; }
-.homework-review .homework-table .homework-open-cell { width: 130px; white-space: nowrap; }
+.homework-review .homework-table .homework-open-cell { width: 170px; white-space: nowrap; }
+.homework-row-actions { display: flex; align-items: center; gap: 12px; }
+.homework-preview-button { display: inline-flex; align-items: center; justify-content: center; padding: 6px; border: 1px solid var(--border, #e7e9f2); border-radius: 6px; background: var(--surface, #fff); color: var(--purple, #6c4df6); cursor: pointer; }
+.homework-preview-button[aria-expanded=true] { background: var(--primary-soft, #f1edff); }
+.homework-review .homework-table .homework-average-cell { width: 110px; font-variant-numeric: tabular-nums; }
 .homework-review .homework-table .homework-date { width: 140px; font-size: 12px; color: var(--muted, #697386); }
 .homework-review .homework-table .homework-grade-cell { width: 140px; }
 .homework-grade-editor { display: flex; align-items: center; gap: 6px; }
@@ -34,6 +42,10 @@
 .homework-grade-editor button { border: 0; background: none; color: var(--purple, #6c4df6); cursor: pointer; font: inherit; font-size: 11px; padding: 4px 0; }
 .homework-review .homework-table .homework-detail-row td { height: auto; padding: 16px; background: var(--background, #f7f8fc); }
 .homework-details { display: grid; grid-template-columns: minmax(200px, 2fr) repeat(2, minmax(140px, 1fr)); gap: 20px; }
+.homework-quick-preview { position: fixed; z-index: 1000; width: min(520px, calc(100vw - 16px)); max-height: min(640px, calc(100dvh - 16px)); overflow: auto; box-sizing: border-box; padding: 16px; grid-template-columns: 1fr; gap: 16px; border: 1px solid var(--border, #e7e9f2); border-radius: 10px; background: var(--surface, #fff); color: var(--text, #192132); box-shadow: 0 8px 30px #30204430; }
+.homework-quick-preview .file-preview-full { max-height: 420px; overflow: auto; }
+.homework-quick-preview .file-preview-full img { max-height: 360px; object-fit: contain; }
+.homework-preview-button:focus-visible { outline: 2px solid var(--purple, #6c4df6); outline-offset: 3px; }
 .homework-details section { min-width: 0; overflow-wrap: anywhere; }
 .homework-details h4 { font-size: 12px; margin: 0 0 8px; color: var(--muted, #697386); font-weight: 500; }
 .homework-details p { margin: 0; font-size: 13px; line-height: 1.6; }

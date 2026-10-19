@@ -29,7 +29,8 @@ import { HomeworkPanel } from './components/HomeworkPanel';
 import { IssuedMaterialsPanel } from './components/IssuedMaterialsPanel';
 import { StudentDetailDialog, TeacherSwitchingState, WorkspaceError, WorkspaceLoading, WorkspaceToast } from './components/WorkspaceFeedback';
 import { WorkspaceQuickActions } from './components/WorkspaceQuickActions';
-import type { WorkspaceTab } from './components/workspace-tabs';
+import { workspaceTabs, type WorkspaceTab } from './components/workspace-tabs';
+import { useStudentAverages } from './useStudentAverages';
 import './live.css';
 import './workspace.css';
 import { HelpPage } from '../features/help/HelpPage';
@@ -39,10 +40,13 @@ const emptySection: Section = { data: null, error: null };
 export function LiveWorkspace({ onDemo }: { onDemo: () => void }) {
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [lesson, setLesson] = useState<RemoteLesson | null>(null);
-  const [tab, setTab] = useState<WorkspaceTab>('lesson');
+  const [tab, setTab] = useState<WorkspaceTab>(() => {
+    try { const saved = localStorage.getItem('omni.workspace.tab'); return workspaceTabs.find(item => item.key === saved)?.key || 'lesson'; } catch { return 'lesson'; }
+  });
+  useEffect(() => { try { localStorage.setItem('omni.workspace.tab', tab); } catch { /* Storage may be unavailable. */ } }, [tab]);
   const [workspaceBusy, setBusy] = useState(false);
   const [incomeBusy, setIncomeBusy] = useState(false);
-  const busy = workspaceBusy || incomeBusy;
+  const workspaceLoading = workspaceBusy || incomeBusy;
   const [error, setError] = useState('');
   const [authNeeded, setAuthNeeded] = useState(false);
   const [waiting, setWaiting] = useState(false);
@@ -75,6 +79,10 @@ export function LiveWorkspace({ onDemo }: { onDemo: () => void }) {
   const dayLessons = presentLessons(presentData.schedule);
   const groups = rows(snapshot?.groups.data);
   const teachers = rows(snapshot?.teachers?.data);
+  const averageGroupIds = tab === 'lesson' ? [label(presentData.cur_group)].filter(id => /^[1-9]\d{0,11}$/.test(id)) : tab === 'homework' ? groups.map(group => label(group.id_tgroups)).filter(id => /^[1-9]\d{0,11}$/.test(id)) : [];
+  const averages = useStudentAverages(snapshot, [...new Set(averageGroupIds)].sort(), !workspaceLoading, operation);
+  const studentAverages = averages.values;
+  const busy = workspaceLoading || averages.loading;
   const selectedDate = label(presentData.cur_date || presentData.today);
   const schedule = record(snapshot?.schedule.data);
   const scheduleDates = scheduleDays(schedule).map(day => day.date);
@@ -159,7 +167,7 @@ export function LiveWorkspace({ onDemo }: { onDemo: () => void }) {
     operation.current = true; setBusy(true); setError(''); setWaiting(false); setChangingAccount(true);
     setLessonDrafts({});
     setSnapshot(null); setLesson(null); setGroupStudents(null); setGroupName(''); setGroupId(''); setDetail(null); setNotice('');
-    currentAccount.current = ''; lastBranch.current = ''; setWeek(0); setTab('lesson');
+    currentAccount.current = ''; lastBranch.current = ''; setWeek(0);
     try {
       await omniRequest('switch-account');
       setConnectionState('login'); setAuthNeeded(true); setWaiting(true);
@@ -173,7 +181,7 @@ export function LiveWorkspace({ onDemo }: { onDemo: () => void }) {
     const accountId = snapshot.account.id;
     operation.current = true; setBusy(true); setSwitchingTeacher(true); setError('');
     setSnapshot(null); setLesson(null); setGroupStudents(null); setGroupName(''); setGroupId(''); setDetail(null); setNotice('');
-    currentAccount.current = ''; lastBranch.current = ''; setWeek(0); setTab('lesson');
+    currentAccount.current = ''; lastBranch.current = ''; setWeek(0);
     try {
       const result = await omniRequest<{ account: { id: string } }>('switch-teacher', { teacherId, accountId });
       if (result.account.id !== teacherId) throw new ConnectionError('ACCOUNT_CHANGED', 'Omni не подтвердил выбранного преподавателя. Обновите подключение.');
@@ -188,7 +196,7 @@ export function LiveWorkspace({ onDemo }: { onDemo: () => void }) {
       setLessonDrafts({});
       sessionVersion.current++;
       setSnapshot(null); setLesson(null); setGroupStudents(null); setGroupName(''); setGroupId(''); setDetail(null); setNotice('');
-      currentAccount.current = ''; lastBranch.current = ''; setWeek(0); setTab('lesson');
+      currentAccount.current = ''; lastBranch.current = ''; setWeek(0);
       setError(''); setAuthNeeded(true); setWaiting(true); setConnectionState('loading');
     });
   }, []);
@@ -540,7 +548,7 @@ export function LiveWorkspace({ onDemo }: { onDemo: () => void }) {
       const stud = label(student.id_stud);
       return { ...student, ...(draft.attendance[stud] ? { was: draft.attendance[stud].was } : {}), ...(draft.marks[`${stud}:2`] ? { mark2: draft.marks[`${stud}:2`].mark } : {}), ...(draft.marks[`${stud}:4`] ? { mark4: draft.marks[`${stud}:4`].mark } : {}), ...(draft.rewards?.[stud] ? { prize: draft.rewards[stud].reward } : {}) };
     }) : items;
-    return <StudentTable key={`${tab}:${groupId}:${draftKey}`} items={displayed} busy={busy} lessonView={tab === 'lesson'} onOpen={student => void openStudent(student)} marks={tab === 'lesson' && isExtension() ? { unavailable: attendanceReason, allowDraft: true, onChange: stageMark } : undefined} rewards={tab === 'lesson' && isExtension() ? { unavailable: attendanceReason, onChange: stageReward } : undefined} attendance={tab === 'lesson' && isExtension() ? { unavailable: attendanceReason, saving: attendanceSaving, onChange: (student, was) => markAttendance([student], was), onAll: () => markAttendance(displayed, 1, true) } : undefined}/>;
+    return <StudentTable studentPhotos={averages.photos} studentAverages={studentAverages} key={`${tab}:${groupId}:${draftKey}`} items={displayed} busy={busy} lessonView={tab === 'lesson'} onOpen={student => void openStudent(student)} marks={tab === 'lesson' && isExtension() ? { unavailable: attendanceReason, allowDraft: true, onChange: stageMark } : undefined} rewards={tab === 'lesson' && isExtension() ? { unavailable: attendanceReason, onChange: stageReward } : undefined} attendance={tab === 'lesson' && isExtension() ? { unavailable: attendanceReason, saving: attendanceSaving, onChange: (student, was) => markAttendance([student], was), onAll: () => markAttendance(displayed, 1, true) } : undefined}/>;
   };
   function openDemo() {
     if (operation.current) return;
@@ -605,7 +613,7 @@ export function LiveWorkspace({ onDemo }: { onDemo: () => void }) {
             onOpen={student => void openStudent(student)}
             onRefresh={() => { const group = groups.find(item => label(item.id_tgroups) === groupId); if (group) void openGroup(group); }}/>}
           {tab === 'homework' && <HomeworkPanel busy={busy} onRefresh={() => void refresh()}
-            section={snapshot.newHomework} items={reviewItems}
+            section={snapshot.newHomework} items={reviewItems} studentAverages={studentAverages} studentPhotos={averages.photos}
             responseDraftContext={snapshot?.newHomework.data}
             grading={isExtension() ? { busy, unavailable: homeworkNeedsReload ? 'Перед следующей оценкой нажмите «Обновить работы».' : undefined, onGrade: gradeHomework } : undefined}/>}
           {tab === 'dossier' && <TeacherDossier key={`${snapshot.account.id}:${snapshot.account.branch}:${sessionVersion.current}`}

@@ -25,7 +25,7 @@ export function LessonSaveBar({ busy, saving, draft, hasTheme, unavailable, onSa
       {needsLesson ? <HelpTip label="Как выбрать доступное занятие">{unavailable}</HelpTip> : unavailable && <span className="lesson-save-reason">{unavailable}</span>}
       <button className="text-button lesson-discard" disabled={busy} onClick={onDiscard}>Отменить черновик</button>
     </div>
-    {canSave && <div className="lesson-save-actions"><button className="button primary lesson-save-icon" aria-label="Сохранить" title="Сохранить" onClick={onSave}><Save size={20} aria-hidden="true"/></button></div>}
+    <div className="lesson-save-actions"><button className="button primary lesson-save-icon" aria-label="Сохранить" title={saving ? 'Сохранение урока…' : unavailable || (!hasTheme && !draft.theme ? 'Добавьте тему в черновик, чтобы сохранить урок.' : 'Сохранить')} disabled={!canSave} onClick={onSave}><Save size={20} aria-hidden="true"/></button></div>
   </div>;
 }
 

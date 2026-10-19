@@ -21,6 +21,7 @@ try {
   const lesson = (name, start, end) => ({ name_spec: name, groups: 'Группа A', num_rooms: '101', l_start: start, l_end: end });
   const weeks = [];
   let eventTheme = false;
+  let groupBusyReads = 1;
   await page.route('**/api/omni/**', async route => {
     const action = route.request().url().split('/').at(-1);
     const input = route.request().postDataJSON();
@@ -30,17 +31,21 @@ try {
       weeks.push(input.week);
       body = { account, teachers: section([]), presents: section(eventTheme
         ? { scheduleType: 'event', scheduleData: { theme: 'Тема мероприятия' }, students: [] }
-        : { students: [{ id_stud: '41', id_vizit: null, theme: '' }, { id_stud: '42', id_vizit: '92', theme: 'Тема из записи посещения' }] }), groups: section([{ id_tgroups: '1', name_tgroups: 'Группа A' }]),
+        : { cur_group: '1', students: [{ id_stud: '41', id_vizit: null, theme: '' }, { id_stud: '42', id_vizit: '92', theme: 'Тема из записи посещения' }] }), groups: section([{ id_tgroups: '1', name_tgroups: 'Группа A' }]),
         schedule: section({ dates, daysShort: { 1: 'Пн', 2: 'Вт', 3: 'Ср', 4: 'Чт', 5: 'Пт', 6: 'Сб', 7: 'Вс' }, body: { 1: { 1: lesson('Ранняя пара', '07:00', '08:30') }, 2: { 1: lesson('Пересечение', '08:00', '09:30') }, 3: { 2: lesson('Поздняя пара', '22:00', '23:30') }, 4: { 3: lesson('Без времени', '', '') } } }),
-        newHomework: section([{ fio_stud: 'Ученик 01', theme: 'Тема A', name_spec: 'Предмет A', name_tgroups: 'Группа A', answer_text: 'Ответ A' }, { fio_stud: 'Ученик 02', theme: 'Тема B', name_tgroups: 'Группа B' }]),
+        newHomework: section([{ id_stud: '1', fio_stud: 'Ученик 01', theme: 'Тема A', name_spec: 'Предмет A', name_tgroups: 'Группа A', answer_text: 'Ответ A' }, { fio_stud: 'Ученик 02', theme: 'Тема B', name_tgroups: 'Группа B' }]),
         homework: section([]), counts: { homework: 2, practice: 0 }, fetchedAt: new Date().toISOString() };
-    } else if (action === 'group') body = { account, students };
+    } else if (action === 'group') {
+      if (groupBusyReads > 0) { groupBusyReads--; await route.fulfill({ status: 409, json: { error: { code: 'BUSY', message: 'Предыдущее чтение ещё выполняется' } } }); return; }
+      body = { account: { id: account.id, name: account.name }, students };
+    }
     else throw Error(`Unexpected action: ${action}`);
     await route.fulfill({ json: body });
   });
   await page.goto('http://127.0.0.1:5187/');
   await page.locator('.connected-badge').waitFor();
   assert.equal(await page.locator('.lesson-banner h2').innerText(), 'Тема из записи посещения');
+  assert.equal(await page.getByRole('status', { name: 'Подключено к Omni' }).locator('svg').count(), 1);
   const sidebar = page.locator('.sidebar');
   const mainLeft = await page.locator('main').evaluate(node => node.getBoundingClientRect().left);
   assert.equal(await sidebar.evaluate(node => node.getBoundingClientRect().width), 72);
@@ -99,6 +104,8 @@ try {
   assert.match(await page.locator('tbody tr').first().innerText(), /Ученик 30/);
   await page.screenshot({ path: 'tmp/workspace-students-1920.png' });
   await page.getByRole('button', { name: 'Домашние задания', exact: true }).click();
+  await page.waitForFunction(() => document.querySelector('.homework-average-cell')?.textContent === '0');
+  assert.equal(await page.getByRole('button', { name: /Выбрать все найденные|Снять выбор/ }).count(), 0);
   await page.getByLabel('Группа домашних заданий').selectOption('Группа B');
   assert.equal(await page.locator('tbody tr').count(), 1);
   await page.getByLabel('Поиск домашнего задания').fill('нет совпадений');
@@ -115,6 +122,9 @@ try {
   await page.setViewportSize({ width: 1920, height: 1080 });
   await page.reload();
   await page.locator('.connected-badge').waitFor();
+  await page.locator('.schedule-view, .schedule-grid, .schedule-tools').first().waitFor();
+  assert.equal(await page.locator('.lesson-banner').count(), 0);
+  await page.getByRole('button', { name: 'Мой урок', exact: true }).click();
   assert.equal(await page.locator('.lesson-banner h2').innerText(), 'Тема мероприятия');
   assert.deepEqual(errors, []);
   console.log('PASS: weekly grid, overlap/missing times, shared header, calendar, drawer, students search/sort/pagination, homework filters, mobile overflow.');
