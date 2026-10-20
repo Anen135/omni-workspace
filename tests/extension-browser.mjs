@@ -144,8 +144,10 @@ try {
       data = [{ id: 42, name_spec: 'Тестовый курс каталога' }];
     }
     if (path === '/bind/get-materials' || path === '/bind/get-count-week') {
-      assert.deepEqual(request.postDataJSON(), { spec: '42' });
-      data = [];
+      const spec = request.postDataJSON().spec;
+      assert.ok(['42', '5'].includes(spec));
+      assert.deepEqual(request.postDataJSON(), { spec });
+      data = spec === '5' && path === '/bind/get-materials' ? { 1: { data: { lesson: [{ theme: 'Материал темы до выдачи' }] } }, 2: { data: { lesson: [{ theme: 'Другой материал недели' }] } } } : [];
     }
     if (path === '/schedule/get-schedule') data = { dates: { 1: '2026-09-29', 2: '2026-10-02' }, days: { 1: 'Вторник', 2: 'Пятница' }, body: { 0: { 1: { name_spec: 'Прошедший урок', l_start: '09:00', l_end: '10:30' }, 2: { name_spec: 'Будущий урок', l_start: '09:00', l_end: '10:30' } } } };
     if (path === '/presents/get-presents') {
@@ -278,14 +280,16 @@ try {
   await ui.getByRole('heading', { name: 'Мой урок' }).waitFor();
   await initialRoster.started;
   const refreshWorkspace = ui.getByRole('button', { name: 'Обновить', exact: true });
-  assert.equal(await refreshWorkspace.isDisabled(), true, 'the pending roster read locks workspace refresh');
-  assert.equal(await ui.locator('.act-as select').isDisabled(), true, 'the pending roster read locks teacher switching');
+  assert.equal(await refreshWorkspace.isDisabled(), false, 'background averages leave workspace refresh usable');
+  assert.equal(await ui.locator('.average-skeleton').count(), 2, 'each missing average has a loading skeleton');
+  assert.equal(await ui.locator('.attendance-select').first().isDisabled(), false, 'background averages leave lesson editing usable');
+  assert.equal(await ui.locator('.act-as select').isDisabled(), false, 'background averages leave teacher switching usable');
   assert.ok(paths.includes('/schedule/get-schedule'));
   assert.ok(paths.filter(path => path === '/profile/get-profile').length >= 2);
   const dossierReadsBeforeHold = paths.filter(path => path.startsWith('/dossier/')).length;
   await ui.getByRole('button', { name: 'Досье преподавателя', exact: true }).click();
   await ui.waitForTimeout(450);
-  assert.equal(await refreshWorkspace.isDisabled(), true, 'navigation retains the roster lock until its transport settles');
+  assert.equal(await refreshWorkspace.isDisabled(), false, 'navigation does not acquire a global roster lock');
   assert.equal(await ui.getByRole('button', { name: 'Обновить досье', exact: true }).isDisabled(), true, 'dossier waits for the pending roster');
   assert.equal(paths.filter(path => path.startsWith('/dossier/')).length, dossierReadsBeforeHold, 'dossier sends no overlapping read');
   assert.equal(await ui.locator('.dossier-error').count(), 0, 'waiting for the roster must not surface a BUSY error');
@@ -317,6 +321,14 @@ try {
   const missingLessonAvatar = lessonTable.locator('tbody tr').filter({ hasText: 'Тестовый ученик Б' }).locator('.student-avatar');
   await missingLessonAvatar.locator('img').waitFor({ state: 'detached' });
   assert.match(await missingLessonAvatar.innerText(), /Ту/);
+  await ui.getByRole('button', { name: 'Посмотреть материалы', exact: true }).click();
+  const lessonMaterials = ui.getByRole('dialog', { name: 'Материалы занятия', exact: true });
+  await lessonMaterials.getByText('Выданных материалов нет', { exact: true }).waitFor();
+  assert.equal(await lessonMaterials.evaluate(node => getComputedStyle(node).maxHeight !== 'none'), true, 'new materials CSS is delivered into Shadow DOM');
+  assert.deepEqual(lessonWrites, [], 'viewing current issued materials is read-only');
+  await ui.keyboard.press('Escape');
+  await lessonMaterials.waitFor({ state: 'detached' });
+  await lessonTable.locator('tbody tr').filter({ hasText: 'Тестовый ученик А' }).locator('td:last-child').filter({ hasText: /^0$/ }).waitFor();
   rejectRoster = true;
   const rosterReadsBeforeFailure = paths.filter(path => path === '/students/get-students').length;
   const failedRoster = ui.waitForResponse(response => new URL(response.url()).pathname === '/students/get-students' && response.status() === 503);
@@ -330,6 +342,35 @@ try {
   await refreshWorkspace.click();
   await lessonTable.locator('tbody tr').filter({ hasText: 'Тестовый ученик А' }).locator('td:last-child').filter({ hasText: /^0$/ }).waitFor();
   assert.equal(await lessonTable.locator('tbody tr').filter({ hasText: 'Тестовый ученик Б' }).locator('td:last-child').innerText(), '10.5', 'a later refresh recovers roster averages');
+  // Shared admin-table operations stage a complete lesson candidate, never writes.
+  const lessonBulk = lessonTable.locator('.table-bulk-editor');
+  assert.equal(await lessonBulk.locator('.table-bulk-controls').evaluate(node => getComputedStyle(node).display), 'flex', 'shared table CSS is present in extension Shadow DOM');
+  await lessonTable.getByRole('checkbox', { name: 'Выбрать ученика: Тестовый ученик А', exact: true }).check();
+  await lessonBulk.getByRole('button', { name: 'Заполнить столбец (1)', exact: true }).click();
+  assert.equal(await lessonTable.getByRole('button', { name: 'Работа на уроке: Тестовый ученик А', exact: true }).innerText(), '12');
+  assert.equal(await lessonTable.getByRole('button', { name: 'Работа на уроке: Тестовый ученик Б', exact: true }).innerText(), '—');
+  assert.equal(await lessonTable.getByRole('checkbox', { name: 'Выбрать ученика: Тестовый ученик А', exact: true }).isChecked(), true, 'selection survives local draft overlays');
+  await lessonBulk.getByLabel('Область массового редактирования').selectOption('filtered');
+  await lessonBulk.getByRole('button', { name: 'Заполнить столбец (2)', exact: true }).click();
+  await lessonBulk.getByLabel('Столбец для массового редактирования').selectOption('attendance');
+  await lessonBulk.getByLabel('Единое значение').selectOption('1');
+  await lessonBulk.getByRole('button', { name: 'Заполнить столбец (2)', exact: true }).click();
+  const allocation = lessonTable.getByRole('region', { name: 'Распределение топкойнов', exact: true });
+  await allocation.getByRole('button', { name: 'Распределить топкойны', exact: true }).click();
+  await allocation.getByRole('button', { name: 'Рассчитать предложение', exact: true }).click();
+  assert.match(await allocation.innerText(), /Предложено: 4.*Остаток: 1/);
+  await allocation.getByRole('button', { name: 'В черновик', exact: true }).click();
+  assert.equal(await ui.getByLabel('Топкойны: Тестовый ученик А', { exact: true }).inputValue(), '2');
+  assert.equal(await ui.getByLabel('Топкойны: Тестовый ученик Б', { exact: true }).inputValue(), '2');
+  assert.deepEqual(lessonWrites, [], 'bulk marks, attendance and automatic rewards stay local before explicit Save');
+  await allocation.getByRole('button', { name: 'Распределить топкойны', exact: true }).click();
+  ui.once('dialog', dialog => dialog.accept());
+  await ui.getByRole('button', { name: 'Отменить черновик', exact: true }).click();
+  assert.equal(await ui.getByRole('button', { name: 'Сохранить', exact: true }).count(), 0);
+  await refreshWorkspace.click();
+  await ui.waitForFunction(() => !document.querySelector('#omni-workspace-root')?.shadowRoot?.querySelector('.topbar button')?.disabled);
+  assert.equal(await lessonTable.getByRole('checkbox', { name: 'Выбрать ученика: Тестовый ученик А', exact: true }).isChecked(), false, 'remote refresh clears selection even when rows have the same IDs');
+
   await calendar.waitFor({ state: 'detached' });
   const helpTip = ui.locator('.lesson-context .help-tip-trigger');
   await helpTip.focus();
@@ -419,13 +460,13 @@ try {
   const draftRoster = holdNextRoster();
   await refreshWorkspace.click();
   await draftRoster.started;
-  assert.equal(await lessonSave.isDisabled(), true, 'a pending roster read disables an otherwise actionable Save draft');
-  assert.equal(await refreshWorkspace.isDisabled(), true);
-  assert.equal(await ui.locator('.act-as select').isDisabled(), true);
+  assert.equal(await lessonSave.isDisabled(), false, 'background averages leave an actionable draft Save enabled');
+  assert.equal(await refreshWorkspace.isDisabled(), false);
+  assert.equal(await ui.locator('.act-as select').isDisabled(), false);
   const catalogReadsBeforeHold = paths.filter(path => path.startsWith('/bind/get-public-')).length;
   await ui.getByRole('button', { name: 'Материалы', exact: true }).click();
   await ui.waitForTimeout(450);
-  assert.equal(await refreshWorkspace.isDisabled(), true, 'leaving a draft retains the pending roster lock');
+  assert.equal(await refreshWorkspace.isDisabled(), false, 'leaving a draft does not acquire a global roster lock');
   assert.equal(await ui.getByRole('button', { name: 'Обновить методички', exact: true }).isDisabled(), true, 'materials waits for the pending roster');
   assert.equal(paths.filter(path => path.startsWith('/bind/get-public-')).length, catalogReadsBeforeHold, 'materials sends no overlapping catalog read');
   assert.equal(await ui.locator('.teaching-materials [role=alert]').count(), 0, 'waiting for the roster must not surface a materials BUSY error');
@@ -467,11 +508,13 @@ try {
   assert.deepEqual(lessonWrites, ['theme', 'theme', 'attendance']);
   assert.equal(await presence.inputValue(), '1');
   assert.equal(lessonStudents[0].id_vizit, 80); // Theme-created visit, not old draft metadata.
-  await ui.locator('.lesson-theme-editor').getByText('Текущая тема: Тестовая тема', { exact: true }).waitFor();
+  await ui.locator('.lesson-banner').getByRole('heading', { name: 'Тестовая тема', exact: true }).waitFor();
+  assert.equal(await ui.locator('.lesson-theme-editor h2').count(), 0, 'embedded theme editor does not duplicate the lesson title');
   lessonStudents[0].theme = '';
   await ui.getByRole('button', { name: 'Загрузить урок', exact: true }).click();
   await ui.locator('.lesson-banner').getByRole('heading', { name: 'Тестовая тема', exact: true }).waitFor();
-  await ui.locator('.lesson-theme-editor').getByText('Текущая тема: Тестовая тема', { exact: true }).waitFor();
+  await ui.locator('.lesson-banner').getByRole('heading', { name: 'Тестовая тема', exact: true }).waitFor();
+  assert.equal(await ui.locator('.lesson-theme-editor h2').count(), 0, 'embedded theme editor does not duplicate the lesson title');
   lessonStudents[0].theme = 'Тестовая тема';
   await presence.selectOption('2');
   assert.deepEqual(lessonWrites, ['theme', 'theme', 'attendance'], 'changing attendance only updates the local draft');

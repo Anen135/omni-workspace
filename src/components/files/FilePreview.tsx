@@ -72,7 +72,7 @@ export function FilePreview({ url, filename = '', mime = '', fallback, linkLabel
     {hover && !expanded && createPortal(<div className="file-preview-hover" id={`${id}-hover`} role="tooltip" style={{
       left: Math.max(8, Math.min(hover.x + 16, window.innerWidth - 328)),
       top: Math.max(8, hover.y + 246 > window.innerHeight ? hover.y - 246 : hover.y + 16),
-    }}><Preview key={safeUrl} url={safeUrl} kind={kind} title={title} compact/><span>Нажмите «Превью», чтобы раскрыть</span></div>, container.current?.getRootNode() instanceof ShadowRoot ? container.current.getRootNode() as ShadowRoot : document.body)}
+    }}><Preview key={safeUrl} url={safeUrl} kind={kind} title={title} compact/><span>Нажмите «Превью», чтобы раскрыть</span></div>, container.current?.closest('dialog[open]') || (container.current?.getRootNode() instanceof ShadowRoot ? container.current.getRootNode() as ShadowRoot : document.body))}
   </div>;
 }
 

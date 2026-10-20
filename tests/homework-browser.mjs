@@ -232,6 +232,45 @@ try {
   assert.equal(await page.locator('.homework-teacher-response textarea').count(), 0, 'read-only views cannot edit responses');
   assert.match(await page.locator('.homework-teacher-response').innerText(), /Updated baseline response/);
 
+  for (const outcome of ['success', 'error']) {
+    await page.evaluate(() => { window.showResponseFixture(); window.gradingMode = 'pending'; window.releaseGrade = null; });
+    await page.locator('.homework-table tbody tr').first().getByRole('button', { name: /^(Открыть|Закрыть) работу$/ }).click();
+    await response.fill('Old context response draft');
+    await responseGrade.fill('9');
+    await page.locator('.homework-table tbody input[type="checkbox"]').first().check();
+    const callsBeforeReplacement = await page.evaluate(() => window.gradeCalls.length);
+    await responseSave.click();
+    await page.waitForFunction(() => typeof window.releaseGrade === 'function');
+    await page.evaluate(() => window.showResponseFixture(true));
+    await page.locator('.homework-table tbody tr').first().getByRole('button', { name: /^(Открыть|Закрыть) работу$/ }).click();
+    assert.equal(await response.inputValue(), 'Updated baseline response', 'replacement context cannot inherit the pending old response draft');
+    assert.equal(await page.locator('.homework-table tbody input[type="checkbox"]').first().isDisabled(), true, 'the existing write lock remains until the old callback settles');
+    await page.evaluate(result => { window.gradingMode = result; window.releaseGrade(); }, outcome);
+    await page.waitForFunction(() => !document.querySelector('.homework-table tbody input[type="checkbox"]').disabled);
+    assert.equal(await page.locator('.homework-result').count(), 0, 'old context success must not appear on the replacement dataset');
+    assert.equal(await page.locator('.homework-review [role="alert"]').count(), 0, 'old context failure must not appear on the replacement dataset');
+    assert.equal(await response.inputValue(), 'Updated baseline response', 'old completion cannot clear replacement context response data');
+    assert.equal(await responseGrade.inputValue(), '', 'old completion cannot apply a grade to the replacement context');
+    await page.locator('.homework-table tbody input[type="checkbox"]').first().check();
+    await response.fill('Replacement context draft');
+    assert.equal(await page.locator('.homework-bulk strong').nth(1).innerText(), '1', 'replacement selection remains usable after the old write finishes');
+    assert.equal(await response.inputValue(), 'Replacement context draft');
+    assert.equal(await page.evaluate(() => window.gradeCalls.length), callsBeforeReplacement + 1, 'replacement and completion never retry or submit new data');
+  }
+
+  await page.evaluate(() => { window.showResponseFixture(); window.gradingMode = 'pending'; window.releaseGrade = null; });
+  await page.locator('.homework-table tbody tr').first().getByRole('button', { name: /^(Открыть|Закрыть) работу$/ }).click();
+  await response.fill('Same context pending response');
+  await responseGrade.fill('10');
+  await responseSave.click();
+  await page.waitForFunction(() => typeof window.releaseGrade === 'function');
+  await page.evaluate(() => window.overlayResponseFixture());
+  await page.locator('.homework-table tbody tr').first().getByRole('button', { name: /^(Открыть|Закрыть) работу$/ }).click();
+  assert.equal(await response.inputValue(), 'Same context pending response', 'local array overlays retain the pending response context');
+  await page.evaluate(() => { window.gradingMode = 'success'; window.releaseGrade(); });
+  await page.locator('.homework-result').waitFor();
+  assert.equal(await response.inputValue(), 'Existing teacher response', 'same-context confirmation still clears its confirmed response draft');
+
   for (const fallback of [false, true]) {
     await page.evaluate(useFallback => window.showGroupFixture(useFallback), fallback);
     await page.locator(`[data-group-fixture="${fallback ? 'fallback' : 'normalized'}"] .homework-table tbody tr small`).filter({ hasText: 'Группа Альфа' }).waitFor();
@@ -255,5 +294,5 @@ try {
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'mobile table must scroll inside its own wrapper');
   assert.ok(await page.locator('.homework-scroll').evaluate(el => el.scrollWidth > el.clientWidth), 'mobile overflow belongs to table wrapper');
   assert.deepEqual(errors, []);
-  console.log('PASS: response drafts, explicit grade/save, busy/error/success, dataset invalidation, read-only response; compact details, duplicate-name identity filtering, all filtered pages selected, grade 12 bulk callback, filter reset, inline grade, pending/error/partial states, official groups display/search/filter in both normalizers, missing/ambiguous groups and mobile table overflow.');
+  console.log('PASS: delayed old-context success/error isolation, same-context overlay confirmation; response drafts, explicit grade/save, busy/error/success, dataset invalidation, read-only response; compact details, duplicate-name identity filtering, all filtered pages selected, grade 12 bulk callback, filter reset, inline grade, pending/error/partial states, official groups display/search/filter in both normalizers, missing/ambiguous groups and mobile table overflow.');
 } finally { await browser?.close(); await server.close(); }

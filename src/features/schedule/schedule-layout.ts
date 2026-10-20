@@ -1,8 +1,8 @@
 import type { ScheduleLesson } from './schedule';
 export function timeMinutes(value: string): number | null {
-  const match = /^(\d{1,2}):(\d{2})(?::\d{2})?$/.exec(value.trim());
-  if (!match || Number(match[1]) > 23 || Number(match[2]) > 59) return null;
-  return Number(match[1]) * 60 + Number(match[2]);
+  const match = /^(\d{1,2}):(\d{2})(?::(\d{2}))?$/.exec(value.trim());
+  if (!match || Number(match[1]) > 23 || Number(match[2]) > 59 || Number(match[3] ?? 0) > 59) return null;
+  return Number(match[1]) * 60 + Number(match[2]) + Number(match[3] ?? 0) / 60;
 }
 export function layoutLessons(lessons: ScheduleLesson[]) {
   const timed = lessons.flatMap(lesson => {
@@ -21,4 +21,16 @@ export function layoutLessons(lessons: ScheduleLesson[]) {
   finish();
   const placed = new Set(timed.map(item => item.lesson));
   return { timed, untimed: lessons.filter(lesson => !placed.has(lesson)) };
+}
+
+// A shared row can grow for full card content without moving another day's
+// matching timestamp. Exact event boundaries stay aligned with the time rail.
+export function scheduleTimeBoundaries(layouts: readonly ReturnType<typeof layoutLessons>[]): number[] {
+  const timed = layouts.flatMap(layout => layout.timed);
+  if (!timed.length) return [];
+  const start = Math.floor(Math.min(...timed.map(item => item.start)) / 60) * 60;
+  const end = Math.ceil(Math.max(...timed.map(item => item.end)) / 60) * 60;
+  const boundaries = new Set<number>(timed.flatMap(item => [item.start, item.end]));
+  for (let minute = start; minute <= end; minute += 60) boundaries.add(minute);
+  return [...boundaries].sort((a, b) => a - b);
 }

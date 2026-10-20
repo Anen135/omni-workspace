@@ -1,13 +1,16 @@
 import { useMemo, useState } from 'react';
 import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, RefreshCw, Search, Users } from 'lucide-react';
 import { label, rows, type RemoteRecord, type Section } from '../../services/omni-client';
+import { DataTable, type TableColumn } from '../../components/data/DataTable';
 import { EmptyState } from '../../components/ui/EmptyState';
-import { studentColumns, studentPage, studentRow, selectStudents, type StudentColumnKey } from './students';
+import { StudentAvatar } from '../../components/ui/StudentAvatar';
+import { studentPhotoUrl } from './student-photo';
+import { studentColumns, studentPage, studentRow, selectStudents, type StudentColumnKey, type StudentRow } from './students';
 import './students.css';
 
 export type StudentsPageProps = {
   groupsSection: Section; groups: RemoteRecord[]; groupId: string; groupName: string;
-  studentsSection: Section | null; busy: boolean;
+  studentsSection: Section | null; busy: boolean; studentPhotos?: ReadonlyMap<string, string>;
   onGroupPick: (group: RemoteRecord) => void; onOpen: (student: RemoteRecord) => void; onRefresh: () => void;
 };
 
@@ -16,7 +19,7 @@ export function StudentsPage(props: StudentsPageProps) {
   return <StudentsContent key={props.groupId} {...props}/>;
 }
 
-function StudentsContent({ groupsSection, groups, groupId, groupName, studentsSection, busy, onGroupPick, onOpen, onRefresh }: StudentsPageProps) {
+function StudentsContent({ groupsSection, groups, groupId, groupName, studentsSection, busy, studentPhotos, onGroupPick, onOpen, onRefresh }: StudentsPageProps) {
   const [query, setQuery] = useState('');
   const [sort, setSort] = useState<StudentColumnKey>('name');
   const [ascending, setAscending] = useState(true);
@@ -29,6 +32,14 @@ function StudentsContent({ groupsSection, groups, groupId, groupName, studentsSe
   function changeSort(key: StudentColumnKey) {
     setAscending(key === sort ? !ascending : true); setSort(key); setPage(0);
   }
+
+  const columns: TableColumn<StudentRow>[] = studentColumns.map(column => ({
+    id: column.key,
+    ariaSort: sort === column.key ? ascending ? 'ascending' : 'descending' : 'none',
+    heading: <button type="button" onClick={() => changeSort(column.key)}>{column.label}{sort === column.key && (ascending ? <ArrowUp size={13} aria-hidden="true"/> : <ArrowDown size={13} aria-hidden="true"/>)}</button>,
+    className: column.numeric ? 'students-numeric' : undefined,
+    cell: student => column.key === 'name' ? <button className="students-name" disabled={busy || !student.id} onClick={() => onOpen(student.source)}><StudentAvatar name={student.values.name} photo={studentPhotoUrl(student.id ? studentPhotos?.get(student.id) : undefined) || student.source.photo_pas}/><span>{student.values.name || 'Имя не указано'}</span></button> : student.values[column.key] || <span className="students-missing" aria-label="Нет данных">—</span>,
+  }));
 
   return <section className="panel students-page" aria-label="Ученики" aria-busy={busy}>
     <div className="panel-heading students-heading">
@@ -50,9 +61,8 @@ function StudentsContent({ groupsSection, groups, groupId, groupName, studentsSe
           <label className="students-page-size">На странице<select aria-label="Учеников на странице" value={pageSize} onChange={event => { setPageSize(Number(event.target.value)); setPage(0); }}>{[25, 50, 100].map(size => <option key={size} value={size}>{size}</option>)}</select></label>
         </div>
         <div className="students-table-scroll" tabIndex={0} role="region" aria-label="Таблица учеников">
-          <table className="students-table"><thead><tr>{studentColumns.map(column => <th key={column.key} aria-sort={sort === column.key ? ascending ? 'ascending' : 'descending' : 'none'}><button type="button" onClick={() => changeSort(column.key)}>{column.label}{sort === column.key && (ascending ? <ArrowUp size={13} aria-hidden="true"/> : <ArrowDown size={13} aria-hidden="true"/>)}</button></th>)}</tr></thead>
-            <tbody>{selected.items.map((student, index) => <tr key={`${student.id}:${index}`}>{studentColumns.map(column => <td key={column.key} className={column.numeric ? 'students-numeric' : undefined}>{column.key === 'name' ? <button className="students-name" disabled={busy || !student.id} onClick={() => onOpen(student.source)}>{student.values.name || 'Имя не указано'}</button> : student.values[column.key] || <span className="students-missing" aria-label="Нет данных">—</span>}</td>)}</tr>)}</tbody>
-          </table>
+          <DataTable className="students-table" rows={selected.items} columns={columns} getRowKey={(student, index) => `${student.id}:${index}`}/>
+
         </div>
         {!filtered.length && <EmptyState title="Ученики не найдены" text="Попробуйте изменить поисковый запрос."/>}
         <div className="students-pagination">

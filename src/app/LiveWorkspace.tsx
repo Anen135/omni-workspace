@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ShieldCheck } from 'lucide-react';
-import { ConnectionError, label, omniRequest, record, rows, type RemoteLesson, type RemoteRecord, type Section, type Snapshot } from '../services/omni-client';
+import { ConnectionError, invalidatePendingOmniRequests, label, omniRequest, record, rows, type RemoteLesson, type RemoteRecord, type Section, type Snapshot } from '../services/omni-client';
 import { ScheduleView } from '../features/schedule/ScheduleView';
 import { TeachingMaterials } from '../features/materials/TeachingMaterials';
 import { TeacherDossier } from '../features/dossier/TeacherDossier';
 import { isDesktop } from '../services/desktop-client';
 import { isExtension, onExtensionSessionChange } from '../services/extension-client';
+import { stageLessonBulk, stageLessonRewardTargets, type LessonBulkChange, type RewardTarget } from '../features/lesson/lesson-bulk';
 import { StudentTable } from '../features/lesson/StudentTable';
 import { homeworkItems, type HomeworkResponseDraft, type HomeworkReviewItem } from '../features/homework/homework';
 import { LessonThemeEditor, type ThemeChoice, type ThemeData } from '../features/lesson/LessonThemeEditor';
@@ -31,6 +32,8 @@ import { StudentDetailDialog, TeacherSwitchingState, WorkspaceError, WorkspaceLo
 import { WorkspaceQuickActions } from './components/WorkspaceQuickActions';
 import { workspaceTabs, type WorkspaceTab } from './components/workspace-tabs';
 import { useStudentAverages } from './useStudentAverages';
+import { useLessonEstimates } from './useLessonEstimates';
+import { LessonMaterialsDialog } from '../features/lesson/LessonMaterialsDialog';
 import './live.css';
 import './workspace.css';
 import { HelpPage } from '../features/help/HelpPage';
@@ -40,6 +43,8 @@ const emptySection: Section = { data: null, error: null };
 export function LiveWorkspace({ onDemo }: { onDemo: () => void }) {
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [lesson, setLesson] = useState<RemoteLesson | null>(null);
+  const [materialsView, setMaterialsView] = useState<{ context: string; theme?: RemoteRecord } | null>(null);
+  const [materialLesson, setMaterialLesson] = useState<{ context: string; lesson: RemoteLesson } | null>(null);
   const [tab, setTab] = useState<WorkspaceTab>(() => {
     try { const saved = localStorage.getItem('omni.workspace.tab'); return workspaceTabs.find(item => item.key === saved)?.key || 'lesson'; } catch { return 'lesson'; }
   });
@@ -72,6 +77,7 @@ export function LiveWorkspace({ onDemo }: { onDemo: () => void }) {
   const presentData = record(lesson?.presents ?? snapshot?.presents.data);
   const draftKey = attendanceDraftKey(snapshot?.account.id || '', snapshot?.account.branch || '', presentData);
   const draft = lessonDrafts[draftKey];
+  useEffect(() => { setMaterialsView(null); setMaterialLesson(null); }, [draftKey, snapshot]);
   const hasDrafts = Object.keys(lessonDrafts).length > 0;
   const hasTheme = attendanceHasTheme(presentData);
   const currentTheme = label(attendanceLessonInfo(presentData)?.theme).trim() || (presentData.scheduleType === 'event' ? label(record(presentData.scheduleData).theme).trim() : '');
@@ -80,11 +86,12 @@ export function LiveWorkspace({ onDemo }: { onDemo: () => void }) {
   const groups = rows(snapshot?.groups.data);
   const teachers = rows(snapshot?.teachers?.data);
   const averageGroupIds = tab === 'lesson' ? [label(presentData.cur_group)].filter(id => /^[1-9]\d{0,11}$/.test(id)) : tab === 'homework' ? groups.map(group => label(group.id_tgroups)).filter(id => /^[1-9]\d{0,11}$/.test(id)) : [];
-  const averages = useStudentAverages(snapshot, [...new Set(averageGroupIds)].sort(), !workspaceLoading, operation);
+  const averages = useStudentAverages(snapshot, [...new Set(averageGroupIds)].sort(), !workspaceLoading);
   const studentAverages = averages.values;
-  const busy = workspaceLoading || averages.loading;
+  const busy = workspaceLoading;
   const selectedDate = label(presentData.cur_date || presentData.today);
   const schedule = record(snapshot?.schedule.data);
+  const estimates = useLessonEstimates(snapshot?.account.id || '', snapshot?.account.branch || '', tab, schedule, presentData);
   const scheduleDates = scheduleDays(schedule).map(day => day.date);
   const reviewItems = useMemo(() => homeworkItems(snapshot?.newHomework.data).map(item =>
     Object.hasOwn(homeworkSaved, item.key) ? { ...item, mark: homeworkSaved[item.key].mark, source: { ...item.source, ...(homeworkSaved[item.key].comment !== undefined ? { comment: homeworkSaved[item.key].comment } : {}) }, canGrade: false } : item), [snapshot?.newHomework.data, homeworkSaved]);
@@ -99,6 +106,7 @@ export function LiveWorkspace({ onDemo }: { onDemo: () => void }) {
   function failed(reason: unknown) {
     setError(reason instanceof Error ? reason.message : 'Не удалось загрузить данные.');
     if (reason instanceof ConnectionError && ['AUTH_REQUIRED', 'ACCOUNT_CHANGED', 'CHALLENGE'].includes(reason.code)) {
+      invalidatePendingOmniRequests();
       setLessonDrafts({});
       setAuthNeeded(true); setSnapshot(null); setLesson(null); setGroupStudents(null); setDetail(null);
       currentAccount.current = ''; lastBranch.current = '';
@@ -106,6 +114,22 @@ export function LiveWorkspace({ onDemo }: { onDemo: () => void }) {
   }
   function ensureAccount(account: { id: string }) {
     if (currentAccount.current && currentAccount.current !== account.id) throw new ConnectionError('ACCOUNT_CHANGED', 'Аккаунт сменился. Обновите подключение.');
+  }
+  async function loadCurrentMaterials() {
+    if (!snapshot || operation.current) return;
+    const context = draftKey;
+    const version = sessionVersion.current;
+    const accountId = snapshot.account.id;
+    const branch = snapshot.account.branch || '';
+    operation.current = true; setBusy(true);
+    try {
+      const result = await omniRequest<RemoteLesson>('lesson', { date: selectedDate, group: label(presentData.cur_group), lenta: label(presentData.cur_lenta) });
+      if (version !== sessionVersion.current) return;
+      ensureAccount(result.account);
+      if (result.account.branch !== undefined && result.account.branch !== branch || attendanceDraftKey(accountId, branch, record(result.presents)) !== context) throw new Error('Omni вернул материалы другого занятия. Обновите урок.');
+      setMaterialLesson({ context, lesson: result });
+    } catch (reason) { if (version === sessionVersion.current) { failed(reason); throw reason; } }
+    finally { operation.current = false; setBusy(false); }
   }
   async function refresh(nextWeek = week) {
     if (operation.current || !Number.isInteger(nextWeek) || Math.abs(nextWeek) > 52) return;
@@ -192,6 +216,7 @@ export function LiveWorkspace({ onDemo }: { onDemo: () => void }) {
   }
   useEffect(() => {
     return onExtensionSessionChange(() => {
+      invalidatePendingOmniRequests();
       setHomeworkSaved({}); setHomeworkNeedsReload(false);
       setLessonDrafts({});
       sessionVersion.current++;
@@ -347,6 +372,18 @@ export function LiveWorkspace({ onDemo }: { onDemo: () => void }) {
       if (!hasLessonChanges(updated[draftKey])) delete updated[draftKey];
       return updated;
     });
+  }
+  function stageBulk(students: readonly RemoteRecord[], change: LessonBulkChange) {
+    if (!snapshot || !isExtension() || operation.current || attendanceReason) throw new Error(attendanceReason || 'Дождитесь завершения операции.');
+    const next = stageLessonBulk(lessonStudents, draft || emptyLessonDraft(), students.map(student => label(student.id_stud)), change);
+    storeDraft(draftKey, next);
+    setNotice(`Правка добавлена в черновик для ${students.length} учеников. Нажмите «Сохранить».`);
+  }
+  function stageRewardAllocation(targets: readonly RewardTarget[]) {
+    if (!snapshot || !isExtension() || operation.current || attendanceReason) throw new Error(attendanceReason || 'Дождитесь завершения операции.');
+    const next = stageLessonRewardTargets(lessonStudents, draft || emptyLessonDraft(), targets);
+    storeDraft(draftKey, next);
+    setNotice('Распределение топкойнов добавлено в черновик. Проверьте и нажмите «Сохранить».');
   }
   function stageReward(student: RemoteRecord, reward: LessonReward) {
     if (!snapshot || operation.current || attendanceReason) return;
@@ -543,12 +580,13 @@ export function LiveWorkspace({ onDemo }: { onDemo: () => void }) {
       if (version === sessionVersion.current) { storeDraft(key, { ...pending, needsReload: true }); failed(reason); }
     } finally { operation.current = false; setBusy(false); setAttendanceSaving(false); }
   }
+  const lessonTableContext = useMemo(() => ({ draftKey, students: presentData.students }), [draftKey, presentData.students]);
   const studentTable = (items: RemoteRecord[]) => {
     const displayed = tab === 'lesson' && draft ? items.map(student => {
       const stud = label(student.id_stud);
       return { ...student, ...(draft.attendance[stud] ? { was: draft.attendance[stud].was } : {}), ...(draft.marks[`${stud}:2`] ? { mark2: draft.marks[`${stud}:2`].mark } : {}), ...(draft.marks[`${stud}:4`] ? { mark4: draft.marks[`${stud}:4`].mark } : {}), ...(draft.rewards?.[stud] ? { prize: draft.rewards[stud].reward } : {}) };
     }) : items;
-    return <StudentTable studentPhotos={averages.photos} studentAverages={studentAverages} key={`${tab}:${groupId}:${draftKey}`} items={displayed} busy={busy} lessonView={tab === 'lesson'} onOpen={student => void openStudent(student)} marks={tab === 'lesson' && isExtension() ? { unavailable: attendanceReason, allowDraft: true, onChange: stageMark } : undefined} rewards={tab === 'lesson' && isExtension() ? { unavailable: attendanceReason, onChange: stageReward } : undefined} attendance={tab === 'lesson' && isExtension() ? { unavailable: attendanceReason, saving: attendanceSaving, onChange: (student, was) => markAttendance([student], was), onAll: () => markAttendance(displayed, 1, true) } : undefined}/>;
+    return <StudentTable studentAveragesLoading={averages.loading} studentAveragesError={averages.error} selectionContext={lessonTableContext} onBulkChange={isExtension() ? stageBulk : undefined} onRewardAllocation={isExtension() ? stageRewardAllocation : undefined} draftRewardIds={new Set(Object.keys(draft?.rewards || {}))} contextToken={draftKey} studentPhotos={averages.photos} studentAverages={studentAverages} key={`${tab}:${groupId}:${draftKey}`} items={displayed} busy={busy} lessonView={tab === 'lesson'} onOpen={student => void openStudent(student)} marks={tab === 'lesson' && isExtension() ? { unavailable: attendanceReason, allowDraft: true, onChange: stageMark } : undefined} rewards={tab === 'lesson' && isExtension() ? { unavailable: attendanceReason, onChange: stageReward } : undefined} attendance={tab === 'lesson' && isExtension() ? { unavailable: attendanceReason, saving: attendanceSaving, onChange: (student, was) => markAttendance([student], was), onAll: () => markAttendance(displayed, 1, true) } : undefined}/>;
   };
   function openDemo() {
     if (operation.current) return;
@@ -557,7 +595,7 @@ export function LiveWorkspace({ onDemo }: { onDemo: () => void }) {
   }
 
   return <div className="app-shell live-workspace">
-    <WorkspaceSidebar account={snapshot?.account} tab={tab} onNavigate={setTab} onDemo={openDemo}/>
+    <WorkspaceSidebar account={snapshot?.account} tab={tab} onNavigate={setTab} hasHomework={reviewItems.some(item => item.canGrade)}/>
     <main>
       <WorkspaceHeader account={snapshot?.account} teachers={teachers} busy={busy} authNeeded={authNeeded}
         desktop={isDesktop()} extension={isExtension()} onRefresh={() => void refresh()}
@@ -572,7 +610,7 @@ export function LiveWorkspace({ onDemo }: { onDemo: () => void }) {
         {error && <WorkspaceError message={error} busy={busy} authNeeded={authNeeded}
           onRetry={() => void (authNeeded ? connect() : snapshot ? refresh() : connect())}/>}
         {switchingTeacher && <TeacherSwitchingState/>}
-        {tab === 'help' && <HelpPage/>}
+        {tab === 'help' && <HelpPage onDemo={openDemo}/>}
         {!snapshot && !switchingTeacher && tab !== 'help' && <ConnectionCard busy={busy} waiting={waiting}
           extension={isExtension()} changingAccount={changingAccount} connectionState={connectionState}
           onLogin={login} onConnect={() => void connect()} onDemo={onDemo}/>}
@@ -581,13 +619,15 @@ export function LiveWorkspace({ onDemo }: { onDemo: () => void }) {
             {isExtension() && <LessonSaveBar busy={busy} saving={attendanceSaving} draft={draft} hasTheme={hasTheme}
               unavailable={attendanceReason} onSave={() => void saveLessonDraft()}
               onDiscard={() => { if (window.confirm('Удалить локальный черновик этого урока?')) clearLessonDraft(); }}/>}
-            <LessonBanner account={snapshot.account} fetchedAt={snapshot.fetchedAt} date={selectedDate} students={lessonStudents} theme={currentTheme} draft={draft}/>
+            <LessonBanner account={snapshot.account} fetchedAt={snapshot.fetchedAt} date={selectedDate} students={lessonStudents} theme={currentTheme} draft={draft} estimate={estimates.current}>
+              {isExtension() && <LessonThemeEditor key={draftKey} embedded contextKey={draftKey} busy={busy} unavailable={attendanceReason} currentTheme={currentTheme} draft={draft?.theme}
+                onLoad={loadLessonThemes} onSave={stageTheme} onPreviewTheme={theme => setMaterialsView({ context: draftKey, theme })}/>}
+              <button className="button secondary" disabled={busy || !label(presentData.cur_group)} onClick={() => { setMaterialsView({ context: draftKey }); void loadCurrentMaterials().catch(() => {}); }}>Посмотреть материалы</button>
+            </LessonBanner>
             <LessonSelectors date={selectedDate} today={today} presents={presentData} dayLessons={dayLessons}
               busy={busy} onDatePick={date => void loadLesson(undefined, undefined, date)}
               onSchedule={() => setTab('schedule')} onSlotPick={slot => void loadLesson(undefined, slot)}/>
             {isExtension() && <div className="lesson-preparation">
-              <LessonThemeEditor key={draftKey} busy={busy} unavailable={attendanceReason} currentTheme={currentTheme} draft={draft?.theme}
-                onLoad={loadLessonThemes} onSave={stageTheme}/>
               <PreviousLessonCopy key={`copy:${draftKey}`} busy={busy} unavailable={attendanceReason} students={lessonStudents}
                 date={selectedDate} slot={label(presentData.cur_lenta)} dayLessons={dayLessons}
                 onLoad={loadPreviousLesson} onCopy={stagePreviousLesson}/>
@@ -605,7 +645,7 @@ export function LiveWorkspace({ onDemo }: { onDemo: () => void }) {
           {busy && tab !== 'lesson' && <WorkspaceLoading/>}
           {tab === 'schedule' && <section className="panel">{snapshot.schedule.error
             ? <SectionView section={snapshot.schedule}/>
-            : <ScheduleView data={schedule} today={today} busy={busy} onOpen={(date, slot) => void loadLesson(undefined, slot, date)}/>}
+            : <ScheduleView data={schedule} today={today} busy={busy} lessonEstimate={item => estimates.byKey.get(item.key) || { amount: null, initial: true }} onOpen={(date, slot) => void loadLesson(undefined, slot, date)}/>}
           </section>}
           {tab === 'groups' && <StudentsPage key={`${snapshot.account.id}:${snapshot.account.branch}:${groupId}`}
             groupsSection={snapshot.groups} groups={groups} groupName={groupName}
@@ -613,7 +653,7 @@ export function LiveWorkspace({ onDemo }: { onDemo: () => void }) {
             onOpen={student => void openStudent(student)}
             onRefresh={() => { const group = groups.find(item => label(item.id_tgroups) === groupId); if (group) void openGroup(group); }}/>}
           {tab === 'homework' && <HomeworkPanel busy={busy} onRefresh={() => void refresh()}
-            section={snapshot.newHomework} items={reviewItems} studentAverages={studentAverages} studentPhotos={averages.photos}
+            section={snapshot.newHomework} items={reviewItems} studentAverages={studentAverages} studentPhotos={averages.photos} studentAveragesLoading={averages.loading} studentAveragesError={averages.error}
             responseDraftContext={snapshot?.newHomework.data}
             grading={isExtension() ? { busy, unavailable: homeworkNeedsReload ? 'Перед следующей оценкой нажмите «Обновить работы».' : undefined, onGrade: gradeHomework } : undefined}/>}
           {tab === 'dossier' && <TeacherDossier key={`${snapshot.account.id}:${snapshot.account.branch}:${sessionVersion.current}`}
@@ -628,6 +668,9 @@ export function LiveWorkspace({ onDemo }: { onDemo: () => void }) {
         <footer className="page-footer"><span>omni workspace</span><span>Больше внимания ученикам.</span><span>Локальное подключение</span></footer>
       </div>
     </main>
+    {snapshot && materialsView?.context === draftKey && <LessonMaterialsDialog open contextToken={draftKey} account={snapshot.account}
+      currentLesson={materialLesson?.context === draftKey ? materialLesson.lesson : lesson} theme={materialsView.theme} busy={busy}
+      onClose={() => setMaterialsView(null)} onLoadCurrent={loadCurrentMaterials} onConnectionError={failed}/>}
     {detail && <StudentDetailDialog dialogRef={dialog} detail={detail} onClose={() => setDetail(null)}/>}
     {notice && <WorkspaceToast message={notice} onClose={() => setNotice('')}/>}
     <WorkspaceQuickActions connected={!!snapshot} schedule={tab === 'schedule'} busy={busy}

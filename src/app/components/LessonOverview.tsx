@@ -1,14 +1,17 @@
 import { BookOpen, Save } from 'lucide-react';
+import type { ReactNode } from 'react';
 import { DatePickerPopover } from '../../components/DatePickerPopover';
 import { label, rows, type Account, type RemoteRecord } from '../../services/omni-client';
 import type { LessonDraft } from '../../features/lesson/lesson-draft';
 import type { presentLessons } from '../../features/lesson/present-lessons';
 import { HelpTip } from '../../components/ui/HelpTip';
+import '../../features/lesson/lesson-materials.css';
 
-export function LessonBanner({ account, fetchedAt, date, students, theme, draft }: {
+export function LessonBanner({ account, fetchedAt, date, students, theme, draft, children, estimate }: {
   account: Account; fetchedAt: string; date: string; students: RemoteRecord[]; theme: string; draft?: LessonDraft;
+  children?: ReactNode; estimate?: { amount: number | null; initial: boolean };
 }) {
-  return <section className="lesson-banner"><span className="lesson-icon"><BookOpen size={25}/></span><div className="lesson-description"><div className="lesson-meta"><span>РЕАЛЬНЫЕ ДАННЫЕ</span><span>{date}</span></div><h2>{draft?.theme?.theme || theme || (students.length ? 'Текущее занятие' : 'Omni не вернул текущую пару')}</h2><div className="lesson-time">Обновлено {new Date(fetchedAt).toLocaleTimeString('ru-RU')} · {account.branch}{draft?.theme && ' · тема в черновике'}</div></div></section>;
+  return <section className="lesson-banner lesson-overview"><span className="lesson-icon"><BookOpen size={25}/></span><div className="lesson-description"><div className="lesson-meta"><span>РЕАЛЬНЫЕ ДАННЫЕ</span><span>{date}</span></div><h2>{draft?.theme?.theme || theme || (students.length ? 'Текущее занятие' : 'Omni не вернул текущую пару')}</h2><div className="lesson-time">Обновлено {new Date(fetchedAt).toLocaleTimeString('ru-RU')} · {account.branch}{draft?.theme && ' · тема в черновике'}</div></div>{estimate && <aside className="lesson-estimate" title={(estimate.initial ? 'Расчёт по начальным ставкам. ' : 'Расчёт по сохранённым ставкам. ') + 'Измените ставки в разделе «Доход». Это приблизительная оценка, а не подтверждённая выплата Omni.'}><span>{estimate.initial ? 'Начальные ставки' : 'Оценка за занятие'}</span><strong>{estimate.amount === null || !Number.isFinite(estimate.amount) ? 'Нет данных' : '≈ ' + new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', maximumFractionDigits: 2 }).format(estimate.amount)}</strong></aside>}{children && <div className="lesson-overview-controls">{children}</div>}</section>;
 }
 
 export function LessonSaveBar({ busy, saving, draft, hasTheme, unavailable, onSave, onDiscard }: {

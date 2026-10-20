@@ -1,6 +1,9 @@
-import { Fragment, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { AverageGrade } from '../../components/ui/AverageGrade';
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Eye } from 'lucide-react';
+import { DataTable, type TableColumn } from '../../components/data/DataTable';
+import { TableBulkEditor, type BulkField } from '../../components/data/TableBulkEditor';
 import { FilePreview } from '../../components/files/FilePreview';
 import { label, rows, type RemoteRecord, type Section } from '../../services/omni-client';
 import { HOMEWORK_RESPONSE_LIMIT, homeworkGroupName, type HomeworkResponseDraft, type HomeworkReviewItem } from './homework';
@@ -172,14 +175,6 @@ function pick(item: RemoteRecord, keys: string[]): RemoteRecord {
   return Object.fromEntries(keys.filter(key => key in item).map(key => [key, item[key]]));
 }
 
-function SelectAll({ checked, mixed, disabled, onChange }: {
-  checked: boolean; mixed: boolean; disabled: boolean; onChange: (checked: boolean) => void;
-}) {
-  const ref = useRef<HTMLInputElement>(null);
-  useEffect(() => { if (ref.current) ref.current.indeterminate = mixed; }, [mixed]);
-  return <input ref={ref} type="checkbox" aria-label="Выбрать все доступные работы по фильтрам, на всех страницах" checked={checked} disabled={disabled} onChange={event => onChange(event.target.checked)}/>;
-}
-
 function GradeEditor({ item, name, disabled, onSave }: {
   item: HomeworkReviewItem; name: string; disabled: boolean; onSave: (mark: number) => Promise<void>;
 }) {
@@ -194,8 +189,8 @@ function GradeEditor({ item, name, disabled, onSave }: {
   </form>;
 }
 
-export function HomeworkTable({ section, render, items: suppliedItems, grading, responseDraftContext, studentAverages, studentPhotos }: {
-  section: Section; render: (value: unknown) => ReactNode; items?: HomeworkReviewItem[]; grading?: Grading; responseDraftContext?: unknown; studentAverages?: ReadonlyMap<string, string>; studentPhotos?: ReadonlyMap<string, string>;
+export function HomeworkTable({ section, render, items: suppliedItems, grading, responseDraftContext, studentAverages, studentPhotos, studentAveragesLoading = false, studentAveragesError }: {
+  section: Section; render: (value: unknown) => ReactNode; items?: HomeworkReviewItem[]; grading?: Grading; responseDraftContext?: unknown; studentAverages?: ReadonlyMap<string, string>; studentPhotos?: ReadonlyMap<string, string>; studentAveragesLoading?: boolean; studentAveragesError?: string;
 }) {
   const [query, setQuery] = useState('');
   const [group, setGroup] = useState('');
@@ -203,7 +198,6 @@ export function HomeworkTable({ section, render, items: suppliedItems, grading, 
   const [sort, setSort] = useState<{ field: SortField; descending: boolean }>({ field: 'studentName', descending: false });
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
-  const [grade, setGrade] = useState('12');
   const [selection, setSelection] = useState<Selection | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState('');
@@ -215,6 +209,8 @@ export function HomeworkTable({ section, render, items: suppliedItems, grading, 
   const tableId = useId();
   const items = useMemo(() => suppliedItems ?? fallbackItems(section.data), [suppliedItems, section.data]);
   const responseContext = responseDraftContext ?? items;
+  const currentResponseContext = useRef(responseContext);
+  currentResponseContext.current = responseContext;
   // A replacement dataset invalidates selection synchronously, before any event can submit it.
   const selectedKeys = selection?.data === items ? selection.keys : new Set<string>();
   const locked = submitting || !!grading?.busy;
@@ -261,8 +257,7 @@ export function HomeworkTable({ section, render, items: suppliedItems, grading, 
   const pageCount = Math.max(1, Math.ceil(sorted.length / pageSize));
   const currentPage = Math.min(page, pageCount);
   const visible = sorted.slice((currentPage - 1) * pageSize, currentPage * pageSize);
-  const numericGrade = Number(grade);
-  const gradeValid = grade.trim() !== '' && Number.isInteger(numericGrade) && numericGrade >= 1 && numericGrade <= 12;
+
 
   function resetSelection() {
     setSelection(null); setOpened(null); setPreviewed(null); setPage(1); setMessage(''); setFailure('');
@@ -279,7 +274,7 @@ export function HomeworkTable({ section, render, items: suppliedItems, grading, 
     setMessage(''); setFailure('');
   }
   async function saveGrades(submitted: HomeworkReviewItem[], mark: number, response?: HomeworkResponseDraft) {
-    if (locked || submittingRef.current || !grading || !Number.isInteger(mark) || mark < 1 || mark > 12 || !submitted.length || submitted.some(item => !canSelect(item))) return;
+    if (locked || submittingRef.current || !grading || !Number.isInteger(mark) || mark < 1 || mark > 12 || !submitted.length || submitted.length > 100 || submitted.some(item => !canSelect(item))) return;
     submittingRef.current = true;
     setSubmitting(true); setMessage(''); setFailure('');
     try {
@@ -288,9 +283,11 @@ export function HomeworkTable({ section, render, items: suppliedItems, grading, 
       const savedCount = submitted.filter(item => confirmed.has(item.key)).length;
       setSelection(previous => previous?.data === items ? { data: items, keys: new Set([...previous.keys].filter(key => !confirmed.has(key))) } : previous);
       if (response) setResponseDrafts(previous => previous?.data === responseContext ? { data: responseContext, values: Object.fromEntries(Object.entries(previous.values).filter(([key]) => !confirmed.has(key))) } : previous);
+      if (currentResponseContext.current !== responseContext) return;
       if (savedCount) setMessage('Оценка ' + mark + ' сохранена: ' + savedCount + ' из ' + submitted.length + '.');
       if (savedCount < submitted.length) setFailure('Сохранение ' + (submitted.length - savedCount) + ' работ не подтверждено. Проверьте данные перед повторной отправкой.');
     } catch (reason) {
+      if (currentResponseContext.current !== responseContext) return;
       setFailure(reason instanceof Error ? reason.message : 'Не удалось сохранить оценки. Проверьте данные перед повторной отправкой.');
     } finally {
       submittingRef.current = false;
@@ -298,7 +295,7 @@ export function HomeworkTable({ section, render, items: suppliedItems, grading, 
     }
   }
   function sortHeading(field: SortField, title: string) {
-    return <th scope="col" aria-sort={sort.field === field ? (sort.descending ? 'descending' : 'ascending') : 'none'}><button type="button" className="homework-sort" disabled={locked} onClick={() => { setSort({ field, descending: sort.field === field && !sort.descending }); setPage(1); }}>{title}<span aria-hidden="true">{sort.field === field ? (sort.descending ? ' ↓' : ' ↑') : ' ↕'}</span></button></th>;
+    return <button type="button" className="homework-sort" disabled={locked} onClick={() => { setSort({ field, descending: sort.field === field && !sort.descending }); setPage(1); }}>{title}<span aria-hidden="true">{sort.field === field ? (sort.descending ? ' ↓' : ' ↑') : ' ↕'}</span></button>;
   }
   function attachments(item: RemoteRecord, studentFile: boolean) {
     const keys = studentFile ? ['download_url_stud'] : ['download_url', 'file_url', 'link'];
@@ -312,6 +309,54 @@ export function HomeworkTable({ section, render, items: suppliedItems, grading, 
   }
 
 
+  function rowDetails(item: HomeworkReviewItem, index: number) {
+    const selectable = canSelect(item);
+    const info = pick(item.source, ['answer_text', 'text', 'description']);
+    const responseDraft = responseDrafts?.data === responseContext ? responseDrafts.values[item.key] : undefined;
+    const workLabel = (item.studentName || 'Без имени') + ', ' + (item.theme || 'Работа без темы') + ', строка ' + ((currentPage - 1) * pageSize + index + 1);
+    const rowKey = item.key + '-' + ((currentPage - 1) * pageSize + index);
+    const expanded = opened?.data === items && opened.key === rowKey;
+    const previewExpanded = previewed?.data === items && previewed.key === rowKey;
+    const detailId = tableId + '-detail-' + index;
+    const average = item.studentId ? studentAverages?.get(item.studentId) : undefined;
+    const photoId = studentId({ id_stud: item.studentId });
+    const photo = studentPhotoUrl(photoId ? studentPhotos?.get(photoId) : undefined) || item.source.photo_pas;
+    return { selectable, info, responseDraft, workLabel, rowKey, expanded, previewExpanded, detailId, average, photo };
+  }
+  const bulkFields: BulkField<HomeworkReviewItem>[] = [{
+    id: 'mark', label: 'Оценка', input: { kind: 'number', min: 1, max: 12, step: 1 },
+    validate: value => value.trim() !== '' && Number.isInteger(Number(value)) && Number(value) >= 1 && Number(value) <= 12 ? '' : 'Введите целую оценку от 1 до 12.',
+    unavailableReason: item => canSelect(item) ? '' : 'Оценка для этой работы недоступна.',
+  }];
+  const columns: TableColumn<HomeworkReviewItem>[] = [
+    { id: 'studentName', heading: sortHeading('studentName', 'Студент'), ariaSort: sort.field === 'studentName' ? (sort.descending ? 'descending' : 'ascending') : 'none', cell: (item, index) => {
+      const { photo } = rowDetails(item, index);
+      return <><div className="homework-student"><StudentAvatar name={item.studentName} photo={photo}/><div className="homework-student-label"><strong>{item.studentName || 'Студент не указан'}</strong>{item.groupName && <small>{item.groupName}</small>}{duplicateNames.has(item.studentName) && item.studentId && <small>ID {item.studentId}</small>}</div></div></>;
+    } },
+    { id: 'theme', heading: sortHeading('theme', 'Работа'), ariaSort: sort.field === 'theme' ? (sort.descending ? 'descending' : 'ascending') : 'none', cell: (item, index) => {
+      return <>{item.theme || 'Без темы'}{item.subject && <small>{item.subject}</small>}</>;
+    } },
+    { id: 'submittedAt', heading: sortHeading('submittedAt', 'Отправлено'), ariaSort: sort.field === 'submittedAt' ? (sort.descending ? 'descending' : 'ascending') : 'none', className: 'homework-date', cell: (item, index) => {
+      return <>{item.submittedAt || '—'}</>;
+    } },
+    { id: 'mark', heading: sortHeading('mark', 'Оценка'), ariaSort: sort.field === 'mark' ? (sort.descending ? 'descending' : 'ascending') : 'none', className: 'homework-grade-cell', cell: (item, index) => {
+      const { selectable, workLabel } = rowDetails(item, index);
+      return <>{selectable ? <GradeEditor item={item} name={workLabel} disabled={locked} onSave={mark => saveGrades([item], mark)}/> : <span className={item.mark === null ? 'homework-muted' : 'homework-mark'}>{item.mark ?? '—'}</span>}</>;
+    } },
+    { id: 'average', heading: 'Средний балл', className: 'homework-average-cell', cell: (item, index) => {
+      const { average } = rowDetails(item, index);
+      return <AverageGrade value={average} loading={studentAveragesLoading} error={studentAveragesError}/>;
+    } },
+    { id: 'preview', heading: <span className="homework-sr-only">Просмотр работы</span>, className: 'homework-open-cell', cell: (item, index) => {
+      const { info, workLabel, rowKey, expanded, previewExpanded, detailId } = rowDetails(item, index);
+      return <><div className="homework-row-actions"><button type="button" className="homework-text-button" aria-expanded={expanded} aria-controls={expanded ? detailId : undefined} onClick={() => { setPreviewed(null); setOpened(expanded ? null : { data: items, key: rowKey }); }}>{expanded ? 'Закрыть работу' : 'Открыть работу'}</button><HomeworkPreview name={workLabel} open={previewExpanded} onOpen={() => setPreviewed(previous => previous?.data === items && previous.key === rowKey ? previous : { data: items, key: rowKey })} onClose={() => setPreviewed(previous => previous?.data === items && previous.key === rowKey ? null : previous)}>
+              <section className="homework-response"><h4>Ответ студента</h4>{Object.values(info).some(value => label(value)) ? render(info) : <p className="homework-muted">Текст ответа не добавлен.</p>}</section>
+              <section><h4>Файл студента</h4>{materialLink(label(item.source.download_url_stud)) ? <FilePreview url={label(item.source.download_url_stud)} inline/> : <span className="homework-muted">—</span>}</section>
+            </HomeworkPreview></div></>;
+    } },
+  ];
+
+
   if (section.error) return <div className="warning" role="alert">Не удалось загрузить домашние работы: {section.error}</div>;
   return <div className="homework-review" aria-busy={locked}>
     <div className="homework-filters">
@@ -320,58 +365,29 @@ export function HomeworkTable({ section, render, items: suppliedItems, grading, 
       <label className="homework-search">Поиск<input type="search" aria-label="Поиск домашнего задания" placeholder="Имя, группа, тема или предмет" value={query} disabled={locked} onChange={event => { setQuery(event.target.value); resetSelection(); }}/></label>
       {(group || student || query) && <button type="button" className="button secondary" disabled={locked} onClick={() => { setGroup(''); setStudent(''); setQuery(''); resetSelection(); }}>Сбросить</button>}
     </div>
-    <div className="homework-bulk">
-      <span>Работы: <strong>{filtered.length}</strong>{filtered.length !== items.length && <span className="homework-muted"> из {items.length}</span>}</span>
-      {gradingAvailable && <>
-        <span>Выбрано: <strong>{selected.length}</strong></span>
-        <label className="homework-grade-label">Оценка выбранным<input type="number" aria-label="Оценка для выбранных работ" min={1} max={12} step={1} value={grade} disabled={locked} onChange={event => setGrade(event.target.value)}/></label>
-        <button type="button" className="button primary" disabled={locked || !selected.length || !gradeValid} onClick={() => void saveGrades([...selected], numericGrade)}>{locked ? 'Сохранение…' : 'Поставить оценку' + (selected.length ? ' (' + selected.length + ')' : '')}</button>
-      </>}
-    </div>
-    {gradingAvailable && selected.length > pageSize && <p className="homework-help">Выбраны работы на всех страницах по текущим фильтрам.</p>}
-    {gradingAvailable && !gradeValid && <p className="warning" role="alert">Введите целую оценку от 1 до 12.</p>}
+    {gradingAvailable ? <TableBulkEditor contextKey={responseContext} className="homework-bulk" fields={bulkFields} filteredRows={filtered} selectedRows={selected} locked={locked}
+      applyLabel={'Поставить оценку'} defaultField="mark" defaultValue="12" valueLabel={'Оценка выбранным'} valueAriaLabel={'Оценка для выбранных работ'}
+      onApply={(submitted, _field, value) => saveGrades(submitted, Number(value))}/> : <div className="homework-bulk"><span>Работы: <strong>{filtered.length}</strong>{filtered.length !== items.length && <span className="homework-muted"> из {items.length}</span>}</span></div>}
     {grading?.unavailable && <p className="homework-help" role="status">{grading.unavailable}</p>}
     {message && <p className="homework-result" role="status">{message}</p>}
     {failure && <p className="warning" role="alert">{failure}</p>}
     {!items.length ? <div className="empty"><h3>Домашних работ пока нет</h3><p>Здесь будут показаны работы студентов и их оценки.</p></div> : !filtered.length ? <div className="empty"><h3>Работы не найдены</h3><p>Измените фильтры или поисковый запрос.</p></div> : <>
-      <div className="table-scroll homework-scroll"><table className="homework-table"><caption className="homework-sr-only">Домашние работы. Найдено {filtered.length}, выбрано {selected.length}.</caption><thead><tr>
-        {gradingAvailable && <th scope="col" className="homework-selection"><SelectAll checked={eligible.length > 0 && selected.length === eligible.length} mixed={selected.length > 0 && selected.length < eligible.length} disabled={locked || !eligible.length} onChange={toggleAll}/></th>}
-        {sortHeading('studentName', 'Студент')}{sortHeading('theme', 'Работа')}{sortHeading('submittedAt', 'Отправлено')}{sortHeading('mark', 'Оценка')}
-        <th scope="col">Средний балл</th>
-        <th scope="col"><span className="homework-sr-only">Просмотр работы</span></th>
-      </tr></thead><tbody>{visible.map((item, index) => {
-        const selectable = canSelect(item);
-        const info = pick(item.source, ['answer_text', 'text', 'description']);
-        const responseDraft = responseDrafts?.data === responseContext ? responseDrafts.values[item.key] : undefined;
-        const workLabel = (item.studentName || 'Без имени') + ', ' + (item.theme || 'Работа без темы') + ', строка ' + ((currentPage - 1) * pageSize + index + 1);
-        const rowKey = item.key + '-' + ((currentPage - 1) * pageSize + index);
-        const expanded = opened?.data === items && opened.key === rowKey;
-        const previewExpanded = previewed?.data === items && previewed.key === rowKey;
-        const detailId = tableId + '-detail-' + index;
-        const average = item.studentId ? studentAverages?.get(item.studentId) : undefined;
-        const photoId = studentId({ id_stud: item.studentId });
-        const photo = studentPhotoUrl(photoId ? studentPhotos?.get(photoId) : undefined) || item.source.photo_pas;
-        return <Fragment key={item.key + '-' + index}>
-          <tr className={selectedKeys.has(item.key) && selectable ? 'homework-selected' : undefined}>
-            {gradingAvailable && <td className="homework-selection">{selectable ? <input type="checkbox" aria-label={'Выбрать работу: ' + workLabel} checked={selectedKeys.has(item.key)} disabled={locked} onChange={event => toggleRow(item, event.target.checked)}/> : <span className="homework-muted" title="Для этой работы оценка недоступна">—</span>}</td>}
-            <td><div className="homework-student"><StudentAvatar name={item.studentName} photo={photo}/><div className="homework-student-label"><strong>{item.studentName || 'Студент не указан'}</strong>{item.groupName && <small>{item.groupName}</small>}{duplicateNames.has(item.studentName) && item.studentId && <small>ID {item.studentId}</small>}</div></div></td>
-            <td>{item.theme || 'Без темы'}{item.subject && <small>{item.subject}</small>}</td>
-            <td className="homework-date">{item.submittedAt || '—'}</td>
-            <td className="homework-grade-cell">{selectable ? <GradeEditor item={item} name={workLabel} disabled={locked} onSave={mark => saveGrades([item], mark)}/> : <span className={item.mark === null ? 'homework-muted' : 'homework-mark'}>{item.mark ?? '—'}</span>}</td>
-            <td className={average ? 'homework-average-cell' : 'homework-average-cell homework-muted'}>{average || '—'}</td>
-            <td className="homework-open-cell"><div className="homework-row-actions"><button type="button" className="homework-text-button" aria-expanded={expanded} aria-controls={expanded ? detailId : undefined} onClick={() => { setPreviewed(null); setOpened(expanded ? null : { data: items, key: rowKey }); }}>{expanded ? 'Закрыть работу' : 'Открыть работу'}</button><HomeworkPreview name={workLabel} open={previewExpanded} onOpen={() => setPreviewed(previous => previous?.data === items && previous.key === rowKey ? previous : { data: items, key: rowKey })} onClose={() => setPreviewed(previous => previous?.data === items && previous.key === rowKey ? null : previous)}>
-              <section className="homework-response"><h4>Ответ студента</h4>{Object.values(info).some(value => label(value)) ? render(info) : <p className="homework-muted">Текст ответа не добавлен.</p>}</section>
-              <section><h4>Файл студента</h4>{materialLink(label(item.source.download_url_stud)) ? <FilePreview url={label(item.source.download_url_stud)} inline/> : <span className="homework-muted">—</span>}</section>
-            </HomeworkPreview></div></td>
-          </tr>
-          {expanded && <tr className="homework-detail-row"><td colSpan={gradingAvailable ? 7 : 6}><div className="homework-details" id={detailId}>
+      <div className="table-scroll homework-scroll"><DataTable rows={visible} columns={columns} getRowKey={(item, index) => item.key + '-' + index}
+        className="homework-table" caption={<>Домашние работы. Найдено {filtered.length}, выбрано {selected.length}.</>}
+        selection={gradingAvailable ? {
+          selectedKeys, eligibleKeys: new Set(eligible.map(item => item.key)), getKey: item => item.key, locked,
+          onToggle: toggleRow, onToggleAll: toggleAll, className: 'homework-selection', selectedClassName: 'homework-selected',
+          allLabel: 'Выбрать все доступные работы по фильтрам, на всех страницах', rowLabel: (item, index) => 'Выбрать работу: ' + rowDetails(item, index).workLabel,
+        } : undefined}
+        renderAfterRow={(item, index) => {
+          const { selectable, info, responseDraft, workLabel, expanded, detailId } = rowDetails(item, index);
+          return expanded && <tr className="homework-detail-row"><td colSpan={gradingAvailable ? 7 : 6}><div className="homework-details" id={detailId}>
             <section className="homework-response"><h4>Ответ студента</h4>{Object.values(info).some(value => label(value)) ? render(info) : <p className="homework-muted">Текст ответа не добавлен.</p>}</section>
             <section><h4>Файл студента</h4>{attachments(item.source, true)}</section>
             <section><h4>Задание</h4>{attachments(item.source, false)}</section>
             <section className="homework-teacher-response">{selectable || responseDraft ? <ResponseEditor item={item} name={workLabel} disabled={locked} readOnly={!selectable} draft={responseDraft ?? { comment: label(item.source.comment), mark: item.mark === null ? '' : String(item.mark) }} onChange={next => setResponseDrafts(previous => ({ data: responseContext, values: { ...(previous?.data === responseContext ? previous.values : {}), [item.key]: next } }))} onSave={(mark, response) => saveGrades([item], mark, response)}/> : <><h4>Ответ преподавателя</h4><p className={label(item.source.comment) ? undefined : 'homework-muted'}>{label(item.source.comment) || 'Ответ преподавателя не добавлен.'}</p></>}</section>
-          </div></td></tr>}
-        </Fragment>;
-      })}</tbody></table></div>
+          </div></td></tr>;
+        }}/></div>
       {pageCount > 1 && <div className="homework-pagination"><span>{(currentPage - 1) * pageSize + 1}–{Math.min(currentPage * pageSize, filtered.length)} из {filtered.length}</span><label>Строк<select aria-label="Строк домашних работ на странице" value={pageSize} disabled={locked} onChange={event => { setPageSize(Number(event.target.value)); setPage(1); }}>{[25, 50, 100].map(size => <option key={size} value={size}>{size}</option>)}</select></label><button type="button" className="button secondary" aria-label="Предыдущая страница домашних работ" disabled={locked || currentPage === 1} onClick={() => setPage(currentPage - 1)}>Назад</button><span>{currentPage} / {pageCount}</span><button type="button" className="button secondary" aria-label="Следующая страница домашних работ" disabled={locked || currentPage === pageCount} onClick={() => setPage(currentPage + 1)}>Далее</button></div>}
     </>}
   </div>;

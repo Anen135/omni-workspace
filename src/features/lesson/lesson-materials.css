@@ -1,0 +1,30 @@
+.live-workspace .lesson-workspace .lesson-banner.lesson-overview,
+.lesson-banner.lesson-overview { flex-wrap: wrap; }
+.lesson-overview .lesson-description { flex: 1; min-width: 0; }
+.lesson-overview .lesson-description h2 { overflow-wrap: anywhere; }
+.lesson-overview-controls { width: 100%; border-top: 1px solid var(--border, #e7e9f2); padding-top: 16px; display: flex; gap: 12px; flex-wrap: wrap; align-items: start; }
+.lesson-estimate { display: grid; gap: 6px; margin-left: auto; text-align: right; }
+.lesson-estimate > span { color: var(--muted, #697386); font-size: 12px; }
+.lesson-estimate > strong { color: var(--text, #192132); font-size: 20px; font-weight: 600; white-space: nowrap; }
+.lesson-theme-embedded { min-width: 0; flex: 1 1 360px; }
+.lesson-theme-toolbar { display: flex; align-items: center; gap: 12px; }
+.lesson-theme-embedded form { margin-top: 14px; }
+.lesson-workspace .lesson-theme-editor.lesson-theme-embedded form { padding: 0; }
+.lesson-materials-dialog { width: min(980px, calc(100% - 32px)); max-height: 85dvh; padding: 0; overflow: auto; }
+.lesson-materials-heading { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; }
+.lesson-materials-dialog > .lesson-materials-heading { padding: 18px 20px; border-bottom: 1px solid var(--border, #e7e9f2); }
+.lesson-materials-dialog h2 { font-size: 20px; }
+.lesson-materials-body { padding: 20px; display: grid; gap: 24px; }
+.lesson-materials-body > section { min-width: 0; }
+.lesson-materials-body h3 { font-size: 16px; margin: 0 0 8px; }
+.lesson-materials-body h4 { font-size: 13px; margin: 18px 0 8px; }
+.lesson-materials-body p { font-size: 13px; line-height: 1.6; }
+.lesson-materials-body .remote-data { padding-inline: 0; }
+.lesson-materials-body .method-cards { margin-top: 14px; }
+.lesson-prospective-materials { border-top: 1px solid var(--border, #e7e9f2); padding-top: 22px; }
+.lesson-materials-help { color: var(--muted, #697386); margin-top: 8px; }
+@media (max-width: 760px) {
+  .lesson-estimate { width: 100%; text-align: left; margin-left: 0; }
+  .lesson-materials-body { padding: 16px; }
+  .lesson-materials-heading .button { white-space: normal; }
+}

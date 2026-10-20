@@ -22,7 +22,7 @@
 .students-page .students-table td:first-child { min-width: 220px; }
 .students-page .students-table tr:last-child td { border-bottom: 0; }
 .students-page .students-table tbody tr:hover { background: var(--bg); }
-.students-page .students-table .students-name { padding: 3px 0; color: var(--purple); text-align: left; font: inherit; font-weight: 500; line-height: 1.6; }
+.students-page .students-table .students-name { display: inline-flex; align-items: center; gap: 10px; padding: 3px 0; color: var(--purple); text-align: left; font: inherit; font-weight: 500; line-height: 1.6; }
 .students-page .students-name:disabled { color: var(--text); cursor: default; }
 .students-page .students-numeric { font-variant-numeric: tabular-nums; }
 .students-page .students-missing { color: var(--muted); }

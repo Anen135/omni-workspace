@@ -1,3 +1,4 @@
+import { createRequestQueue, type RequestOptions } from './request-queue';
 import { desktopRequest, isDesktop } from './desktop-client';
 import { extensionRequest, isExtension } from './extension-client';
 export type RemoteRecord = Record<string, unknown>;
@@ -13,7 +14,14 @@ export type RemoteLesson = { account: Account; presents: unknown; materials: Sec
 export class ConnectionError extends Error {
   constructor(public code: string, message: string) { super(message); }
 }
-export async function omniRequest<Result>(action: string, input = {}): Promise<Result> {
+const requestQueue = createRequestQueue();
+export function invalidatePendingOmniRequests() {
+  requestQueue.invalidate(new ConnectionError('ACCOUNT_CHANGED', 'Сессия изменилась. Загрузите актуальные данные.'));
+}
+export function omniRequest<Result>(action: string, input = {}, options: RequestOptions = {}): Promise<Result> {
+  return requestQueue.enqueue(() => dispatchOmniRequest<Result>(action, input), options);
+}
+async function dispatchOmniRequest<Result>(action: string, input = {}): Promise<Result> {
   if (isDesktop() || isExtension()) {
     try { return await (isExtension() ? extensionRequest<Result>(action, input) : desktopRequest<Result>(action, input)); }
     catch (error) { throw new ConnectionError((error as { code?: string }).code || 'DESKTOP_ERROR', error instanceof Error ? error.message : 'Ошибка подключения.'); }

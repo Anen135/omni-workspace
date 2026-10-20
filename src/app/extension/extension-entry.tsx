@@ -6,9 +6,14 @@ import { createPoller, type PollOutcome } from './poller';
 import styles from '../../styles/styles.css?inline';
 import pages from '../../styles/pages.css?inline';
 import help from '../../components/ui/help.css?inline';
+import averageGrade from '../../components/ui/average-grade.css?inline';
 import preview from '../../components/files/file-preview.css?inline';
+import table from '../../components/data/table.css?inline';
+import rewardAllocation from '../../features/lesson/reward-allocation.css?inline';
+import lessonMaterials from '../../features/lesson/lesson-materials.css?inline';
 import live from '../live.css?inline';
 import workspace from '../workspace.css?inline';
+import navigation from '../components/workspace-navigation.css?inline';
 import login from '../../features/auth/login.css?inline';
 import schedule from '../../features/schedule/schedule.css?inline';
 import materials from '../../features/materials/teaching-materials.css?inline';
@@ -68,7 +73,7 @@ function start() {
     host = document.createElement('div'); host.id = hostId;
     const shadow = host.attachShadow({ mode: 'open' });
     const style = document.createElement('style');
-    style.textContent = `:host{all:initial;display:block;position:fixed;inset:0;z-index:2147483647;overflow:auto;isolation:isolate;color-scheme:light} ${styles}\n${help}\n${pages}\n${live}\n${workspace}\n${login}\n${schedule}\n${materials}\n${homework}\n${students}\n${dossier}\n${income}\n${preview}\n${searchableSelect}\n@media print{:host{position:static!important;overflow:visible!important;height:auto!important}}`;
+    style.textContent = `:host{all:initial;display:block;position:fixed;inset:0;z-index:2147483647;overflow:auto;isolation:isolate;color-scheme:light} ${styles}\n${help}\n${pages}\n${live}\n${workspace}\n${navigation}\n${login}\n${schedule}\n${materials}\n${homework}\n${students}\n${dossier}\n${income}\n${preview}\n${table}\n${averageGrade}\n${rewardAllocation}\n${searchableSelect}\n${lessonMaterials}\n@media print{:host{position:static!important;overflow:visible!important;height:auto!important}}`;
     const container = document.createElement('div'); container.id = 'root';
     shadow.append(style);
     if (warning) {

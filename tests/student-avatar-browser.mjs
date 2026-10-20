@@ -8,6 +8,7 @@ import React, { useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { StudentTable } from '/src/features/lesson/StudentTable.tsx';
 import { HomeworkTable } from '/src/features/homework/HomeworkTable.tsx';
+import { StudentsPage } from '/src/features/students/StudentsPage.tsx';
 import '/src/styles/styles.css';
 import '/src/app/workspace.css';
 function Fixture() {
@@ -27,6 +28,9 @@ function Fixture() {
   return <div className="live-workspace">
     <section id="lesson"><StudentTable items={students} busy={false} onOpen={() => { window.studentOpened = true; }} studentPhotos={photos}/></section>
     <section id="homework"><HomeworkTable section={{ data: [], error: null }} items={homework} render={value => value.answer_text} studentPhotos={photos}/></section>
+    <section id="students"><StudentsPage groupsSection={{ data: [], error: null }} groups={[{ id_tgroups: 1, name_tgroups: 'Fixture group' }]}
+      groupId="1" groupName="Fixture group" studentsSection={{ data: students, error: null }} busy={false} studentPhotos={photos}
+      onGroupPick={() => {}} onOpen={() => { window.rosterStudentOpened = true; }} onRefresh={() => {}}/></section>
   </div>;
 }
 createRoot(document.getElementById('root')).render(<Fixture/>);
@@ -57,7 +61,7 @@ try {
   });
   await page.route('**/student-avatar-fixture.html', route => route.fulfill({ contentType: 'text/html', body: '<html><div id="root"></div><script type="module" src="/student-avatar-fixture.tsx"></script></html>' }));
   await page.goto('http://127.0.0.1:5199/student-avatar-fixture.html');
-  for (const section of ['#lesson', '#homework']) {
+  for (const section of ['#lesson', '#homework', '#students']) {
     const row = name => page.locator(section + ' tbody tr').filter({ hasText: name });
     const image = row('Alex One').locator('.student-avatar img');
     await image.waitFor();
@@ -77,6 +81,8 @@ try {
   }
   await page.locator('#lesson .student-name').filter({ hasText: 'Alex One' }).click();
   assert.equal(await page.evaluate(() => window.studentOpened), true);
+  await page.locator('#students .students-name').filter({ hasText: 'Alex One' }).click();
+  assert.equal(await page.evaluate(() => window.rosterStudentOpened), true);
   const preview = page.locator('#homework tbody tr').filter({ hasText: 'Alex One' }).locator('.homework-preview-button');
   await preview.hover();
   await page.locator('.homework-quick-preview').waitFor();
@@ -86,7 +92,7 @@ try {
   await page.evaluate(() => window.setAvatarPhoto('/fixtures/broken.png'));
   await page.waitForFunction(() => [...document.querySelectorAll('tbody tr')].filter(row => row.textContent.includes('Alex One')).every(row => !row.querySelector('.student-avatar img')));
   await page.evaluate(() => window.setAvatarPhoto('/fixtures/good.png'));
-  for (const section of ['#lesson', '#homework']) {
+  for (const section of ['#lesson', '#homework', '#students']) {
     const image = page.locator(section + ' tbody tr').filter({ hasText: 'Alex One' }).locator('.student-avatar img');
     await image.waitFor();
     await image.evaluate(img => img.decode());
@@ -95,7 +101,7 @@ try {
   assert.equal(photoRequests.every(request => !request.headers.referer), true, 'avatar requests omit referrers');
   assert.deepEqual(externalRequests, []);
   assert.deepEqual(errors, []);
-  console.log('student-avatar-browser: PASS (both tables, validated ID joins, own photo_pas, fallback/reset, preview, no referrers)');
+  console.log('student-avatar-browser: PASS (lesson/homework/student roster, validated ID joins, own photo_pas, fallback/reset, preview, no referrers)');
 } finally {
   await browser?.close();
   await server.close();

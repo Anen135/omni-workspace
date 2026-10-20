@@ -312,3 +312,9 @@
 .live-workspace .topbar-actions .act-as:focus-within { outline: 3px solid #b8a9f0; outline-offset: 3px; }
 .live-workspace .topbar-actions .act-as:has(select:disabled) { opacity: .5; cursor: wait; }
 .live-workspace .topbar-actions .act-as select:disabled { cursor: wait; }
+
+.live-workspace .lesson-workspace .lesson-students .lesson-selectable th:first-child { width: 44px; min-width: 44px; }
+.live-workspace .lesson-workspace .lesson-students .lesson-selectable th:nth-child(2) { min-width: 210px; }
+.live-workspace .lesson-workspace .lesson-students .lesson-selectable th:nth-child(3) { min-width: 170px; }
+.live-workspace .lesson-workspace .lesson-students .lesson-selectable th:nth-child(4),
+.live-workspace .lesson-workspace .lesson-students .lesson-selectable th:nth-child(5) { min-width: 110px; }

@@ -1,0 +1,14 @@
+.reward-allocation > p { margin: 10px 0; }
+.reward-allocation-options { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; margin: 14px 0; }
+.reward-allocation-options > label { display: flex; flex-direction: column; gap: 5px; }
+.reward-allocation-options select, .reward-allocation-options input[type="number"] { min-height: 36px; max-width: 100%; }
+.reward-allocation-options input[type="number"] { width: 100px; }
+.reward-allocation-options > .reward-allocation-replace { flex-direction: row; align-items: center; max-width: 420px; }
+.reward-allocation-replace input { flex-shrink: 0; }
+.reward-allocation-preview { margin-top: 14px; }
+.reward-allocation-preview td:last-child { min-width: 220px; white-space: normal; }
+.reward-allocation-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 14px; }
+@media (max-width: 600px) {
+  .reward-allocation .panel-heading { align-items: start; flex-direction: column; gap: 10px; }
+  .reward-allocation-options > label { width: 100%; }
+}
