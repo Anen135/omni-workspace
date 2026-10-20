@@ -46,6 +46,12 @@ try {
   await page.locator('.connected-badge').waitFor();
   assert.equal(await page.locator('.lesson-banner h2').innerText(), 'Тема из записи посещения');
   assert.equal(await page.getByRole('status', { name: 'Подключено к Omni' }).locator('svg').count(), 1);
+  const refreshIcon = page.getByRole('button', { name: 'Обновить', exact: true });
+  assert.equal(await refreshIcon.innerText(), '', 'header refresh has no visible caption');
+  assert.equal(await refreshIcon.getAttribute('title'), 'Обновить данные Omni');
+  assert.equal(await page.locator('.act-as > span').count(), 0, 'teacher caption is replaced by an icon and hover tip');
+  assert.match(await page.locator('.act-as').getAttribute('title'), /Работаю от имени: Тестовый преподаватель/);
+  assert.equal(await page.locator('.act-as select').evaluate(node => getComputedStyle(node).opacity), '0');
   const sidebar = page.locator('.sidebar');
   const mainLeft = await page.locator('main').evaluate(node => node.getBoundingClientRect().left);
   assert.equal(await sidebar.evaluate(node => node.getBoundingClientRect().width), 72);
