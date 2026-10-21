@@ -1,16 +1,44 @@
 {
   "manifest_version": 3,
-  "name": "Omni Workspace — Beta",
-  "version": "0.3.0.6",
-  "version_name": "0.3.0-beta.6",
+  "name": "Omni Workspace",
+  "version": "1.0.0",
+  "version_name": "1.0.0",
   "description": "Локальный интерфейс преподавателя. Вход и данные через официальную вкладку Omni.",
   "minimum_chrome_version": "120",
-  "permissions": ["scripting", "storage"],
-  "host_permissions": ["https://omni.top-academy.ru/*", "https://fs.top-academy.ru/*", "https://storage.yandexcloud.net/top-academy-services-omni/*", "https://storage.yandexcloud.net/top-academy-services-msapi/*"],
-  "background": { "service_worker": "background.js", "type": "module" },
-  "content_scripts": [{ "matches": ["https://omni.top-academy.ru/*"], "js": ["content.js"], "run_at": "document_idle", "all_frames": false, "world": "ISOLATED" }],
-  "action": { "default_title": "Открыть Omni Workspace", "default_icon": "icon.png" },
-  "icons": { "128": "icon.png" },
+  "permissions": [
+    "scripting",
+    "storage"
+  ],
+  "host_permissions": [
+    "https://omni.top-academy.ru/*",
+    "https://fs.top-academy.ru/*",
+    "https://storage.yandexcloud.net/top-academy-services-omni/*",
+    "https://storage.yandexcloud.net/top-academy-services-msapi/*"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://omni.top-academy.ru/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_idle",
+      "all_frames": false,
+      "world": "ISOLATED"
+    }
+  ],
+  "action": {
+    "default_title": "Открыть Omni Workspace",
+    "default_icon": "icon.png"
+  },
+  "icons": {
+    "128": "icon.png"
+  },
   "content_security_policy": {
     "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'none'; worker-src 'self'; base-uri 'none';"
   }
