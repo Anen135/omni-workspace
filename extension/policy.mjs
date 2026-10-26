@@ -1,6 +1,7 @@
 import { validateInput } from '../server/bridge-protocol.mjs';
+import { validateDraftBufferRequest } from './draft-buffer.mjs';
 export const officialOrigin = 'https://omni.top-academy.ru';
-const actions = new Set(['connect', 'status', 'snapshot', 'schedule-range', 'lesson', 'student', 'group', 'switch-teacher', 'materials-catalog', 'method-package', 'teacher-dossier', 'set-attendance', 'lesson-themes', 'set-lesson-theme', 'set-lesson-mark', 'set-lesson-reward', 'set-homework-marks']);
+const actions = new Set(['connect', 'status', 'snapshot', 'homework-queue', 'schedule-range', 'lesson', 'student', 'group', 'switch-teacher', 'materials-catalog', 'method-package', 'teacher-dossier', 'set-attendance', 'lesson-themes', 'set-lesson-theme', 'set-lesson-mark', 'set-lesson-reward', 'set-homework-marks']);
 export function officialUrl(value) {
   try { const u = new URL(value); return u.origin === officialOrigin && !u.username && !u.password; } catch { return false; }
 }
@@ -12,6 +13,11 @@ export function trustedSender(sender, id, pageUrl) {
   try { const url = new URL(sender.url); return url.href === pageUrl && url.protocol === 'chrome-extension:' && url.host === id && url.pathname === '/index.html'; } catch { return false; }
 }
 export function validateMessage(message) {
+  if (message?.action === 'draft-buffer') {
+    if (Object.keys(message).some(key => !['action', 'input'].includes(key))) throw new Error('Invalid draft buffer message.');
+    validateDraftBufferRequest(message.input);
+    return;
+  }
   if (!message || typeof message !== 'object' || Array.isArray(message) || Object.keys(message).some(key => !['action', 'input'].includes(key))) throw new Error('Некорректная команда.');
   if (JSON.stringify(message).length > (message.action === 'set-homework-marks' ? 65536 : message.action === 'set-attendance' ? 16384 : 8192)) throw new Error('Слишком большой запрос.');
   if (message.action === 'capabilities' || message.action === 'switch-account') {

@@ -1,10 +1,15 @@
 import { lazy, Suspense, useEffect, useState } from 'react';
+import { ColorThemeProvider } from './ColorTheme';
 import { LiveWorkspace } from './LiveWorkspace';
 import { isDesktop } from '../services/desktop-client';
 
 const DemoApp = lazy(() => import('../demo/DemoApp'));
 
 export function Workspace() {
+  return <ColorThemeProvider><WorkspaceContent/></ColorThemeProvider>;
+}
+
+function WorkspaceContent() {
   const [demo, setDemo] = useState(() => import.meta.env.MODE !== 'extension' && location.hash === '#demo');
   useEffect(() => {
     if (import.meta.env.MODE === 'extension') return;

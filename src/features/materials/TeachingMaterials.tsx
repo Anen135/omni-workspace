@@ -12,8 +12,8 @@ type MethodPackage = { account: { id: string }; materials: Section; themes: Sect
 type Filter = { form?: string; direction?: string };
 const empty: Section = { data: null, error: null };
 
-export function TeachingMaterials({ accountId, disabled, onConnectionError }: {
-  accountId: string; disabled: boolean; onConnectionError: (reason: unknown) => void;
+export function TeachingMaterials({ accountId, disabled, onConnectionError, active = true, refreshKey }: {
+  accountId: string; disabled: boolean; active?: boolean; refreshKey?: unknown; onConnectionError: (reason: unknown) => void;
 }) {
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [pack, setPack] = useState<MethodPackage | null>(null);
@@ -41,22 +41,29 @@ export function TeachingMaterials({ accountId, disabled, onConnectionError }: {
       if (reason instanceof ConnectionError && ['AUTH_REQUIRED', 'ACCOUNT_CHANGED', 'CHALLENGE'].includes(reason.code)) onConnectionError(reason);
     } finally { if (id === requestId.current) setBusy(false); }
   }
-  function loadCatalog(filter: Filter) {
+  function loadCatalog(filter: Filter, includeMetadata = !catalog || !!catalog.forms.error || !!catalog.types.error) {
     setSpec(''); setPack(null); setSearch(''); setType('');
     setCatalog(previous => previous ? { ...previous, directions: empty, packages: empty } : null);
-    return run<Catalog>('materials-catalog', filter, setCatalog);
+    return run<Catalog>('materials-catalog', { ...filter, ...(includeMetadata ? {} : { includeMetadata: false }) }, result => setCatalog(previous => includeMetadata || !previous ? result : { ...result, forms: previous.forms, types: previous.types }));
   }
   function loadPackage(nextSpec: string) {
     setSpec(nextSpec); setPack(null); setSearch(''); setType('');
     if (nextSpec) return run<MethodPackage>('method-package', { spec: nextSpec }, setPack);
   }
-  useEffect(() => () => { requestId.current++; initialRequested.current = false; }, []);
+  useEffect(() => () => { requestId.current++; }, []);
   useEffect(() => {
-    if (!disabled && !initialRequested.current) {
-      initialRequested.current = true;
-      void loadCatalog({});
-    }
-  }, [disabled]);
+    requestId.current++; initialRequested.current = false;
+    setCatalog(null); setPack(null); setSpec(''); setForm(''); setDirection(''); setBusy(false); setError('');
+  }, [refreshKey]);
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (active && !disabled && !initialRequested.current) {
+        initialRequested.current = true;
+        void loadCatalog({});
+      }
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [active, disabled, refreshKey]);
 
   const locked = busy || disabled;
   const packages = rows(catalog?.packages.data);
@@ -69,7 +76,7 @@ export function TeachingMaterials({ accountId, disabled, onConnectionError }: {
   const sectionErrors = [catalog?.forms, catalog?.directions, catalog?.packages, catalog?.types, pack?.materials, pack?.themes].flatMap(section => section?.error ? [section.error] : []);
 
   return <section className="panel teaching-materials" aria-label="Методички для подготовки">
-    <div className="panel-heading"><div className="help-heading"><h2>Методички для подготовки</h2><HelpTip label="О разделе «Методички для подготовки»">Выберите методпакет; форма обучения и направление необязательны. Текущий урок и список учеников для подготовки не нужны.</HelpTip></div><button className="button secondary" disabled={locked} onClick={() => void (spec ? loadPackage(spec) : loadCatalog({ ...(form ? { form } : {}), ...(direction ? { direction } : {}) }))}><RefreshCw size={15}/>Обновить методички</button></div>
+    <div className="panel-heading"><div className="help-heading"><h2>Методички для подготовки</h2><HelpTip label="О разделе «Методички для подготовки»">Выберите методпакет; форма обучения и направление необязательны. Текущий урок и список учеников для подготовки не нужны.</HelpTip></div><button className="button secondary" disabled={locked} onClick={() => void (spec ? loadPackage(spec) : loadCatalog({ ...(form ? { form } : {}), ...(direction ? { direction } : {}) }, true))}><RefreshCw size={15}/>Обновить методички</button></div>
     <div className="method-filters">
       <SearchableSelect label="Форма обучения" value={form} disabled={locked || !catalog} placeholder="Все формы обучения"
         options={rows(catalog?.forms.data).map(item => ({ value: label(item.id_form), label: label(item.name_form) }))}

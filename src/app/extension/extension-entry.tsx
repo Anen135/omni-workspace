@@ -3,6 +3,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { Workspace } from '../Workspace';
 import { extensionRequest, onOfficialLoginRequired } from '../../services/extension-client';
 import { createPoller, type PollOutcome } from './poller';
+import theme from '../../styles/theme.css?inline';
 import styles from '../../styles/styles.css?inline';
 import pages from '../../styles/pages.css?inline';
 import help from '../../components/ui/help.css?inline';
@@ -73,12 +74,12 @@ function start() {
     host = document.createElement('div'); host.id = hostId;
     const shadow = host.attachShadow({ mode: 'open' });
     const style = document.createElement('style');
-    style.textContent = `:host{all:initial;display:block;position:fixed;inset:0;z-index:2147483647;overflow:auto;isolation:isolate;color-scheme:light} ${styles}\n${help}\n${pages}\n${live}\n${workspace}\n${navigation}\n${login}\n${schedule}\n${materials}\n${homework}\n${students}\n${dossier}\n${income}\n${preview}\n${table}\n${averageGrade}\n${rewardAllocation}\n${searchableSelect}\n${lessonMaterials}\n@media print{:host{position:static!important;overflow:visible!important;height:auto!important}}`;
+    style.textContent = `:host{all:initial;display:block;position:fixed;inset:0;z-index:2147483647;overflow:auto;isolation:isolate;color-scheme:light} ${styles}\n${help}\n${pages}\n${live}\n${workspace}\n${navigation}\n${login}\n${schedule}\n${materials}\n${homework}\n${students}\n${dossier}\n${income}\n${preview}\n${table}\n${averageGrade}\n${rewardAllocation}\n${searchableSelect}\n${lessonMaterials}\n${theme}\n@media print{:host{position:static!important;overflow:visible!important;height:auto!important}}`;
     const container = document.createElement('div'); container.id = 'root';
     shadow.append(style);
     if (warning) {
       const alert = document.createElement('div'); alert.setAttribute('role', 'alert');
-      alert.style.cssText = 'position:fixed;bottom:16px;left:16px;right:16px;z-index:200;background:#fffaef;border:1px solid #efdbb2;border-radius:8px;padding:14px 18px;color:#805d20;font:13px/1.6 sans-serif;display:flex;align-items:center;gap:16px';
+      alert.style.cssText = 'position:fixed;bottom:16px;left:16px;right:16px;z-index:200;background:var(--omni-warning-soft,#fffaef);border:1px solid var(--omni-warning-border,#efdbb2);border-radius:8px;padding:14px 18px;color:var(--omni-warning-text,#805d20);font:13px/1.6 sans-serif;display:flex;align-items:center;gap:16px';
       const text = document.createElement('span'); text.textContent = warning;
       const dismiss = document.createElement('button'); dismiss.textContent = 'Закрыть'; dismiss.onclick = () => alert.remove();
       alert.append(text, dismiss); shadow.append(alert);

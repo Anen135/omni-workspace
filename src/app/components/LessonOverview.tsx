@@ -1,4 +1,4 @@
-import { BookOpen, Save } from 'lucide-react';
+import { BookOpen, Save, Upload } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { DatePickerPopover } from '../../components/DatePickerPopover';
 import { label, rows, type Account, type RemoteRecord } from '../../services/omni-client';
@@ -14,8 +14,8 @@ export function LessonBanner({ account, fetchedAt, date, students, theme, draft,
   return <section className="lesson-banner lesson-overview"><span className="lesson-icon"><BookOpen size={25}/></span><div className="lesson-description"><div className="lesson-meta"><span>РЕАЛЬНЫЕ ДАННЫЕ</span><span>{date}</span></div><h2>{draft?.theme?.theme || theme || (students.length ? 'Текущее занятие' : 'Omni не вернул текущую пару')}</h2><div className="lesson-time">Обновлено {new Date(fetchedAt).toLocaleTimeString('ru-RU')} · {account.branch}{draft?.theme && ' · тема в черновике'}</div></div>{estimate && <aside className="lesson-estimate" title={(estimate.initial ? 'Расчёт по начальным ставкам. ' : 'Расчёт по сохранённым ставкам. ') + 'Измените ставки в разделе «Доход». Это приблизительная оценка, а не подтверждённая выплата Omni.'}><span>{estimate.initial ? 'Начальные ставки' : 'Оценка за занятие'}</span><strong>{estimate.amount === null || !Number.isFinite(estimate.amount) ? 'Нет данных' : '≈ ' + new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', maximumFractionDigits: 2 }).format(estimate.amount)}</strong></aside>}{children && <div className="lesson-overview-controls">{children}</div>}</section>;
 }
 
-export function LessonSaveBar({ busy, saving, draft, hasTheme, unavailable, onSave, onDiscard }: {
-  busy: boolean; saving: boolean; draft?: LessonDraft; hasTheme: boolean; unavailable: string;
+export function LessonSaveBar({ busy, saving, draft, hasTheme, unavailable, onSave, onDiscard, pendingUpload = false }: {
+  pendingUpload?: boolean; busy: boolean; saving: boolean; draft?: LessonDraft; hasTheme: boolean; unavailable: string;
   onSave: () => void; onDiscard: () => void;
 }) {
   if (!draft) return null;
@@ -28,7 +28,7 @@ export function LessonSaveBar({ busy, saving, draft, hasTheme, unavailable, onSa
       {needsLesson ? <HelpTip label="Как выбрать доступное занятие">{unavailable}</HelpTip> : unavailable && <span className="lesson-save-reason">{unavailable}</span>}
       <button className="text-button lesson-discard" disabled={busy} onClick={onDiscard}>Отменить черновик</button>
     </div>
-    <div className="lesson-save-actions"><button className="button primary lesson-save-icon" aria-label="Сохранить" title={saving ? 'Сохранение урока…' : unavailable || (!hasTheme && !draft.theme ? 'Добавьте тему в черновик, чтобы сохранить урок.' : 'Сохранить')} disabled={!canSave} onClick={onSave}><Save size={20} aria-hidden="true"/></button></div>
+    <div className="lesson-save-actions"><button className="button primary lesson-save-icon" aria-label="Сохранить" title={saving ? 'Сохранение урока…' : unavailable || (!hasTheme && !draft.theme ? 'Добавьте тему в черновик, чтобы сохранить урок.' : pendingUpload ? 'Повторить отправку сохранённого черновика' : 'Сохранить')} disabled={!canSave} onClick={onSave}>{pendingUpload ? <Upload size={20} aria-hidden="true"/> : <Save size={20} aria-hidden="true"/>}</button></div>
   </div>;
 }
 

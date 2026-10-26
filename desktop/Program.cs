@@ -26,7 +26,7 @@ internal sealed class Workspace : Form {
     readonly WebView2 omni = new WebView2 { Dock = DockStyle.Fill };
     readonly Form login = new Form { Text = "Официальный вход — omni.top-academy.ru", Width = 1000, Height = 780 };
     readonly JavaScriptSerializer json = new JavaScriptSerializer { MaxJsonLength = 16 * 1024 * 1024 };
-    readonly HashSet<string> actions = new HashSet<string> { "connect", "status", "snapshot", "schedule-range", "lesson", "group", "student", "materials-catalog", "method-package", "teacher-dossier", "file-preview" };
+    readonly HashSet<string> actions = new HashSet<string> { "connect", "status", "snapshot", "homework-queue", "schedule-range", "lesson", "group", "student", "materials-catalog", "method-package", "teacher-dossier", "file-preview" };
     readonly Dictionary<string, TaskCompletionSource<object>> pending = new Dictionary<string, TaskCompletionSource<object>>();
     string agent;
     bool initialized;

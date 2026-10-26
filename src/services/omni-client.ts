@@ -1,4 +1,5 @@
 import { createRequestQueue, type RequestOptions } from './request-queue';
+export type { RequestOptions } from './request-queue';
 import { desktopRequest, isDesktop } from './desktop-client';
 import { extensionRequest, isExtension } from './extension-client';
 export type RemoteRecord = Record<string, unknown>;

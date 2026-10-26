@@ -1,3 +1,4 @@
+import { ColorThemeToggle } from '../app/ColorTheme';
 import React, { useEffect, useRef, useState } from 'react';
 import { ArrowRight, BookOpen, Check, CheckCheck, ChevronRight, CircleHelp, ClipboardCheck, Clock3, Copy, Download, FileText, FolderOpen, GraduationCap, History, LayoutDashboard, Menu, MessageSquare, Search, ShieldCheck, Sparkles, Upload, Users, X } from 'lucide-react';
 import { materials, previousLesson, sampleCode, students, type Entry, type Student } from './data';
@@ -78,7 +79,7 @@ export default function DemoApp() {
       <div className="sidebar-bottom"><button className={view === 'help' ? 'selected' : ''} onClick={() => navigate('help')}><CircleHelp size={18}/>Справка</button><div className="profile"><span className="avatar purple">П</span><div><strong>Преподаватель</strong><small>Демонстрационный профиль</small></div></div></div>
     </aside>
     <main>
-      <header className="topbar"><div className="breadcrumb"><button className="icon mobile-toggle" aria-label="Открыть меню" onClick={() => setMobileNav(!mobileNav)}><Menu size={20}/></button><span>Рабочее пространство</span><ChevronRight size={14}/><strong>{{ lesson: 'Мой урок', homework: 'Проверка ДЗ', materials: 'Материалы', history: 'История уроков', help: 'Справка' }[view]}</strong></div><span className="demo-badge"><span/>Демо · без связи с Omni</span></header>
+      <header className="topbar"><div className="breadcrumb"><button className="icon mobile-toggle" aria-label="Открыть меню" onClick={() => setMobileNav(!mobileNav)}><Menu size={20}/></button><span>Рабочее пространство</span><ChevronRight size={14}/><strong>{{ lesson: 'Мой урок', homework: 'Проверка ДЗ', materials: 'Материалы', history: 'История уроков', help: 'Справка' }[view]}</strong></div><div className="topbar-actions"><ColorThemeToggle/><span className="demo-badge"><span/>Демо · без связи с Omni</span></div></header>
       <div className="page-content">
         <div className="page-heading"><div>{view !== 'help' && <div className="eyebrow">ВТОРНИК, 15 СЕНТЯБРЯ · ДЕМО-УРОК</div>}<h1>{view === 'lesson' ? 'Хороший день для новых знаний' : view === 'homework' ? 'Обратная связь, которая помогает' : view === 'materials' ? 'Всё, что вы дали ученикам' : view === 'history' ? 'Уроки остаются с вами' : 'Справка'}<span className="heading-dot">.</span></h1></div></div>
         {storageError && <div className="warning" role="alert">Не удалось прочитать или сохранить часть локальных данных. Сделайте экспорт урока; проверьте разрешения и свободное место браузера.</div>}

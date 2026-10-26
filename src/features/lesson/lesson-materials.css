@@ -7,7 +7,7 @@
 .lesson-estimate > span { color: var(--muted, #697386); font-size: 12px; }
 .lesson-estimate > strong { color: var(--text, #192132); font-size: 20px; font-weight: 600; white-space: nowrap; }
 .lesson-theme-embedded { min-width: 0; flex: 1 1 360px; }
-.lesson-theme-toolbar { display: flex; align-items: center; gap: 12px; }
+.lesson-theme-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
 .lesson-theme-embedded form { margin-top: 14px; }
 .lesson-workspace .lesson-theme-editor.lesson-theme-embedded form { padding: 0; }
 .lesson-materials-dialog { width: min(980px, calc(100% - 32px)); max-height: 85dvh; padding: 0; overflow: auto; }

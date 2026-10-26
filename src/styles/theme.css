@@ -1,0 +1,130 @@
+/* Shared by the page root and the extension shadow host. Keep light colors in
+   component fallbacks so switching back restores the original palette. */
+:root, :host {
+  color-scheme: light;
+}
+:host {
+  font-family: 'Golos Text', sans-serif;
+  font-size: 13px;
+  font-weight: 400;
+  font-synthesis: none;
+  color: #172033;
+  background: #f7f8fc;
+  --surface: #fff;
+  --bg: #f7f8fc;
+  --text: #172033;
+  --muted: #737b8d;
+  --border: #e5e8f0;
+  --purple: #6d55d8;
+}
+
+:root[data-omni-theme="dark"], :host([data-omni-theme="dark"]) {
+  color-scheme: dark;
+  --omni-background: #13151d;
+  --omni-surface: #1c1f2a;
+  --omni-surface-muted: #242836;
+  --omni-skeleton-highlight: #343a4d;
+  --omni-primary-soft: #302842;
+  --omni-text: #edf0f7;
+  --omni-muted: #adb4c6;
+  --omni-border: #3a4051;
+  --omni-accent-text: #c2adff;
+  --omni-accent-fill: #7956d5;
+  --omni-accent-hover: #6946c3;
+  --omni-focus: #c2adff;
+  --omni-success-soft: #203a31;
+  --omni-success-text: #a0dfbc;
+  --omni-success-border: #3d6854;
+  --omni-warning-soft: #40331f;
+  --omni-warning-text: #f4cf8a;
+  --omni-warning-border: #79613b;
+  --omni-danger-soft: #40272e;
+  --omni-danger-text: #f5b1ba;
+  --omni-danger-border: #78434d;
+  --omni-info-soft: #22364b;
+  --omni-info-text: #a9d0ff;
+  --omni-pink-soft: #402c3e;
+  --omni-pink-text: #f1b6d4;
+  --background: var(--omni-background);
+  --bg: var(--omni-background);
+  --surface: var(--omni-surface);
+  --purple: var(--omni-accent-text);
+  --primary: var(--omni-accent-text);
+  --primary-soft: var(--omni-primary-soft);
+  --text: var(--omni-text);
+  --text-primary: var(--omni-text);
+  --text-secondary: var(--omni-muted);
+  --muted: var(--omni-muted);
+  --border: var(--omni-border);
+  background: var(--background);
+  color: var(--text);
+}
+
+/* The live workspace declares its own light tokens. Rebind them explicitly. */
+:root[data-omni-theme="dark"] .live-workspace,
+:host([data-omni-theme="dark"]) .live-workspace {
+  --background: var(--omni-background);
+  --surface: var(--omni-surface);
+  --purple: var(--omni-accent-text);
+  --primary-soft: var(--omni-primary-soft);
+  --text: var(--omni-text);
+  --muted: var(--omni-muted);
+  --border: var(--omni-border);
+}
+
+/* Accent foregrounds need a different shade from white-on-purple controls. */
+:root[data-omni-theme="dark"] :is(.button.primary, .brand-symbol, .workspace-mark, .grade-buttons button.chosen),
+:host([data-omni-theme="dark"]) :is(.button.primary, .brand-symbol, .workspace-mark, .grade-buttons button.chosen) {
+  background: var(--omni-accent-fill);
+  border-color: var(--omni-accent-fill);
+  color: #fff;
+}
+:root[data-omni-theme="dark"] .button.primary:hover,
+:host([data-omni-theme="dark"]) .button.primary:hover {
+  background: var(--omni-accent-hover);
+  border-color: var(--omni-accent-hover);
+}
+
+/* Browser-default fields otherwise keep a white background in some contexts. */
+:root[data-omni-theme="dark"] :is(input:not([type=checkbox]):not([type=radio]):not([type=range]), select, textarea),
+:host([data-omni-theme="dark"]) :is(input:not([type=checkbox]):not([type=radio]):not([type=range]), select, textarea) {
+  color-scheme: dark;
+}
+:root[data-omni-theme="dark"] :is(.mark-editor input, .date-popover input, .reward-allocation-options input, .reward-allocation-options select),
+:host([data-omni-theme="dark"]) :is(.mark-editor input, .date-popover input, .reward-allocation-options input, .reward-allocation-options select) {
+  background: var(--surface);
+  color: var(--text);
+  border-color: var(--border);
+}
+:root[data-omni-theme="dark"] dialog,
+:host([data-omni-theme="dark"]) dialog {
+  background: var(--surface);
+  color: var(--text);
+}
+:root[data-omni-theme="dark"] dialog::backdrop,
+:host([data-omni-theme="dark"]) dialog::backdrop {
+  background: #080a12b3;
+}
+
+.topbar-actions .color-theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  flex: 0 0 36px;
+  padding: 0;
+  border-radius: 8px;
+  color: var(--muted);
+}
+.topbar-actions .color-theme-toggle:hover {
+  background: var(--primary-soft, #f1edff);
+  color: var(--purple);
+}
+.topbar-actions .color-theme-toggle:focus-visible {
+  outline: 2px solid var(--purple);
+  outline-offset: 2px;
+}
+@media (max-width: 760px) {
+  .topbar-actions .color-theme-toggle { width: 32px; height: 32px; flex-basis: 32px; }
+}

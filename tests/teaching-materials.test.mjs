@@ -57,3 +57,13 @@ test('links reject active schemes and credentials while preserving signed URLs',
 test('empty material responses stay empty', () => {
   for (const value of [null, undefined, [], {}]) assert.deepEqual(materialTopics(value, null), []);
 });
+
+
+test('catalog filter requests omit unchanged forms and material types only with explicit flag', async () => {
+  const calls=[];
+  const result=await loadMaterialsCatalog(async(path,input)=>{calls.push([path,input]);return {data:[],error:null}},{form:'4',includeMetadata:false});
+  assert.deepEqual(calls,[['/bind/get-public-direction',{form:'4'}],['/bind/get-public-spec',{form:'4',arc:0}]]);
+  assert.deepEqual(result.forms,{data:null,error:null});
+  for (const includeMetadata of [true,false]) assert.doesNotThrow(()=>validateInput('materials-catalog',{includeMetadata}));
+  for (const includeMetadata of [null,0,'false',{},[]]) assert.throws(()=>validateInput('materials-catalog',{includeMetadata}),{code:'BAD_INPUT'});
+});

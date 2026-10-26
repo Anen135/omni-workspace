@@ -4,7 +4,7 @@ import { build } from 'esbuild';
 
 const bundle = await build({ entryPoints: ['src/features/dossier/income.ts'], bundle: true, platform: 'node', format: 'esm', write: false });
 const { defaultIncomeConfig, incomeSummary, parseRate, nextPayday, readIncomeConfig, saveIncomeConfig, incomeStorageKey, isMasterclassLabel,
-  incomePeriods, incomeHistoryModel, incomeWeekStart, addIncomeDays, addIncomeMonth } = await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].text).toString('base64')}`);
+  incomePeriods, incomeHistoryModel, incomeWeekStart, addIncomeDays, addIncomeMonth, incomeRequestWeeks, incomeSnapshotWeek, isIncomeDatedWeekSchedule, isIncomeWeekSchedule } = await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].text).toString('base64')}`);
 const lesson = (group, extra = {}) => ({ groups: group, scheduleType: 'planned', name_spec: 'Тестовый предмет', lessons_count: '9', ...extra });
 const schedule = body => ({ dates: { '1': '2026-10-12', '2': '2026-10-13' }, body });
 
@@ -129,6 +129,54 @@ const historyFor = (today, entries = {}, config = defaultIncomeConfig()) => inco
     }
   }
   return { week, schedule: { data: { dates, body }, error: null } };
+});
+
+test('initial income scope covers every non-year metric, including payday/year boundaries, with fewer October reads', () => {
+  for (const today of ['2026-01-01', '2026-01-11', '2026-02-28', '2026-10-14', '2026-12-31']) {
+    for (const payday of [1, 10, 28]) {
+      const config = { ...defaultIncomeConfig(), payday };
+      const weeks = incomeRequestWeeks(today, payday);
+      const model = incomeHistoryModel(historyFor(today, {}, config).filter(entry => weeks.includes(entry.week)), config, today);
+      for (const [name, metric] of Object.entries(model.metrics)) {
+        if (name !== 'yearEarned') assert.equal(metric.complete, true, `${today}/${payday}/${name}`);
+      }
+      assert.deepEqual(incomeRequestWeeks(today, payday, true), incomePeriods(today, payday).weeks);
+    }
+  }
+  assert.equal(incomeRequestWeeks('2026-10-14', 10).length, 14);
+  assert.equal(incomePeriods('2026-10-14', 10).weeks.length, 49);
+});
+
+test('snapshot reuse requires one exact dated week and supports a supplied non-current week', () => {
+  const today = '2026-10-14';
+  const current = historyFor(today).find(entry => entry.week === 0);
+  const previous = historyFor(today).find(entry => entry.week === -2);
+  assert.deepEqual(incomeSnapshotWeek(previous.schedule, today), previous);
+  assert.equal(isIncomeWeekSchedule(current.schedule, today, -1), false);
+  assert.equal(isIncomeWeekSchedule(current.schedule, '2026-10-19', 0), false);
+  assert.equal(incomeSnapshotWeek({ data: { body: {} }, error: null }, today), null);
+  assert.equal(incomeSnapshotWeek({ ...current.schedule, error: 'Unavailable' }, today), null);
+  const dates = current.schedule.data.dates;
+  for (const invalid of [Object.fromEntries(Object.entries(dates).slice(0, 6)), { ...dates, 7: dates[1] }, { ...dates, 7: '2026-02-30' }, { ...dates, 7: '2026-10-19' }]) {
+    assert.equal(incomeSnapshotWeek({ data: { body: {}, dates: invalid }, error: null }, today), null);
+  }
+});
+
+test('incoming partial weeks retain known income and missing days while remaining ineligible for complete caching', () => {
+  const today = '2026-10-14';
+  const partial = { data: schedule({ 1: { 1: lesson('ordinary') } }), error: null };
+  assert.equal(isIncomeDatedWeekSchedule(partial, today, 0), true);
+  assert.equal(isIncomeWeekSchedule(partial, today, 0), false);
+  assert.equal(incomeSnapshotWeek(partial, today), null);
+  const history = historyFor(today).map(entry => entry.week === 0 ? { ...entry, schedule: partial } : entry);
+  const metric = incomeHistoryModel(history, defaultIncomeConfig(), today).metrics.monthPlan;
+  assert.equal(metric.knownTotal, 700);
+  assert.equal(metric.total, null);
+  assert.equal(metric.missingDays, 5);
+  assert.equal(isIncomeDatedWeekSchedule(partial, today, 1), false);
+  for (const dates of [{ 1: '2026-10-12', 2: '2026-10-19' }, { 1: '2026-10-12', 2: '2026-10-12' }, { 1: '2026-02-30' }, {}]) {
+    assert.equal(isIncomeDatedWeekSchedule({ data: { dates, body: partial.data.body }, error: null }, today, 0), false);
+  }
 });
 
 test('income accepts PHP empty-array weeks and keeps September and the closed October payday cycle', () => {

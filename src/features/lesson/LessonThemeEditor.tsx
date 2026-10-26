@@ -52,7 +52,7 @@ export function LessonThemeEditor({ busy, unavailable, currentTheme, draft, onLo
     } catch { if (activeContext.current === context) setBlocked(true); }
   }
   return <section className={(embedded ? 'lesson-theme-embedded' : 'panel') + ' lesson-theme-editor'} aria-label="Тема урока">
-    <div className={embedded ? "lesson-theme-toolbar" : "panel-heading"}><div className="help-heading">{!embedded && <h2>Тема урока</h2>}<HelpTip label="О разделе «Тема урока»" icon={!currentTheme && !draft ? <CircleAlert size={16} aria-hidden="true"/> : undefined}>{!currentTheme && !draft && <>Тема ещё не сохранена. </>}{needsLesson ? unavailable : 'Выберите тему и добавьте её в черновик. Отправка в Omni — по кнопке «Сохранить».'}</HelpTip></div><button className="button secondary" disabled={busy || !!unavailable} onClick={() => void load()}>{data ? 'Обновить список тем' : 'Выбрать тему'}</button></div>
+    <div className={embedded ? "lesson-theme-toolbar" : "panel-heading"}><div className="help-heading">{!embedded && <h2>Тема урока</h2>}<HelpTip label="О разделе «Тема урока»" icon={!currentTheme && !draft ? <CircleAlert size={16} aria-hidden="true"/> : undefined}>{!currentTheme && !draft && <>Тема ещё не сохранена. </>}{needsLesson ? unavailable : 'Выберите тему и добавьте её в черновик. Отправка в Omni — по кнопке «Сохранить».'}</HelpTip></div><button className="button secondary" disabled={busy || !!unavailable} onClick={() => void load()}>{data ? 'Обновить список тем' : 'Выбрать тему'}</button>{selected && onPreviewTheme && <button className="button secondary" type="button" disabled={busy || !!unavailable || !!denied} onClick={() => onPreviewTheme(selected)}>Материалы выбранной темы</button>}</div>
     {!embedded && !data && (draft || currentTheme) && <p className="attendance-help">{draft ? `Тема в черновике: ${draft.theme}` : `Текущая тема: ${currentTheme}`}</p>}
     {unavailable && !needsLesson && <p className="attendance-help">{unavailable}</p>}
     {data && <form onSubmit={event => { event.preventDefault(); void save(); }}>
@@ -65,7 +65,6 @@ export function LessonThemeEditor({ busy, unavailable, currentTheme, draft, onLo
           {!!selected.has_labwork && <label><input type="checkbox" checked={labwork} onChange={event => setLabwork(event.target.checked)}/>Выдать практическую работу</label>}
         </div>}
         {blocked && <p role="status">Перечитайте список тем и проверьте результат перед повторной отправкой.</p>}
-        {selected && onPreviewTheme && <button className="button secondary" type="button" onClick={() => onPreviewTheme(selected)}>Материалы выбранной темы</button>}
         <button className="button primary" type="submit" disabled={blocked || !theme.trim()}>В черновик</button>
       </fieldset>
     </form>}

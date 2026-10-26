@@ -88,7 +88,7 @@ try {
   await page.getByRole('button', { name: 'Досье преподавателя', exact: true }).click();
   const dossier = page.locator('.teacher-dossier');
   const income = dossier.getByRole('region', { name: 'Доходы', exact: true });
-  await income.getByText('Всего заработано с 1 января 2026', { exact: true }).waitFor();
+  await income.getByRole('button', { name: 'Загрузить историю за год', exact: true }).waitFor();
   await income.getByText(/^Загружаем расписание:/).waitFor({ state: 'detached' });
   assert.equal(await income.locator('.dossier-summary-card').filter({ has: page.getByText('Пар в этом месяце', { exact: true }) }).locator('dd').innerText(), '0', 'valid empty schedule weeks produce a real zero count');
   await dossier.getByText('teacher@example.invalid', { exact: true }).waitFor();

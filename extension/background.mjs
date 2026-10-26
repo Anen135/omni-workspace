@@ -1,6 +1,9 @@
 import { officialOrigin, officialUrl, trustedSender, validateMessage } from './policy.mjs';
 import { previewFile } from './files.mjs';
 import { switchTeacherInPage } from './switch-teacher.mjs';
+import { createDraftBuffer } from './draft-buffer.mjs';
+const draftBuffer = createDraftBuffer({ storage: chrome.storage.local, scripting: chrome.scripting });
+const draftStorageReady = chrome.storage.local.setAccessLevel({ accessLevel: 'TRUSTED_CONTEXTS' }).then(() => true, () => false);
 const uiUrl = chrome.runtime.getURL('index.html');
 // Set by extension/build.mjs and stamped on agent.js too. An agent left in a tab's isolated world by
 // an earlier build is never trusted: a mismatch makes the next command inject the bundled one again.
@@ -48,6 +51,10 @@ async function openWorkspace(preferred) {
 chrome.action.onClicked.addListener(tab => { void openWorkspace(tab).catch(() => {}); });
 
 async function dispatch({ action, input = {} }, sender) {
+  if (action === 'draft-buffer') {
+    if (!await draftStorageReady) throw Object.assign(new Error('Could not isolate the private draft buffer.'), { code: 'DRAFT_STORAGE_ERROR' });
+    return draftBuffer(input, sender);
+  }
   const logoutKey = Number.isInteger(sender.tab?.id) ? `logoutWarning:${sender.tab.id}` : '';
   if (action === 'capabilities') {
     if (logoutKey && officialUrl(sender.url) && new URL(sender.url).pathname.startsWith('/login')) await chrome.storage.session.remove(logoutKey);
@@ -177,7 +184,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   try { validateMessage(message); }
   catch (error) { sendResponse({ error: { code: 'BAD_INPUT', message: error.message || 'Некорректная команда расширения.' } }); return false; }
   if (!officialUrl(sender.url) && !['connect', 'capabilities'].includes(message.action)) { sendResponse({ error: { code: 'FORBIDDEN', message: 'Откройте Omni.' } }); return false; }
-  const parallel = ['file-preview', 'capabilities'].includes(message.action);
+  const parallel = ['file-preview', 'capabilities', 'draft-buffer'].includes(message.action);
   const tabId = sender.tab?.id;
   if (!parallel && busy) { sendResponse({ error: { code: 'BUSY', message: 'Дождитесь завершения предыдущего запроса.' } }); return false; }
   if (!parallel) busy = true;

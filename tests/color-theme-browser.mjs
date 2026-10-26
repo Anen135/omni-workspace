@@ -1,0 +1,73 @@
+import assert from 'node:assert/strict';
+import { mkdir } from 'node:fs/promises';
+import { chromium } from 'playwright';
+import { createServer } from 'vite';
+
+const server = await createServer({ configFile: false, server: { host: '127.0.0.1', port: 5196, strictPort: true } });
+let browser;
+try {
+  await server.listen();
+  await mkdir('tmp', { recursive: true });
+  browser = await chromium.launch({ headless: true });
+  const context = await browser.newContext({ colorScheme: 'dark', viewport: { width: 1440, height: 1000 } });
+  await context.route('https://fonts.googleapis.com/**', route => route.abort());
+  // Theme verification uses only the existing fictional demo and a disconnected bridge.
+  await context.route('**/api/omni/**', route => route.fulfill({ json: { connected: false } }));
+  const page = await context.newPage();
+  const errors = [];
+  page.on('pageerror', error => errors.push(error.message));
+  const theme = () => page.locator('html').getAttribute('data-omni-theme');
+  const surface = () => page.locator('.topbar').evaluate(node => getComputedStyle(node).backgroundColor);
+  await page.goto('http://127.0.0.1:5196/#demo');
+  await page.getByRole('button', { name: 'Включить светлую тему', exact: true }).waitFor();
+  assert.equal(await theme(), 'dark', 'initial theme follows system preference');
+  assert.notEqual(await surface(), 'rgb(255, 255, 255)');
+  await page.locator('.help-tip-trigger').first().click();
+  await page.locator('.help-tip-bubble').waitFor();
+  assert.equal(await page.locator('.help-tip-bubble').evaluate(node => getComputedStyle(node).backgroundColor), await surface(), 'portalled tooltip uses the dark surface');
+  await page.keyboard.press('Escape');
+  await page.locator('.student-name').first().click();
+  await page.locator('dialog[open]').waitFor();
+  assert.equal(await page.locator('dialog[open]').evaluate(node => getComputedStyle(node).backgroundColor), await surface(), 'modal uses the dark surface');
+  await page.keyboard.press('Escape');
+  await page.screenshot({ path: 'tmp/color-theme-dark-desktop.png', fullPage: true });
+  await page.emulateMedia({ colorScheme: 'light' });
+  await page.getByRole('button', { name: 'Включить тёмную тему', exact: true }).waitFor();
+  assert.equal(await theme(), 'light', 'system updates apply until a manual choice');
+  assert.equal(await surface(), 'rgb(255, 255, 255)', 'light surface remains unchanged');
+  const toggle = page.getByRole('button', { name: 'Включить тёмную тему', exact: true });
+  await toggle.focus();
+  await page.keyboard.press('Enter');
+  assert.equal(await theme(), 'dark', 'keyboard toggles the theme');
+  assert.equal(await page.getByRole('button', { name: 'Включить светлую тему' }).getAttribute('aria-pressed'), 'true');
+  await page.reload();
+  await page.getByRole('button', { name: 'Включить светлую тему' }).waitFor();
+  assert.equal(await theme(), 'dark', 'explicit choice survives reload with a light system preference');
+  const second = await context.newPage();
+  await second.goto('http://127.0.0.1:5196/#demo');
+  await second.getByRole('button', { name: 'Включить светлую тему' }).click();
+  await page.getByRole('button', { name: 'Включить тёмную тему' }).waitFor();
+  assert.equal(await theme(), 'light', 'theme preference syncs between tabs');
+  await page.getByRole('button', { name: 'Включить тёмную тему' }).click();
+  await page.setViewportSize({ width: 390, height: 844 });
+  assert.ok(await page.getByRole('button', { name: 'Включить светлую тему' }).isVisible());
+  assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'theme control fits narrow viewport');
+  await page.screenshot({ path: 'tmp/color-theme-dark-mobile.png', fullPage: true });
+  await page.goto('http://127.0.0.1:5196/');
+  await page.getByRole('button', { name: 'Включить светлую тему' }).waitFor();
+  assert.equal(await theme(), 'dark', 'live connection screen uses the same preference');
+  const blocked = await browser.newContext({ colorScheme: 'dark' });
+  await blocked.route('https://fonts.googleapis.com/**', route => route.abort());
+  await blocked.addInitScript(() => {
+    Object.defineProperty(window, 'localStorage', { get() { throw new DOMException('Blocked', 'SecurityError'); } });
+  });
+  const blockedPage = await blocked.newPage();
+  await blockedPage.goto('http://127.0.0.1:5196/#demo');
+  await blockedPage.getByRole('button', { name: 'Включить светлую тему' }).click();
+  await blockedPage.getByRole('button', { name: 'Включить тёмную тему' }).waitFor();
+  assert.deepEqual(errors, []);
+  console.log('PASS: system theme, keyboard toggle, saved preference, cross-tab sync, blocked storage, demo/live shell and narrow viewport. Fictional data only.');
+} finally {
+  await browser?.close();
+  await server.close();
+}

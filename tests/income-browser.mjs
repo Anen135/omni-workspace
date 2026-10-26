@@ -100,7 +100,7 @@ try {
     if (action === 'status') body = { connected: true };
     else if (action === 'snapshot') body = {
       account: { id: accountId, name: `Тестовый преподаватель ${accountId}`, branch, timezone: 'Europe/Moscow' },
-      teachers: section([]), schedule: section(schedule), presents: section({}), groups: section([]), homework: section([]), newHomework: section([]),
+      teachers: section([]), schedule: section(populatedWeek(0)), presents: section({}), groups: section([]), homework: section([]), newHomework: section([]),
       counts: { homework: 0, practice: 0 }, fetchedAt: '2026-10-14T09:00:00.000Z',
     };
     else if (action === 'schedule-range') {
@@ -133,9 +133,14 @@ try {
   await page.getByRole('button', { name: 'Досье преподавателя', exact: true }).click();
   const dossier = page.locator('.teacher-dossier');
   const income = dossier.getByRole('region', { name: 'Доходы', exact: true });
-  await income.getByText('Всего заработано с 1 января 2026', { exact: true }).waitFor();
+  await page.addStyleTag({ content: '.topbar,.sidebar,.quick-handle,.quick-drawer{display:none!important}.live-workspace main{margin-left:0!important;width:100%!important}' });
+  await income.getByRole('button', { name: 'Загрузить историю за год', exact: true }).waitFor();
   await income.getByText(/^Загружаем расписание:/).waitFor({ state: 'detached' });
   const metric = label => income.locator('.dossier-summary-card').filter({ has: page.getByText(label, { exact: true }) }).locator('dd').first().innerText().then(value => value.replace(/\s+/g, ' ').trim());
+  assert.equal(requestedBatches.length, 1, 'initial load requests only recent intervals');
+  assert.equal(requestedBatches[0].length, 13, 'the valid supplied current week saves one read');
+  await income.getByRole('button', { name: 'Загрузить историю за год', exact: true }).click();
+  await income.getByText(/^Загружаем расписание:/).waitFor({ state: 'detached' });
   assert.ok(requestedBatches.length >= 3, 'January-to-next-month history is loaded in batches no larger than sixteen weeks');
   assert.ok(requestedBatches.every(batch => batch.length <= 16 && new Set(batch).size === batch.length));
   assert.equal(await metric('Всего заработано с 1 января 2026'), '4 100 ₽');
@@ -183,21 +188,23 @@ try {
   await page.addStyleTag({ content: '.topbar,.sidebar,.quick-handle,.quick-drawer{display:none!important}.live-workspace main{margin-left:0!important;width:100%!important}' });
   await income.screenshot({ path: 'tmp/income-desktop.png' });
 
+  await page.evaluate(() => localStorage.setItem('omni.workspace.tab', 'lesson'));
   await page.reload();
   await page.getByRole('heading', { name: 'Мой урок', exact: true }).waitFor();
   await page.getByRole('button', { name: 'Досье преподавателя', exact: true }).click();
   let incomeAfterReload = page.locator('.teacher-dossier').getByRole('region', { name: 'Доходы', exact: true });
-  await incomeAfterReload.getByText('Всего заработано с 1 января 2026', { exact: true }).waitFor();
+  await incomeAfterReload.getByRole('button', { name: 'Загрузить историю за год', exact: true }).waitFor();
   await incomeAfterReload.getByText(/^Загружаем расписание:/).waitFor({ state: 'detached' });
   const otherMetric = label => incomeAfterReload.locator('.dossier-summary-card').filter({ has: page.getByText(label, { exact: true }) }).locator('dd').first().innerText().then(value => value.replace(/\s+/g, ' ').trim());
   assert.equal(await otherMetric('План на текущий месяц'), '4 050 ₽', 'saved settings persist for this account and branch');
 
   accountId = '102';
+  await page.evaluate(() => localStorage.setItem('omni.workspace.tab', 'lesson'));
   await page.reload();
   await page.getByRole('heading', { name: 'Мой урок', exact: true }).waitFor();
   await page.getByRole('button', { name: 'Досье преподавателя', exact: true }).click();
   incomeAfterReload = page.locator('.teacher-dossier').getByRole('region', { name: 'Доходы', exact: true });
-  await incomeAfterReload.getByText('Всего заработано с 1 января 2026', { exact: true }).waitFor();
+  await incomeAfterReload.getByRole('button', { name: 'Загрузить историю за год', exact: true }).waitFor();
   await incomeAfterReload.getByText(/^Загружаем расписание:/).waitFor({ state: 'detached' });
   assert.equal(await otherMetric('План на текущий месяц'), '3 750 ₽', 'different account starts from its own defaults');
   const otherSettings = incomeAfterReload.locator('details.dossier-income-settings');
@@ -226,11 +233,12 @@ try {
   assert.equal(await otherMetric('План на текущий месяц'), '≥ 0 ₽', 'known free lessons remain visible even when another lesson has no rate');
 
   branch = 'Филиал-другой';
+  await page.evaluate(() => localStorage.setItem('omni.workspace.tab', 'lesson'));
   await page.reload();
   await page.getByRole('heading', { name: 'Мой урок', exact: true }).waitFor();
   await page.getByRole('button', { name: 'Досье преподавателя', exact: true }).click();
   incomeAfterReload = page.locator('.teacher-dossier').getByRole('region', { name: 'Доходы', exact: true });
-  await incomeAfterReload.getByText('Всего заработано с 1 января 2026', { exact: true }).waitFor();
+  await incomeAfterReload.getByRole('button', { name: 'Загрузить историю за год', exact: true }).waitFor();
   await incomeAfterReload.getByText(/^Загружаем расписание:/).waitFor({ state: 'detached' });
   assert.equal(await otherMetric('План на текущий месяц'), '3 750 ₽', 'different branch has isolated income settings');
 

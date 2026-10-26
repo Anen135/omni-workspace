@@ -88,17 +88,11 @@ try {
   await page.evaluate(() => window.patchAverages({ enabled: false }));
   await page.evaluate(() => window.patchAverages({ enabled: true }));
   assert.equal(await page.locator('#loading').textContent(), 'true');
-  const restarted = hold('1', roster('teacher-a', '102', '9.5'));
   oldSameContext.release();
-  await wait(restarted.started);
-  assert.deepEqual(await values(), [], 'cancelled active read never publishes its old average');
-  assert.deepEqual(await photos(), [], 'cancelled active read never publishes its old photo');
-  assert.equal(await page.locator('.average-skeleton').count(), 1, 'same-context restart remains visibly loading');
-  restarted.release();
   await page.waitForFunction(() => document.querySelector('#loading').textContent === 'false');
-  assert.deepEqual(await values(), [['102', '9.5']]);
-  assert.deepEqual(await photos(), [['102', 'https://example.invalid/fixture-102.png']]);
-  assert.equal(await page.evaluate(() => window.averageStates.some(state => state.values.some(([id]) => id === '101'))), false);
+  assert.deepEqual(await values(), [['101', '1']], 'the verified read is reusable within the same account/group generation');
+  assert.deepEqual(await photos(), [['101', 'https://example.invalid/fixture-101.png']]);
+  assert.equal(requests.filter(request => request.group === '1').length, 1, 'enable toggles do not reread an already verified roster');
 
   // Changing account/group while a previous read owns the transport clears
   // existing context data synchronously, and ignores the delayed private roster.
@@ -153,10 +147,10 @@ try {
   await page.waitForFunction(() => document.querySelector('#loading').textContent === 'false');
   assert.deepEqual(await values(), [['501', '0']], 'fresh snapshot recovers and retains a real zero average');
   assert.equal(await page.locator('#error').textContent(), '');
-  assert.deepEqual(requests.map(request => request.group), ['1', '1', '2', '3', 'transport', '4', '5', '5']);
+  assert.deepEqual(requests.map(request => request.group), ['1', '2', '3', 'transport', '4', '5', '5']);
   assert.deepEqual(unexpected, []);
   assert.deepEqual(errors, []);
-  console.log('PASS real averages hook: active same-context cancellation/restart, account isolation, queued background abort, stopped error skeleton and fresh-snapshot recovery');
+  console.log('PASS real averages hook: same-context verified cache reuse, account isolation, queued background abort, stopped error skeleton and fresh-snapshot recovery');
 } finally {
   for (const plan of plans) plan.released.resolve();
   await browser?.close();

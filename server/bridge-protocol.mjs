@@ -8,6 +8,10 @@ export class BridgeError extends Error {
 
 export function validateInput(action, input) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw new BridgeError('BAD_INPUT', 'Некорректный запрос.', 400);
+  if (action === 'homework-queue') {
+    if (Object.keys(input).length !== 1 || typeof input.accountId !== 'string' || !/^[1-9]\d{0,11}$/.test(input.accountId)) throw new BridgeError('BAD_INPUT', 'Укажите аккаунт для загрузки работ.', 400);
+    return input;
+  }
   if (action === 'schedule-range') {
     if (Object.keys(input).some(key => !['accountId', 'weeks'].includes(key)) || typeof input.accountId !== 'string' || !/^[1-9]\d{0,11}$/.test(input.accountId) || !Array.isArray(input.weeks) || input.weeks.length < 1 || input.weeks.length > 16 || [...input.weeks].some(week => !Number.isInteger(week) || Math.abs(week) > 52) || new Set(input.weeks).size !== input.weeks.length) throw new BridgeError('BAD_INPUT', 'Укажите аккаунт и от 1 до 16 разных недель в допустимом диапазоне.', 400);
     return input;
@@ -52,8 +56,9 @@ export function validateInput(action, input) {
     return input;
   }
   if (!['connect', 'login', 'status', 'snapshot', 'lesson', 'student', 'group', 'switch-teacher', 'materials-catalog', 'method-package', 'teacher-dossier', 'set-attendance'].includes(action)) throw new BridgeError('NOT_FOUND', 'Неизвестное действие.', 404);
-  const allowed = { connect: [], login: ['username', 'password'], status: [], snapshot: ['week'], lesson: ['date', 'group', 'lenta'], student: ['stud'], group: ['group'], 'switch-teacher': ['teacherId', 'accountId'], 'materials-catalog': ['form', 'direction'], 'method-package': ['spec'], 'teacher-dossier': [], 'set-attendance': ['accountId', 'date', 'group', 'lenta', 'schedule', 'changes'] }[action];
+  const allowed = { connect: [], login: ['username', 'password'], status: [], snapshot: ['week'], lesson: ['date', 'group', 'lenta'], student: ['stud'], group: ['group'], 'switch-teacher': ['teacherId', 'accountId'], 'materials-catalog': ['form', 'direction', 'includeMetadata'], 'method-package': ['spec'], 'teacher-dossier': [], 'set-attendance': ['accountId', 'date', 'group', 'lenta', 'schedule', 'changes'] }[action];
   if (Object.keys(input).some(key => !allowed.includes(key))) throw new BridgeError('BAD_INPUT', 'Неизвестный параметр.', 400);
+  if (action === 'materials-catalog' && input.includeMetadata !== undefined && typeof input.includeMetadata !== 'boolean') throw new BridgeError('BAD_INPUT', 'Некорректный флаг справочников.', 400);
   if (action === 'login' && (typeof input.username !== 'string' || !input.username.trim() || input.username.length > 256 || typeof input.password !== 'string' || !input.password || input.password.length > 1024)) throw new BridgeError('BAD_INPUT', 'Введите логин и пароль допустимой длины.', 400);
   if (input.week !== undefined && (!Number.isInteger(input.week) || Math.abs(input.week) > 52)) throw new BridgeError('BAD_INPUT', 'Неделя вне допустимого диапазона.', 400);
   if (['lesson', 'set-attendance'].includes(action) && (typeof input.date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(input.date) || !Number.isFinite(Date.parse(input.date)) || new Date(input.date).toISOString().slice(0, 10) !== input.date)) throw new BridgeError('BAD_INPUT', 'Некорректная дата.', 400);

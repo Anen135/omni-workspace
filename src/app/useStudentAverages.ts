@@ -1,12 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ConnectionError, omniRequest, rows, type Account, type Snapshot } from '../services/omni-client';
+import { ConnectionError, rows, type Snapshot } from '../services/omni-client';
 import { studentRow } from '../features/students/students';
+import { createRosterCache, type RosterCache } from './roster-cache';
 
 // Read-only roster data is kept separate from lesson drafts and homework records.
-export function useStudentAverages(snapshot: Snapshot | null, groupIds: string[], enabled: boolean) {
+export function useStudentAverages(snapshot: Snapshot | null, groupIds: string[], enabled: boolean, sharedCache?: RosterCache) {
+  const localCache = useMemo(() => snapshot ? createRosterCache(snapshot.account) : undefined, [snapshot]);
+  const cache = sharedCache || localCache;
   const groupKey = JSON.stringify(groupIds);
   // A fresh snapshot/session must never reactivate a previous roster cache.
-  const context = useMemo(() => ({}), [snapshot, groupKey]);
+  const context = useMemo(() => ({}), [cache, groupKey]);
   const account = snapshot?.account;
   const [result, setResult] = useState<{ context: object; values: ReadonlyMap<string, string>; photos: ReadonlyMap<string, string> }>();
   const [failure, setFailure] = useState<{ context: object; message: string }>();
@@ -28,7 +31,7 @@ export function useStudentAverages(snapshot: Snapshot | null, groupIds: string[]
       // A page we just left may still own the transport. Only BUSY reads can
       // wait and retry; mutation commands never pass through this helper.
       for (let attempt = 0; attempt < 60 && !cancelled; attempt++) {
-        try { return await omniRequest<{ account: Account; students: unknown }>('group', { group }, { priority: 'background', signal: controller.signal }); }
+        try { return await cache!.read(group, { priority: 'background', signal: controller.signal }); }
         catch (error) {
           if (!(error instanceof ConnectionError) || error.code !== 'BUSY' || attempt === 59) throw error;
           await new Promise(resolve => window.setTimeout(resolve, 300));

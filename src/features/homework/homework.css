@@ -13,7 +13,7 @@
 .homework-grade-label input { width: 72px; }
 .homework-help { margin: 0; padding: 0 20px 12px; color: var(--muted, #697386); font-size: 12px; line-height: 1.6; }
 .homework-review .warning { margin: 0 20px 12px; }
-.homework-result { margin: 0 20px 12px; padding: 10px 12px; border-radius: 8px; background: #edf8f1; color: #226941; font-size: 13px; }
+.homework-result { margin: 0 20px 12px; padding: 10px 12px; border-radius: 8px; background: var(--omni-success-soft, #edf8f1); color: var(--omni-success-text, #226941); font-size: 13px; }
 .homework-review .homework-table { min-width: 760px; border-collapse: collapse; }
 .homework-review .homework-table th { padding: 10px 12px; text-align: left; white-space: nowrap; background: var(--background, #f7f8fc); border-block: 1px solid var(--border, #e7e9f2); }
 .homework-review .homework-table td { padding: 9px 12px; height: 54px; border-bottom: 1px solid var(--border, #e7e9f2); vertical-align: middle; font-size: 13px; max-width: 340px; }

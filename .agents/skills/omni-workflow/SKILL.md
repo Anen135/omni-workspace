@@ -1,56 +1,46 @@
 ---
 name: omni-workflow
-description: Primary-agent workflow for non-trivial Omni bugs, features, UI, architecture and high-risk changes. Skip trivial/local fixes, releases and bounded specialist assignments.
+description: Risk-sized workflow for non-trivial Omni development. Skip cheap local fixes, process-only edits, releases and bounded specialist assignments.
 ---
 
 # Risk-sized development
 
-Trace the owning path and available real data, state a short scope/check plan,
-implement, verify, fix and integrate. Primary may do all ordinary work.
-A team is not a required stage. Diagnosis remains read-only unless fixes are requested.
+Trace the owning path and changed-contract consumers, choose acceptance/checks,
+implement and verify. Primary handles ordinary work; no mandatory team or staged
+handoffs. Keep diagnosis read-only unless fixes are requested.
 
-## Select only the applicable gates
-- Normal bug: evidence-backed cause, minimal owning-layer fix, focused regression.
-  Normal feature/refactor: existing consumers, acceptance conditions and affected tests.
-  No independent agent unless uncertainty, concurrency, broad regression potential
-  or difficult-to-observe behavior justifies one.
-- UI: use designer when an unresolved screen/flow/layout/interaction decision
-  adds independent value; primary can reuse established patterns and fix obvious
-  visual bugs. Read [UI](references/ui.md) only for UI work.
-- Architectural boundaries, public command/storage contracts or major cross-module
-  redesign: ExecPlan + architect before implementation; an independent reviewer
-  checks compatibility on the final diff. Primary may implement; no obligatory worker.
-- Auth/identity, permissions, trust/preview boundaries or academic mutation behavior:
-  ExecPlan; read [security](references/security.md); require one independent
-  security reviewer on the final diff and negative-path evidence.
-  Cosmetic text in a sensitive file alone does not trigger this route.
-- For plans read [PLANS](../../../.codex/engineering/PLANS.md).
-  Small multi-step work does not itself require an ExecPlan.
-- If delegating read [assignment contract](references/delegation.md), not every role
-  or repository document. Only split independently useful work.
+## Load only the applicable route
+- Ordinary bug/feature/refactor: minimal owning-layer change and affected evidence.
+  Delegate only a concrete independent chunk/question worth another context.
+- UI: read [UI](references/ui.md); reuse established patterns. Designer only for
+  an unresolved substantial UX decision. Cosmetic breadth is not architectural risk.
+- Public command/shared storage contract or major cross-module redesign: read
+  [PLANS](../../../.codex/engineering/PLANS.md); ExecPlan + architect + independent
+  compatibility review. Private UI preferences alone do not require this gate.
+- Auth/identity, permissions, trust/preview boundary or real-record mutation
+  behavior: ExecPlan + [security](references/security.md) + one independent security
+  reviewer and negative-path evidence. Cosmetic edits alone do not trigger it.
+- Delegation: read [assignment contract](references/delegation.md) only if spawning.
 
-## Verification and review
-Use [tiers/area commands](../../../.codex/engineering/VERIFICATION.md).
-Iterate with FAST/AFFECTED. FULL is a final gate for significant/cross-boundary/high-risk
-changes, not a loop after every edit; RELEASE belongs to `omni-release`.
-Re-use evidence on unchanged inputs; record what it covers and invalidate it when
-source, dependency, build input or environment changes affect it.
+## Check once, expand for evidence
+Choose FAST/AFFECTED from [verification](../../../.codex/engineering/VERIFICATION.md).
+FULL is for major cross-layer behavior changes and architecture/high-risk work;
+RELEASE belongs to `omni-release`. Multiple CSS files alone do not require FULL.
+Use the smallest existing check covering the behavior. Build once on stable inputs;
+it includes TypeScript. Reuse passing evidence until an input affecting it changes.
+Stop when acceptance and the selected tier pass. Add a test, review or rerun only
+for a named gap/failure/change; screenshots alone do not justify repeating a suite.
 
-Primary runs obvious tests. Delegate a tester only for a distinct missing test
-surface, complex fixture/browser investigation or independent high-risk validation.
-A reviewer may run a focused reproduction; do not assign a tester to repeat it.
-Normal work uses at most one reviewer if justified. High-risk uses security reviewer
-instead of a parallel general reviewer; a second reviewer/tester needs a distinct
-documented risk/evidence gap. Never let the implementer label self-checks independent.
+Primary runs straightforward checks. One reviewer per concrete risk; security
+reviewer replaces general reviewer for the same scope. Tester supplies missing
+executable evidence. Return findings to the implementer and recheck affected slices.
+Never call self-checks independent. Do not waive architecture/high-risk review to
+save tokens; disclose unavailability and request a scoped waiver or leave a handoff.
 
-Return findings to the implementer, recheck the changed slice, and repeat only
-invalidated tests/review. Preserve a completed FULL gate if fixes cannot affect it;
-otherwise rerun relevant coverage and the final FULL gate as required.
-Do not waive architecture/high-risk independent review to save tokens: disclose
-unavailability and request a scoped waiver or leave a clear handoff.
-
-## Context discipline
-Read relevant symbols/usages, not entire trees. Repository map is optional:
-[boundary hints](../../../.codex/engineering/REPOSITORY.md), then verify from source.
-Return concise artifacts/findings/checks, not reasoning transcripts or duplicated logs.
-Necessary documentation is batched at completion; no extra docs agent for a few lines.
+## Context and reporting
+Use supplied context before searching; `rg` symbols, then relevant file sections.
+Do not reread unchanged instructions, load the repository map or inspect all role
+profiles by default. Return summaries/failures from large outputs; retain full logs
+under ignored tmp when needed. Keep evidence in task context; no routine ledger file.
+Hand off paths, findings and check results, not transcripts or whole conversation.
+Batch necessary docs at completion. Report outcome, actual checks and limits briefly.

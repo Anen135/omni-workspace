@@ -8,10 +8,18 @@ const calls = { inject: 0, func: 0 };
 const world = { agent: undefined, nextBuild: 'dev', dispatched: [] };
 let onMessage;
 const noopEvent = { addListener() {}, removeListener() {} };
+const localData = {};
 globalThis.chrome = {
   runtime: { id: 'ext', getURL: path => `chrome-extension://ext/${path}`, getManifest: () => ({ version: '1' }), onMessage: { addListener: listener => { onMessage = listener; } } },
   action: { onClicked: noopEvent },
-  storage: { session: { get: async () => ({}), set: async () => {}, remove: async () => {} } },
+  storage: {
+    session: { get: async () => ({}), set: async () => {}, remove: async () => {} },
+    local: {
+      get: async key => Object.hasOwn(localData, key) ? { [key]: structuredClone(localData[key]) } : {},
+      set: async values => { Object.assign(localData, structuredClone(values)); },
+      setAccessLevel: async options => { assert.deepEqual(options, { accessLevel: 'TRUSTED_CONTEXTS' }); },
+    },
+  },
   tabs: { get: async id => ({ id, url: `${origin}/`, status: 'complete' }), query: async () => [], sendMessage: async () => {}, onUpdated: noopEvent, onRemoved: noopEvent },
   windows: { update: async () => {} },
   scripting: {

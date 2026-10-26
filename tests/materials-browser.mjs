@@ -121,12 +121,12 @@ try {
   await page.keyboard.press('Escape');
   assert.equal(await page.getByRole('listbox', { name: 'Форма обучения' }).count(), 0);
 
-  // With no form chosen, direction selection is valid and sends only its ID.
+  // With no form chosen, direction selection is valid and reuses the loaded metadata.
   await direction.fill('Направление B');
   await page.getByRole('listbox', { name: 'Направление' }).getByRole('option', { name: 'Направление B' }).waitFor();
   assert.equal(catalogRequests().length, beforeTyping);
   await page.getByRole('option', { name: 'Направление B' }).click();
-  assert.deepEqual(catalogRequests().at(-1).input, { direction: '17' });
+  assert.deepEqual(catalogRequests().at(-1).input, { direction: '17', includeMetadata: false });
   await page.getByRole('button', { name: 'Открыть список: Методпакет' }).click();
   await course.fill('Пустой курс без формы');
   await page.getByRole('listbox', { name: 'Методпакет' }).getByRole('option', { name: 'Пустой курс без формы' }).waitFor();
@@ -142,18 +142,18 @@ try {
   assert.equal(await page.getByRole('listbox', { name: 'Методпакет' }).count(), 0);
 
   await page.getByRole('button', { name: 'Очистить: Направление' }).click();
-  assert.deepEqual(catalogRequests().at(-1).input, {});
+  assert.deepEqual(catalogRequests().at(-1).input, { includeMetadata: false });
   await form.fill('Форма A');
   await page.getByRole('option', { name: 'Форма A' }).click();
-  assert.deepEqual(catalogRequests().at(-1).input, { form: '4' });
+  assert.deepEqual(catalogRequests().at(-1).input, { form: '4', includeMetadata: false });
   await page.getByRole('button', { name: 'Очистить: Форма обучения' }).click();
-  assert.deepEqual(catalogRequests().at(-1).input, {});
+  assert.deepEqual(catalogRequests().at(-1).input, { includeMetadata: false });
   await form.fill('Форма A');
   await page.getByRole('option', { name: 'Форма A' }).click();
-  assert.deepEqual(catalogRequests().at(-1).input, { form: '4' });
+  assert.deepEqual(catalogRequests().at(-1).input, { form: '4', includeMetadata: false });
   await direction.fill('Направление A');
   await page.getByRole('option', { name: 'Направление A' }).click();
-  assert.deepEqual(catalogRequests().at(-1).input, { form: '4', direction: '16' });
+  assert.deepEqual(catalogRequests().at(-1).input, { form: '4', direction: '16', includeMetadata: false });
   await course.fill('Тестовый курс');
   await page.getByRole('option', { name: 'Тестовый курс' }).click();
   assert.equal(requests.filter(request => request.action === 'method-package').at(-1).input.spec, '42');
@@ -244,7 +244,7 @@ try {
   wrongAccount = false;
   hasLesson = true;
   await page.reload({ waitUntil: 'domcontentloaded' });
-  await page.getByRole('heading', { name: 'Мой урок' }).waitFor();
+  await page.getByRole('heading', { name: 'Материалы', exact: true }).waitFor();
   await page.getByRole('button', { name: 'Материалы', exact: true }).click();
   await page.getByRole('button', { name: 'Загрузить выданные материалы', exact: true }).click();
   await page.locator('.remote-attachment').getByRole('button', { name: 'Превью', exact: true }).click();

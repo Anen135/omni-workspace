@@ -1,44 +1,40 @@
-# Spawn only for independent value
+# Delegate only for independent value
 
-Ask: "Does this agent provide enough independent value to justify another
-context/model invocation?" Compare a bounded assignment + handoff with doing it
-locally. Reading two files, searching a few usages, obvious tests and small edits
-usually belong to primary.
+Primary owns ordinary implementation, integration and straightforward checks.
+Spawn only when a bounded independent chunk/question benefits enough from another
+context to justify its model work and coordination. No agents for workflow boxes.
 
-## Minimal assignment
-Use `fork_turns="none"` when supported. Supply repository path; TASK/acceptance;
-FILES/SUBSYSTEM (write ownership if any); DO NOT TOUCH; DONE WHEN; expected output.
-Include relevant decisions/facts/artifact paths, not full conversation or reasoning.
-Specialists follow root safety/scope, not the primary's orchestration loop.
-If no no-fork control exists, send only this summary; do not claim history isolation.
+## Assignment
+Use `fork_turns="none"`; supply repository, TASK, FILES/SUBSYSTEM ownership,
+DO NOT TOUCH (including unrelated user edits), DONE WHEN and expected output.
+Include only acceptance, relevant paths/contracts and existing check results.
+No full history, duplicate exploration, recursive delegation, commits, publishing
+or live writes without explicit bounded authority. At most two children.
 
-| Role | Minimal additional input | Use only when |
+## Role selection
+Use these exact configured role names; generic `coder`/`reviewer` may have different,
+more expensive defaults. Do not silently substitute or assume local config loaded.
+
+| Role | Independent value | Configured model/effort |
 | --- | --- | --- |
-| explorer | Question + starting symbols/paths | Search/cross-layer discovery is substantial and not already done |
-| coder / simple_coder | Chosen behavior + owned files + failing case | An isolated implementation chunk outweighs handoff; mechanical batches can use simple_coder |
-| ui_designer | Requirements + relevant screens/components + constraints | A real UX/layout/interaction decision is unresolved |
-| architect | Problem + affected boundaries/consumers + constraints | Contract/boundary redesign needs independent planning |
-| reviewer / security_reviewer | Acceptance + diff/base or artifact + relevant tests + risk | Independent correctness/security value, not a duplicate test run |
-| tester | Acceptance + changed behavior + missing test surface + existing results | Executable evidence is missing, not to re-review code |
-| docs | Verified behavior + exact authorized docs | A substantial documentation batch, not a few sentences |
-| release_manager | Target SHA/version + artifacts + existing check evidence | Release refs/artifacts/CI need a separate audit |
+| `omni_explorer` | Substantial unresolved ownership/consumer question | Luna low |
+| `omni_simple_coder` | Isolated mechanical batch cheaper to hand off | Luna low |
+| `omni_coder` | Bounded meaningful implementation | Sol medium |
+| `omni_ui_designer` | Substantial unresolved UX decision | Sol medium |
+| `omni_reviewer` | Concrete correctness/compatibility risk | Sol medium |
+| `omni_tester` | Missing executable evidence/complex fixture | Luna medium |
+| `omni_docs` | Substantial necessary authorized docs batch | Luna low |
+| `omni_architect` | Public boundary/major structural design | Sol high |
+| `omni_security_reviewer` | Identity/trust/academic mutation review | Sol high |
+| `omni_release_manager` | Release refs/artifact/CI audit | Luna medium |
 
-Resolve `omni_` role names in `.codex/agents`; preserve these names for compatibility.
-Use one reviewer per scope. Security reviewer can cover correctness for the same
-high-risk change; tester and release manager consume existing evidence rather
-than rerunning it without cause. Architect proposes; primary decides/integrates.
-Explorer must not remap work already traced by primary/architect.
+If configured roles are unavailable, handle routine work in primary. For a required
+independent gate, use an available suitable role only with disclosed model/effort
+fallback; request a scoped waiver or hand off if no independent review is possible.
+Higher client policy may override settings; never claim unverified activation or
+billing savings. Do not install/change global models, trust or tools to fix routing.
 
-## Models and concurrency
-Cheap bounded exploration/mechanical edits/docs/test execution: Luna low;
-ordinary test/metadata audit: Luna medium. Implementation/design/general review:
-Sol medium. Architecture/security/complex refactor or difficult debug: Sol high.
-Promote only the bounded hard question, not every participant; no universal high.
-These are explicit role defaults, not price/availability guarantees. If unavailable,
-report fallback and choose an available suitable model without installing/changing globals.
-A higher-level client policy may override them; do not claim savings from file edits alone.
-
-At most two children open, mostly for independent read-only work. Parallel writers
-need disjoint ownership. Primary alone spawns; specialists have no children.
-Reuse for related follow-up (targeted fixes/recheck); avoid reusing unrelated stale
-context. No commit/push/publish/live-record actions without explicit delegation.
+One reviewer per scope; security replaces general review. Tester consumes existing
+evidence rather than repeating checks. Reuse a worker for related fixes; parallel
+writers need disjoint files. Return concrete findings/changes and actual checks,
+with short output. Promote reasoning only for an identified hard question.

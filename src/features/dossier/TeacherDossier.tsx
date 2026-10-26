@@ -14,18 +14,21 @@ import type { Section } from '../../services/omni-client';
 
 type Dossier = TeacherDossierData;
 
-export function TeacherDossier({ accountId, accountName, branch, schedule, today, disabled, onConnectionError, onIncomeLoading }: {
-  accountId: string; accountName: string; branch?: string; schedule: Section; today: string; disabled: boolean; onConnectionError: (reason: unknown) => void; onIncomeLoading?: (loading: boolean) => void;
+export function TeacherDossier({ accountId, accountName, branch, schedule, today, disabled, active = true, refreshKey, onConnectionError, onIncomeLoading }: {
+  accountId: string; accountName: string; branch?: string; schedule: Section; today: string; disabled: boolean; active?: boolean; refreshKey?: unknown; onConnectionError: (reason: unknown) => void; onIncomeLoading?: (loading: boolean) => void;
 }) {
   const [dossier, setDossier] = useState<Dossier | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const requestId = useRef(0);
   const initialRequested = useRef(false);
+  const inFlight = useRef<number | null>(null);
+  const [incomeLoading, setIncomeLoading] = useState(false);
 
   async function load() {
-    if (disabled) return;
+    if (disabled || !active || inFlight.current !== null || incomeLoading) return;
     const id = ++requestId.current;
+    inFlight.current = id;
     setBusy(true); setError('');
     try {
       const result = await omniRequest<Dossier>('teacher-dossier', {});
@@ -38,14 +41,24 @@ export function TeacherDossier({ accountId, accountName, branch, schedule, today
       if (reason instanceof ConnectionError && ['AUTH_REQUIRED', 'ACCOUNT_CHANGED', 'CHALLENGE'].includes(reason.code)) {
         setDossier(null); onConnectionError(reason);
       }
-    } finally { if (id === requestId.current) setBusy(false); }
+    } finally {
+      if (inFlight.current === id) { inFlight.current = null; setBusy(false); }
+    }
   }
-  useEffect(() => () => { requestId.current++; initialRequested.current = false; }, []);
   useEffect(() => {
-    if (!disabled && !initialRequested.current) { initialRequested.current = true; void load(); }
-  }, [disabled]);
+    initialRequested.current = false;
+    requestId.current++;
+    setDossier(null);
+    return () => { requestId.current++; };
+  }, [refreshKey]);
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (active && !disabled && !busy && !incomeLoading && !initialRequested.current) { initialRequested.current = true; void load(); }
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [active, disabled, busy, incomeLoading, refreshKey]);
 
-  const locked = disabled || busy;
+  const locked = disabled || busy || incomeLoading || !active;
   const model = dossier ? dossierModel(dossier) : null;
   const retry = disabled ? undefined : () => void load();
   return <section className="panel teacher-dossier" aria-label="Досье преподавателя" aria-busy={busy}>
@@ -53,7 +66,7 @@ export function TeacherDossier({ accountId, accountName, branch, schedule, today
     {(busy || disabled && !dossier && !error) && <div className="dossier-status" role="status"><LoaderCircle className="spin" size={17}/>{dossier ? 'Обновляем досье…' : 'Загружаем досье…'}</div>}
     {error && <div className="dossier-error"><div className="warning" role="alert">{error}</div><button className="button secondary" disabled={locked} onClick={() => void load()}>Повторить загрузку</button></div>}
     {dossier && model && <>
-      <DossierIncome accountId={accountId} branch={branch} schedule={schedule} today={today} disabled={locked} onConnectionError={onConnectionError} onLoadingChange={onIncomeLoading}/>
+      <DossierIncome accountId={accountId} branch={branch} schedule={schedule} today={today} disabled={disabled || busy || !initialRequested.current} active={active} refreshKey={refreshKey} onConnectionError={onConnectionError} onLoadingChange={loading => { setIncomeLoading(loading); onIncomeLoading?.(loading); }}/>
       {dossier.all.error && <div className="dossier-error"><div className="warning" role="alert">{dossier.all.error}</div><button className="button secondary" disabled={locked} onClick={() => void load()}>Повторить загрузку досье</button></div>}
       <DossierSection title="Профиль" busy={busy} empty={!model.profile.length}><DossierProfile fields={model.profile}/></DossierSection>
       <DossierSection title="Показатели" description="Учебная работа и результаты студентов" error={model.errors.metrics === dossier.all.error ? null : model.errors.metrics} busy={busy} empty={!model.metrics.length} onRetry={retry}><DossierOverview metrics={model.metrics}/></DossierSection>

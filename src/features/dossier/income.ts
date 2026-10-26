@@ -105,6 +105,46 @@ export type IncomePeriod = { start: string; end: string };
 export type IncomeHistoryWeek = { week: number; schedule: Section };
 export type IncomePeriodSummary = { total: number | null; knownTotal: number; count: number; unpriced: number; missingDays: number; complete: boolean };
 
+/** Request only the calendar weeks used by visible metrics until year history is requested. */
+export function incomeRequestWeeks(today: string, payday: number, includeYear = false): number[] {
+  const periods = incomePeriods(today, payday);
+  const monday = dateAt(incomeWeekStart(today)).getTime();
+  const weeks = new Set<number>();
+  for (const [name, range] of Object.entries(periods.ranges)) {
+    if (name === 'yearEarned' && !includeYear) continue;
+    for (let day = range.start; day < range.end; day = addIncomeDays(day, 1)) {
+      const week = Math.round((dateAt(incomeWeekStart(day)).getTime() - monday) / (DAY_MS * 7));
+      if (week >= -52 && week <= 52) weeks.add(week);
+    }
+  }
+  return [...weeks].sort((a, b) => a - b);
+}
+
+/** Incoming partial weeks retain known lessons, but every supplied date must match the requested week. */
+export function isIncomeDatedWeekSchedule(schedule: Section, today: string, week: number): boolean {
+  if (schedule.error !== null || !Number.isInteger(week) || !validDate(today)) return false;
+  const data = object(schedule.data);
+  if (!data.body || typeof data.body !== 'object') return false;
+  const dates = data.dates && typeof data.dates === 'object' ? Object.values(data.dates) : [];
+  const start = addIncomeDays(incomeWeekStart(today), week * 7);
+  return dates.length > 0 && dates.length <= 7 && new Set(dates).size === dates.length
+    && dates.every(date => typeof date === 'string' && validDate(date) && date >= start && date < addIncomeDays(start, 7));
+}
+
+/** Only a complete dated week can satisfy a cached request or seed the supplied snapshot. */
+export function isIncomeWeekSchedule(schedule: Section, today: string, week: number): boolean {
+  if (!isIncomeDatedWeekSchedule(schedule, today, week)) return false;
+  return Object.values(object(schedule.data).dates as object).length === 7;
+}
+
+export function incomeSnapshotWeek(schedule: Section, today: string): IncomeHistoryWeek | null {
+  const dates = object(schedule.data).dates;
+  const date = dates && typeof dates === 'object' ? Object.values(dates)[0] : undefined;
+  if (typeof date !== 'string' || !validDate(date) || !validDate(today)) return null;
+  const week = Math.round((dateAt(incomeWeekStart(date)).getTime() - dateAt(incomeWeekStart(today)).getTime()) / (DAY_MS * 7));
+  return week >= -52 && week <= 52 && isIncomeWeekSchedule(schedule, today, week) ? { week, schedule } : null;
+}
+
 /** Ranges use UTC calendar dates and an exclusive end. Today is not a completed day. */
 export function incomePeriods(today: string, payday: number) {
   const payEnd = nextPayday(today, payday);

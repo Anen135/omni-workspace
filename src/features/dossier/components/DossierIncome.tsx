@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { ConnectionError, omniRequest, type Section } from '../../../services/omni-client';
-import { defaultIncomeConfig, incomeHistoryModel, incomePeriods, parseRate, readIncomeConfig, saveIncomeConfig } from '../income';
+import { defaultIncomeConfig, incomeHistoryModel, incomeRequestWeeks, incomeSnapshotWeek, isIncomeDatedWeekSchedule, isIncomeWeekSchedule, parseRate, readIncomeConfig, saveIncomeConfig } from '../income';
 import type { IncomeConfig, IncomeHistoryWeek, IncomePeriodSummary } from '../income';
 import { DossierSection } from './DossierSection';
 import { DossierOverview } from './DossierOverview';
@@ -8,7 +8,7 @@ import { DossierDetails } from './DossierDetails';
 import { HelpTip } from '../../../components/ui/HelpTip';
 import '../income.css';
 
-type Props = { accountId: string; branch?: string; schedule: Section; today: string; disabled?: boolean; onConnectionError?: (reason: unknown) => void; onLoadingChange?: (loading: boolean) => void };
+type Props = { accountId: string; branch?: string; schedule: Section; today: string; disabled?: boolean; active?: boolean; refreshKey?: unknown; onConnectionError?: (reason: unknown) => void; onLoadingChange?: (loading: boolean) => void };
 type Draft = { defaultRate: string; masterclassRate: string; payday: string; groupRates: Record<string, string>; masterclassLessons: string[] };
 const moneyText = (value: number | null) => value === null ? '' : String(value);
 const draftFrom = (config: IncomeConfig): Draft => ({ defaultRate: moneyText(config.defaultRate), masterclassRate: moneyText(config.masterclassRate), payday: String(config.payday),
@@ -27,7 +27,7 @@ export function DossierIncome(props: Props) {
   return <IncomePanel key={JSON.stringify([props.accountId, props.branch || ''])} {...props}/>;
 }
 
-function IncomePanel({ accountId, branch = '', today, disabled = false, onConnectionError, onLoadingChange }: Props) {
+function IncomePanel({ accountId, branch = '', schedule, today, disabled = false, active = true, refreshKey, onConnectionError, onLoadingChange }: Props) {
   const [initial] = useState(() => readIncomeConfig(storage(), accountId, branch));
   const [config, setConfig] = useState(initial.config);
   const [draft, setDraft] = useState(() => draftFrom(initial.config));
@@ -38,7 +38,12 @@ function IncomePanel({ accountId, branch = '', today, disabled = false, onConnec
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState('');
   const requestId = useRef(0);
-  const initialRequested = useRef(false);
+  const inFlight = useRef<number | null>(null);
+  const retained = useRef<IncomeHistoryWeek[]>([]);
+  const attempted = useRef(new Set<number>());
+  const [includeYear, setIncludeYear] = useState(false);
+  const latest = useRef({ active, disabled });
+  latest.current = { active, disabled };
   const onConnectionErrorRef = useRef(onConnectionError);
   onConnectionErrorRef.current = onConnectionError;
   const onLoadingChangeRef = useRef(onLoadingChange);
@@ -51,16 +56,30 @@ function IncomePanel({ accountId, branch = '', today, disabled = false, onConnec
   const dirty = JSON.stringify(draft) !== JSON.stringify(draftFrom(config));
   const change = (update: Partial<Draft>) => { setDraft(current => ({ ...current, ...update })); setMessage(''); };
 
-  async function load() {
-    if (disabled) return;
+  const desiredWeeks = incomeRequestWeeks(today, config.payday, includeYear);
+  const desiredKey = desiredWeeks.join(',');
+
+  async function load(fresh = false) {
+    if (!latest.current.active || latest.current.disabled || inFlight.current !== null) return;
+    if (fresh) {
+      retained.current = [];
+      attempted.current.clear();
+      setHistory([]);
+    }
+    const weeks = desiredWeeks.filter(week => !attempted.current.has(week)
+      && !retained.current.some(item => item.week === week && isIncomeWeekSchedule(item.schedule, today, week)));
+    if (!weeks.length) return;
     const id = ++requestId.current;
-    const weeks = incomePeriods(today, config.payday).weeks;
-    let received: IncomeHistoryWeek[] = [];
-    setLoading(true); setLoadError(''); setHistory([]);
-    onLoadingChangeRef.current?.(true);
+    inFlight.current = id;
+    // Capture this worker's owner. A later render/context must not release it.
+    const notifyLoading = onLoadingChangeRef.current;
+    setLoading(true); setLoadError('');
+    notifyLoading?.(true);
     try {
       for (let offset = 0; offset < weeks.length; offset += 16) {
+        if (id !== requestId.current || !latest.current.active || latest.current.disabled) break;
         const batch = weeks.slice(offset, offset + 16);
+        batch.forEach(week => attempted.current.add(week));
         let items: IncomeHistoryWeek[];
         try {
           const result = await omniRequest<{ account: { id: string }; weeks: IncomeHistoryWeek[] }>('schedule-range', { accountId, weeks: batch });
@@ -69,8 +88,8 @@ function IncomePanel({ accountId, branch = '', today, disabled = false, onConnec
           items = batch.map(week => {
             const matches = Array.isArray(result.weeks) ? result.weeks.filter(item => item?.week === week) : [];
             const item = matches[0];
-            return matches.length === 1 && item?.schedule && Object.hasOwn(item.schedule, 'data') && typeof item.schedule.error !== 'undefined'
-              ? item : { week, schedule: { data: null, error: 'Omni не вернул расписание недели.' } };
+            return matches.length === 1 && item?.schedule && isIncomeDatedWeekSchedule(item.schedule, today, week)
+              ? item : { week, schedule: { data: null, error: item?.schedule?.error || 'Omni не вернул датированное расписание недели.' } };
           });
         } catch (reason) {
           if (id !== requestId.current) return;
@@ -78,36 +97,46 @@ function IncomePanel({ accountId, branch = '', today, disabled = false, onConnec
           const message = reason instanceof Error ? reason.message : 'Не удалось загрузить расписание.';
           items = batch.map(week => ({ week, schedule: { data: null, error: message } }));
         }
-        received = [...received, ...items];
-        setHistory(received);
+        retained.current = [...retained.current.filter(item => !batch.includes(item.week)), ...items];
+        setHistory(retained.current);
       }
-      if (received.some(item => item.schedule.error)) setLoadError('Часть недель не загружена. Показаны известные суммы с отметкой «≥»; повторите загрузку для полного расчёта.');
+      if (id === requestId.current && retained.current.some(item => desiredWeeks.includes(item.week) && !isIncomeWeekSchedule(item.schedule, today, item.week))) {
+        setLoadError('Часть недель не загружена. Известные суммы приблизительны; повторите загрузку недостающих недель.');
+      }
     } catch (reason) {
       if (id !== requestId.current) return;
       setLoadError(reason instanceof Error ? reason.message : 'Не удалось загрузить расписание.');
-      setHistory([]);
+      desiredWeeks.forEach(week => attempted.current.add(week));
+      retained.current = []; setHistory([]);
       onConnectionErrorRef.current?.(reason);
     } finally {
-      if (id === requestId.current) setLoading(false);
-      // Invalidation stops subsequent batches, but the worker still owns the
-      // current request. Keep other pages locked until that request settles.
-      onLoadingChangeRef.current?.(false);
+      // Even invalidated workers hold ownership until the transport settles.
+      if (inFlight.current === id) {
+        inFlight.current = null;
+        setLoading(false);
+        notifyLoading?.(false);
+      }
     }
   }
 
   useEffect(() => {
-    initialRequested.current = false;
-    setHistory([]); setLoading(false);
+    requestId.current++;
+    const supplied = incomeSnapshotWeek(schedule, today);
+    retained.current = supplied ? [supplied] : [];
+    attempted.current.clear();
+    setHistory(retained.current); setLoadError('');
     return () => { requestId.current++; };
-  }, [today]);
+  }, [today, refreshKey]);
   useEffect(() => {
-    // StrictMode probes mount effects synchronously; do not start a worker
-    // request during the disposable probe mount.
-    const timer = setTimeout(() => {
-      if (!disabled && !initialRequested.current) { initialRequested.current = true; void load(); }
-    }, 0);
+    // Scope changes may retry missing or failed weeks. Navigation alone keeps
+    // attempted partial responses, while unrequested batches can still resume.
+    attempted.current.clear();
+  }, [desiredKey]);
+  useEffect(() => {
+    // StrictMode's disposable probe must not issue a remote request.
+    const timer = setTimeout(() => { if (active && !disabled) void load(); }, 0);
     return () => clearTimeout(timer);
-  }, [today, disabled]);
+  }, [today, refreshKey, active, disabled, desiredKey, loading]);
 
   function save() {
     const defaultRate = parseRate(draft.defaultRate);
@@ -130,7 +159,7 @@ function IncomePanel({ accountId, branch = '', today, disabled = false, onConnec
   }
 
   const year = today.slice(0, 4);
-  const incomplete = Object.values(metrics).some(metric => !metric.complete);
+  const incomplete = Object.entries(metrics).some(([name, metric]) => (includeYear || name !== 'yearEarned') && !metric.complete);
   const previousPayCycle = incomeMetric('pay-previous', 'Предыдущий расчётный цикл', metrics.previousPayCycle);
   function groupAmount(row: typeof summary.byGroup[number], field: 'earned' | 'remaining' | 'total') {
     if (!metrics.monthPlan.missingDays && !row.unpriced) return row[field];
@@ -143,13 +172,17 @@ function IncomePanel({ accountId, branch = '', today, disabled = false, onConnec
   }
   return <DossierSection title="Доходы">
     <div className="dossier-income-summary">
-      <div className="dossier-income-heading"><div className="help-heading"><p className="dossier-income-period">Месячный прогноз и заработок</p><HelpTip label="О расчёте дохода">Заработано рассчитывается по занятиям до сегодняшнего дня. Сегодняшние пары относятся к оставшимся; одна запись расписания считается одной парой.</HelpTip></div><button type="button" className="button secondary small" disabled={loading || disabled} onClick={() => void load()}>Обновить расчёт</button></div>
+      <div className="dossier-income-heading"><div className="help-heading"><p className="dossier-income-period">Месячный прогноз и заработок</p><HelpTip label="О расчёте дохода">Заработано рассчитывается по занятиям до сегодняшнего дня. Сегодняшние пары относятся к оставшимся; одна запись расписания считается одной парой.</HelpTip></div><button type="button" className="button secondary small" disabled={loading || disabled} onClick={() => void load(true)}>Обновить расчёт</button></div>
+      <div className="dossier-income-actions">
+        <button type="button" className="button secondary small" disabled={loading || disabled || !active} onClick={() => { attempted.current.clear(); setIncludeYear(true); if (includeYear) void load(); }}>Загрузить историю за год</button>
+        {loadError && <button type="button" className="button secondary small" disabled={loading || disabled || !active} onClick={() => { attempted.current.clear(); void load(); }}>Повторить недостающие недели</button>}
+      </div>
       <p className="dossier-income-note">Расчёт по расписанию и вашим ставкам — не подтверждённая зарплата Omni.</p>
-      {loading && <p className="dossier-income-note" role="status">Загружаем расписание: {history.length} из {periods.weeks.length} недель…</p>}
+      {loading && <p className="dossier-income-note" role="status">Загружаем расписание: {history.length} из {desiredWeeks.length} недель…</p>}
       {loadError && <p className="dossier-section-error" role="alert">{loadError}</p>}
       {!loading && incomplete && <p className="dossier-income-note">Неполный расчёт: «≥» — известная часть, «—» — нет сумм с известной ставкой. Причины указаны под суммами.</p>}
       {loading && !history.length ? <div className="dossier-income-skeleton" aria-label="Загрузка доходов"><span/><span/><span/><span/></div> : <DossierOverview metrics={[
-        incomeMetric('income-year', `Всего заработано с 1 января ${year}`, metrics.yearEarned),
+        ...(includeYear ? [incomeMetric('income-year', `Всего заработано с 1 января ${year}`, metrics.yearEarned)] : []),
         incomeMetric('income-previous', 'Заработано в прошлом месяце', metrics.previousMonth),
         incomeMetric('income-earned', 'Заработано в этом месяце', metrics.monthEarned),
         incomeMetric('income-remaining', 'Осталось заработать в этом месяце', metrics.monthRemaining),

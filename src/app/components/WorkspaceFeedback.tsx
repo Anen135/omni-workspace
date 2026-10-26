@@ -1,13 +1,25 @@
-import { CheckCheck, LoaderCircle, X } from 'lucide-react';
-import { useEffect, useState, type RefObject } from 'react';
+import { AlertCircle, CheckCheck, LoaderCircle, X } from 'lucide-react';
+import { useEffect, useRef, useState, type RefObject } from 'react';
 import type { RemoteRecord, Section } from '../../services/omni-client';
 import { SectionView } from '../../components/data/RemoteData';
 import { StudentProfile } from '../../features/students/StudentProfile';
 
-export function WorkspaceError({ message, busy, authNeeded, onRetry }: { message: string; busy: boolean; authNeeded: boolean; onRetry: () => void }) {
-  return <div className="warning" role="alert">{message}<button className="text-button" disabled={busy} onClick={onRetry}>{authNeeded ? 'Открыть вход' : 'Повторить'}</button></div>;
+export function WorkspaceError({ message, busy, authNeeded, onRetry, onClose }: { message: string; busy: boolean; authNeeded: boolean; onRetry: () => void; onClose?: () => void }) {
+  const [dismissed, setDismissed] = useState(false);
+  const onCloseRef = useRef(onClose);
+  useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
+  useEffect(() => {
+    setDismissed(false);
+    const timer = window.setTimeout(() => {
+      if (onCloseRef.current) onCloseRef.current();
+      else setDismissed(true);
+    }, 8000);
+    return () => window.clearTimeout(timer);
+  }, [message]);
+  if (dismissed) return null;
+  const close = () => onClose ? onClose() : setDismissed(true);
+  return <div className="toast workspace-toast workspace-error-toast" role="alert"><AlertCircle size={17} aria-hidden="true"/><span className="workspace-error-message">{message}</span><button className="text-button" disabled={busy} onClick={onRetry}>{authNeeded ? 'Повторить вход' : 'Повторить'}</button><button className="icon" aria-label="Закрыть ошибку" onClick={close}><X size={16}/></button></div>;
 }
-
 export function TeacherSwitchingState() {
   return <section className="panel connection-card" role="status"><LoaderCircle className="spin" size={26}/><h2>Переключаю преподавателя…</h2><p>Загружаю его расписание, группы и домашние задания.</p></section>;
 }

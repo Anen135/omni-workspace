@@ -1,3 +1,5 @@
+import { bufferRequest, type BufferedLessonDraft } from '../services/lesson-draft-buffer';
+import { WorkspaceSettings, readConnectionInterval } from '../features/settings/WorkspaceSettings';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ShieldCheck } from 'lucide-react';
 import { ConnectionError, invalidatePendingOmniRequests, label, omniRequest, record, rows, type RemoteLesson, type RemoteRecord, type Section, type Snapshot } from '../services/omni-client';
@@ -32,6 +34,8 @@ import { StudentDetailDialog, TeacherSwitchingState, WorkspaceError, WorkspaceLo
 import { WorkspaceQuickActions } from './components/WorkspaceQuickActions';
 import { workspaceTabs, type WorkspaceTab } from './components/workspace-tabs';
 import { useStudentAverages } from './useStudentAverages';
+import { createRosterCache } from './roster-cache';
+import { RetainedSection } from './components/RetainedSection';
 import { useLessonEstimates } from './useLessonEstimates';
 import { LessonMaterialsDialog } from '../features/lesson/LessonMaterialsDialog';
 import './live.css';
@@ -41,6 +45,7 @@ import { HelpPage } from '../features/help/HelpPage';
 const emptySection: Section = { data: null, error: null };
 
 export function LiveWorkspace({ onDemo }: { onDemo: () => void }) {
+  const [connectionInterval, setConnectionInterval] = useState(readConnectionInterval);
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [lesson, setLesson] = useState<RemoteLesson | null>(null);
   const [materialsView, setMaterialsView] = useState<{ context: string; theme?: RemoteRecord } | null>(null);
@@ -68,7 +73,10 @@ export function LiveWorkspace({ onDemo }: { onDemo: () => void }) {
   const [homeworkNeedsReload, setHomeworkNeedsReload] = useState(false);
   const [homeworkSaving, setHomeworkSaving] = useState(false);
   const [attendanceSaving, setAttendanceSaving] = useState(false);
+  const [bufferedDrafts, setBufferedDrafts] = useState<BufferedLessonDraft[]>([]);
+  const attemptedBuffers = useRef(new Set<string>());
   const [lessonDrafts, setLessonDrafts] = useState<Record<string, LessonDraft>>({});
+  const [rosterRevision, setRosterRevision] = useState(0);
   const operation = useRef(false);
   const currentAccount = useRef('');
   const lastBranch = useRef('');
@@ -79,16 +87,56 @@ export function LiveWorkspace({ onDemo }: { onDemo: () => void }) {
   const draft = lessonDrafts[draftKey];
   useEffect(() => { setMaterialsView(null); setMaterialLesson(null); }, [draftKey, snapshot]);
   const hasDrafts = Object.keys(lessonDrafts).length > 0;
+  useEffect(() => {
+    if (!isExtension()) return;
+    let cancelled = false;
+    const version = sessionVersion.current;
+    void bufferRequest({ op: 'list' }).then(entries => {
+      if (!cancelled && version === sessionVersion.current) setBufferedDrafts(entries);
+    }).catch(() => { if (!cancelled) setError('Не удалось прочитать локальный буфер черновиков.'); });
+    return () => { cancelled = true; };
+  }, [snapshot?.account.id, snapshot?.account.branch]);
+  useEffect(() => {
+    if (!snapshot) return;
+    const entries = bufferedDrafts.filter(entry => {
+      const context = JSON.parse(entry.key) as string[];
+      return context[0] === snapshot.account.id && context[1] === (snapshot.account.branch || '');
+    });
+    if (!entries.length) return;
+    setLessonDrafts(current => {
+      const restored = { ...current };
+      for (const entry of entries) if (!restored[entry.key]) restored[entry.key] = { ...entry.draft, needsReload: entry.state !== 'ready' };
+      return restored;
+    });
+  }, [bufferedDrafts, snapshot?.account.id, snapshot?.account.branch]);
+
   const hasTheme = attendanceHasTheme(presentData);
   const currentTheme = label(attendanceLessonInfo(presentData)?.theme).trim() || (presentData.scheduleType === 'event' ? label(record(presentData.scheduleData).theme).trim() : '');
   const lessonStudents = rows(presentData.students);
   const dayLessons = presentLessons(presentData.schedule);
   const groups = rows(snapshot?.groups.data);
   const teachers = rows(snapshot?.teachers?.data);
-  const averageGroupIds = tab === 'lesson' ? [label(presentData.cur_group)].filter(id => /^[1-9]\d{0,11}$/.test(id)) : tab === 'homework' ? groups.map(group => label(group.id_tgroups)).filter(id => /^[1-9]\d{0,11}$/.test(id)) : [];
-  const averages = useStudentAverages(snapshot, [...new Set(averageGroupIds)].sort(), !workspaceLoading);
+  const rosterCache = useMemo(() => snapshot ? createRosterCache(snapshot.account) : undefined,
+    [snapshot?.account.id, snapshot?.account.branch, snapshot?.groups, rosterRevision, sessionVersion.current]);
+  const dossierRefreshKey = useMemo(() => ({ groups: snapshot?.groups, mutation: rosterRevision }), [snapshot?.groups, rosterRevision]);
+  const queueGroups = new Set(homeworkItems(snapshot?.newHomework.data).map(item => item.groupName));
+  const knownGroupNames = new Set(groups.map(group => label(group.name_tgroups)));
+  const rosterGroups = [...queueGroups].some(name => !name || !knownGroupNames.has(name)) ? groups : groups.filter(group => queueGroups.has(label(group.name_tgroups)));
+  const averageGroupIds = tab === 'lesson' ? [label(presentData.cur_group)].filter(id => /^[1-9]\d{0,11}$/.test(id)) : tab === 'homework' ? rosterGroups.map(group => label(group.id_tgroups)).filter(id => /^[1-9]\d{0,11}$/.test(id)) : [];
+  const averages = useStudentAverages(snapshot, [...new Set(averageGroupIds)].sort(), !workspaceLoading, rosterCache);
   const studentAverages = averages.values;
   const busy = workspaceLoading;
+  useEffect(() => {
+    if (!isExtension() || !snapshot || busy || operation.current) return;
+    const entry = bufferedDrafts.find(item => {
+      const context = JSON.parse(item.key) as string[];
+      return item.state === 'ready' && context[0] === snapshot.account.id && context[1] === (snapshot.account.branch || '')
+        && !attemptedBuffers.current.has(`${sessionVersion.current}:${item.key}`);
+    });
+    if (entry) void saveLessonDraft(true, entry);
+  }, [bufferedDrafts, snapshot, busy]);
+
+  const incomeGeneration = sessionVersion.current;
   const selectedDate = label(presentData.cur_date || presentData.today);
   const schedule = record(snapshot?.schedule.data);
   const estimates = useLessonEstimates(snapshot?.account.id || '', snapshot?.account.branch || '', tab, schedule, presentData);
@@ -107,6 +155,7 @@ export function LiveWorkspace({ onDemo }: { onDemo: () => void }) {
     setError(reason instanceof Error ? reason.message : 'Не удалось загрузить данные.');
     if (reason instanceof ConnectionError && ['AUTH_REQUIRED', 'ACCOUNT_CHANGED', 'CHALLENGE'].includes(reason.code)) {
       invalidatePendingOmniRequests();
+      setIncomeBusy(false);
       setLessonDrafts({});
       setAuthNeeded(true); setSnapshot(null); setLesson(null); setGroupStudents(null); setDetail(null);
       currentAccount.current = ''; lastBranch.current = '';
@@ -217,6 +266,7 @@ export function LiveWorkspace({ onDemo }: { onDemo: () => void }) {
   useEffect(() => {
     return onExtensionSessionChange(() => {
       invalidatePendingOmniRequests();
+      setIncomeBusy(false);
       setHomeworkSaved({}); setHomeworkNeedsReload(false);
       setLessonDrafts({});
       sessionVersion.current++;
@@ -247,9 +297,9 @@ export function LiveWorkspace({ onDemo }: { onDemo: () => void }) {
         setConnectionState(state.state);
         if (state.connected) { setWaiting(false); void refresh(); }
       }).catch(() => {});
-    }, 3000);
+    }, connectionInterval * 1000);
     return () => clearInterval(timer);
-  }, [waiting]);
+  }, [waiting, connectionInterval]);
   useEffect(() => { if (detail) dialog.current?.showModal(); }, [detail]);
   useEffect(() => {
     if (!attendanceSaving && !homeworkSaving && !hasDrafts) return;
@@ -275,14 +325,14 @@ export function LiveWorkspace({ onDemo }: { onDemo: () => void }) {
     } catch (reason) { if (version === sessionVersion.current) failed(reason); }
     finally { operation.current = false; setBusy(false); }
   }
-  async function openGroup(group: RemoteRecord) {
+  async function openGroup(group: RemoteRecord, refresh = false) {
     const id = label(group.id_tgroups);
     if (!id || operation.current) return;
     const version = sessionVersion.current;
     operation.current = true; setBusy(true); setError(''); setGroupStudents(null);
     setGroupId(id); setGroupName(label(group.name_tgroups));
     try {
-      const result = await omniRequest<{ account: { id: string }; students: unknown }>('group', { group: id });
+      const result = await rosterCache!.read(id, { priority: 'foreground' }, refresh);
       if (version !== sessionVersion.current) return;
       ensureAccount(result.account); setGroupStudents({ data: result.students, error: null }); setGroupName(label(group.name_tgroups));
     } catch (reason) {
@@ -313,6 +363,23 @@ export function LiveWorkspace({ onDemo }: { onDemo: () => void }) {
     setTimeout(() => URL.revokeObjectURL(url), 1000); setNotice('Снимок реальных данных экспортирован в файл.');
   }
   const attendanceReason = draft?.needsReload ? 'Перед следующей правкой загрузите урок заново.' : attendanceUnavailable(presentData);
+  async function refreshHomework() {
+    if (!snapshot || operation.current) return;
+    const version = sessionVersion.current;
+    const accountId = snapshot.account.id;
+    const branch = snapshot.account.branch || '';
+    operation.current = true; setBusy(true); setError(''); setHomeworkNeedsReload(true);
+    try {
+      const result = await omniRequest<{ account: { id: string; branch?: string }; newHomework: Section }>('homework-queue', { accountId });
+      if (version !== sessionVersion.current) return;
+      ensureAccount(result.account);
+      if (result.account.branch !== undefined && result.account.branch !== branch) throw new ConnectionError('ACCOUNT_CHANGED', 'Филиал изменился. Обновите подключение.');
+      if (result.newHomework.error) throw new Error(result.newHomework.error);
+      setSnapshot(current => current?.account.id === accountId && (current.account.branch || '') === branch ? { ...current, newHomework: result.newHomework } : current);
+      setHomeworkSaved({}); setHomeworkNeedsReload(false);
+    } catch (reason) { if (version === sessionVersion.current) failed(reason); }
+    finally { operation.current = false; setBusy(false); }
+  }
   async function gradeHomework(items: HomeworkReviewItem[], mark: number, response?: HomeworkResponseDraft): Promise<{ confirmedKeys: string[] }> {
     if (!snapshot || operation.current || homeworkNeedsReload) throw new Error('Обновите список работ перед сохранением.');
     if (items.length > 100) throw new Error('За один раз можно оценить до 100 работ. Выберите меньше строк.');
@@ -340,7 +407,7 @@ export function LiveWorkspace({ onDemo }: { onDemo: () => void }) {
     } catch (reason) {
       if (version === sessionVersion.current) { setHomeworkNeedsReload(true); failed(reason); }
       throw reason;
-    } finally { operation.current = false; setBusy(false); setHomeworkSaving(false); }
+    } finally { operation.current = false; setBusy(false); setHomeworkSaving(false); setRosterRevision(value => value + 1); }
   }
   function storeDraft(key: string, next: LessonDraft) {
     setLessonDrafts(current => {
@@ -485,35 +552,88 @@ export function LiveWorkspace({ onDemo }: { onDemo: () => void }) {
       return updated;
     });
   }
-  function clearLessonDraft() {
+  async function clearLessonDraft() {
+    const buffered = bufferedDrafts.find(entry => entry.key === draftKey);
+    if (buffered) {
+      try {
+        const claimed = await bufferRequest({ op: 'claim', key: buffered.key, revision: buffered.revision, manual: true });
+        if (!claimed) return;
+        await bufferRequest({ op: 'remove', key: claimed.key, revision: claimed.revision });
+        setBufferedDrafts(current => current.filter(entry => entry.key !== draftKey));
+      } catch (reason) { setError(reason instanceof Error ? reason.message : 'Не удалось удалить буфер.'); return; }
+    }
     setLessonDrafts(current => { const next = { ...current }; delete next[draftKey]; return next; });
   }
-  async function saveLessonDraft() {
-    if (!snapshot || !draft || operation.current || attendanceReason) return;
-    if (!lessonRewardDraftAllowed(lessonStudents, draft.rewards)) { setError('Нельзя увеличить награды: лимит урока — 5 топкойнов. Уменьшите топкойны в черновике или загрузите полный список учеников.'); return; }
-    if (!hasTheme && !draft.theme) { setError('Добавьте тему урока в черновик перед сохранением.'); return; }
-    if (draft.theme && !window.confirm('Сохранить тему и все изменения урока в Omni? Выбранные параметры выдачи ДЗ и практической работы будут применены.')) return;
+  async function saveLessonDraft(automatic = false, buffered?: BufferedLessonDraft) {
+    const source = buffered?.draft || draft;
+    if (!snapshot || !source || operation.current || (!buffered && attendanceReason && !source.needsReload)) return;
+    if (!buffered && !lessonRewardDraftAllowed(lessonStudents, source.rewards)) { setError('Нельзя увеличить награды: лимит урока — 5 топкоинов.'); return; }
+    if (!buffered && !hasTheme && !source.theme) { setError('Добавьте тему урока в черновик перед сохранением.'); return; }
+    if (!automatic && source.theme && !window.confirm('Сохранить тему и все изменения урока в Omni? Сохранение выбранной выдачи ДЗ и практической работы тоже применится.')) return;
     const version = sessionVersion.current;
-    const key = draftKey;
-    const params = { accountId: snapshot.account.id, date: label(presentData.cur_date), group: label(presentData.cur_group), lenta: label(presentData.cur_lenta), schedule: label(presentData.cur_schedule) };
-    let pending: LessonDraft = { ...draft, attendance: { ...draft.attendance }, marks: { ...draft.marks }, rewards: { ...draft.rewards } };
+    const key = buffered?.key || draftKey;
+    const [accountId, branch, date, group, lenta, schedule] = JSON.parse(key) as string[];
+    if (snapshot.account.id !== accountId || (snapshot.account.branch || '') !== branch) return;
+    const params = { accountId, date, group, lenta, schedule };
+    let pending: LessonDraft = { ...source, attendance: { ...source.attendance }, marks: { ...source.marks }, rewards: { ...source.rewards } };
+    let envelope: BufferedLessonDraft | null = null;
+    let uncertain = false;
+    let mutationStarted = false;
+    attemptedBuffers.current.add(`${version}:${key}`);
     operation.current = true; setBusy(true); setAttendanceSaving(true); setError(''); setNotice('');
-    function accept(result: { account: { id: string }; presents: unknown }, themeChanged = false) {
+    function track(entry: BufferedLessonDraft | null) {
+      setBufferedDrafts(current => entry ? [...current.filter(item => item.key !== key), entry] : current.filter(item => item.key !== key));
+    }
+    async function checkpoint(state: 'ready' | 'uncertain' | 'review', release = false) {
+      if (!envelope) throw new Error('Нет сохранённого буфера. Отправка остановлена.');
+      const next = await bufferRequest({ op: 'checkpoint', key, revision: envelope.revision, draft: pending, state, release });
+      if (!next) throw new Error('Локальный буфер изменился. Перечитайте урок.');
+      envelope = next; track(next);
+    }
+    async function dispatchWrite<T>(action: string, input: Record<string, unknown>): Promise<T> {
+      await checkpoint('uncertain');
+      if (version !== sessionVersion.current) throw new Error('Сессия изменилась.');
+      uncertain = true; mutationStarted = true;
+      return omniRequest<T>(action, input);
+    }
+    function accept(result: { account: { id: string; branch?: string }; presents: unknown }, themeChanged = false) {
       if (version !== sessionVersion.current) throw new Error('Сессия изменилась.');
       ensureAccount(result.account);
+      if (result.account.id !== accountId) throw new Error('Аккаунт изменился. Черновик не отправлен.');
       const presents = record(result.presents);
-      if (attendanceDraftKey(params.accountId, snapshot!.account.branch || '', presents) !== key) throw new Error('Omni вернул другое занятие. Перечитайте урок.');
-      setSnapshot(current => current ? { ...current, presents: { data: presents, error: null } } : null);
-      setLesson(current => current ? { ...current, presents, ...(themeChanged ? { materials: emptySection, homework: emptySection } : {}) } : null);
+      if (result.account.branch !== undefined && result.account.branch !== branch || attendanceDraftKey(params.accountId, branch, presents) !== key) throw new Error('Omni вернул другое занятие. Перечитайте урок.');
+      if (key === draftKey) {
+        setSnapshot(current => current ? { ...current, presents: { data: presents, error: null } } : null);
+        setLesson(current => current ? { ...current, presents, ...(themeChanged ? { materials: emptySection, homework: emptySection } : {}) } : null);
+      }
       return presents;
     }
     try {
+      const existing = buffered || bufferedDrafts.find(entry => entry.key === key);
+      if (existing) {
+        envelope = await bufferRequest({ op: 'claim', key, revision: existing.revision, manual: !automatic });
+        if (!envelope) return;
+        // A restored uncertainty is not permission to repeat material issuance.
+        if (envelope.state === 'uncertain' && envelope.draft.theme) {
+          throw new Error('Результат выдачи материалов не подтверждён. Проверьте урок в Omni; автоматический повтор темы отключён.');
+        }
+        if (!automatic) await checkpoint(envelope.state);
+      } else {
+        envelope = await bufferRequest({ op: 'put', key, draft: pending, state: 'ready' });
+        if (!envelope) throw new Error('Не удалось создать локальный буфер.');
+      }
+      track(envelope);
+      // Mutation responses expose teacher ID only; snapshot is the existing
+      // authoritative source of branch identity. Verify it before replay.
+      const verified = await omniRequest<Snapshot>('snapshot', { week });
+      if (version !== sessionVersion.current || verified.account.id !== accountId || verified.account.branch !== branch) throw new Error('Аккаунт или филиал изменился. Черновик не отправлен.');
       let fresh = accept(await omniRequest<RemoteLesson>('lesson', { date: params.date, group: params.group, lenta: params.lenta }));
+      pending = reconcileLessonDraft(pending, fresh);
       const conflict = lessonDraftConflict(pending, fresh);
       if (conflict) throw new Error(conflict);
       if (!lessonRewardDraftAllowed(rows(fresh.students), pending.rewards)) throw new Error('Общее количество топкойнов изменилось в Omni. Лимит урока — 5. Перечитайте урок и уменьшите награды.');
       if (pending.theme) {
-        const result = await omniRequest<{ account: { id: string }; presents: unknown; warning?: string }>('set-lesson-theme', { ...params, ...pending.theme });
+        const result = await dispatchWrite<{ account: { id: string; branch?: string }; presents: unknown; warning?: string }>('set-lesson-theme', { ...params, ...pending.theme });
         fresh = accept(result, true);
         delete pending.theme;
         // Our confirmed theme save may create visits or reset attendance. Only
@@ -534,12 +654,14 @@ export function LiveWorkspace({ onDemo }: { onDemo: () => void }) {
           if (matches.length !== 1 || rewardValue(matches[0].prize) !== change.previousReward) { storeDraft(key, pending); throw new Error('После сохранения темы изменились топкойны ученика. Перечитайте урок.'); }
           pending.rewards![stud] = { ...change, visit: attendanceVisit(matches[0].id_vizit) };
         }
+        uncertain = false;
+        await checkpoint('ready');
         storeDraft(key, pending);
         if (result.warning) { setError(result.warning); }
       }
       const changes: AttendanceChange[] = Object.values(pending.attendance);
       if (changes.length) {
-        fresh = accept(await omniRequest<{ account: { id: string }; presents: unknown }>('set-attendance', { ...params, changes }));
+        fresh = accept(await dispatchWrite<{ account: { id: string; branch?: string }; presents: unknown }>('set-attendance', { ...params, changes }));
         pending.attendance = {};
         for (const [markKey, change] of Object.entries(pending.marks)) {
           if (!changes.some(attendance => attendance.stud === change.stud)) continue;
@@ -553,13 +675,17 @@ export function LiveWorkspace({ onDemo }: { onDemo: () => void }) {
           if (matches.length !== 1 || rewardValue(matches[0].prize) !== change.previousReward) { storeDraft(key, pending); throw new Error('После сохранения посещаемости изменились топкойны ученика. Перечитайте урок.'); }
           pending.rewards![stud] = { ...change, visit: attendanceVisit(matches[0].id_vizit) };
         }
+        uncertain = false;
+        await checkpoint('ready');
         storeDraft(key, pending);
       }
       for (const [markKey, change] of Object.entries(pending.marks)) {
         const matches = rows(fresh.students).filter(student => label(student.id_stud) === change.stud);
         if (matches.length !== 1 || !(Number(matches[0].id_vizit) > 0) || attendanceVisit(matches[0].id_vizit) !== change.visit) throw new Error('Запись посещения для оценки недоступна или изменилась. Перечитайте урок.');
-        fresh = accept(await omniRequest<{ account: { id: string }; presents: unknown }>('set-lesson-mark', { ...params, ...change, visit: label(matches[0].id_vizit) }));
+        fresh = accept(await dispatchWrite<{ account: { id: string; branch?: string }; presents: unknown }>('set-lesson-mark', { ...params, ...change, visit: label(matches[0].id_vizit) }));
         delete pending.marks[markKey];
+        uncertain = false;
+        await checkpoint('ready');
         storeDraft(key, pending);
       }
       // Release allocated coins first, so a redistribution cannot exceed the
@@ -570,15 +696,30 @@ export function LiveWorkspace({ onDemo }: { onDemo: () => void }) {
         const matches = rows(fresh.students).filter(student => label(student.id_stud) === stud);
         if (matches.length !== 1 || !(Number(matches[0].id_vizit) > 0) || attendanceVisit(matches[0].id_vizit) !== change.visit) throw new Error('Запись посещения для топкойнов недоступна или изменилась. Перечитайте урок.');
         if (!lessonRewardDraftAllowed(rows(fresh.students), { [stud]: change })) throw new Error('Лимит урока — 5 топкойнов. Награды в Omni изменились: перечитайте урок перед увеличением.');
-        fresh = accept(await omniRequest<{ account: { id: string }; presents: unknown }>('set-lesson-reward', { ...params, ...change, visit: label(matches[0].id_vizit) }));
+        fresh = accept(await dispatchWrite<{ account: { id: string; branch?: string }; presents: unknown }>('set-lesson-reward', { ...params, ...change, visit: label(matches[0].id_vizit) }));
         delete pending.rewards![stud];
+        uncertain = false;
+        await checkpoint('ready');
         storeDraft(key, pending);
       }
-      setGroupStudents(null); setGroupId(''); setGroupName(''); setDetail(null);
+      if (envelope) await bufferRequest({ op: 'remove', key, revision: envelope.revision });
+      track(null);
+      storeDraft(key, emptyLessonDraft());
+      if (key === draftKey) { setGroupStudents(null); setGroupId(''); setGroupName(''); setDetail(null); }
       setNotice('Изменения урока сохранены в Omni.');
     } catch (reason) {
-      if (version === sessionVersion.current) { storeDraft(key, { ...pending, needsReload: true }); failed(reason); }
-    } finally { operation.current = false; setBusy(false); setAttendanceSaving(false); }
+      // Explicit server rejections confirm no write; transport/auth failures do not.
+      if (reason instanceof ConnectionError && ['THEME_REJECTED', 'ATTENDANCE_REJECTED', 'MARK_REJECTED', 'REWARD_REJECTED', 'THEME_CONFLICT', 'ATTENDANCE_CONFLICT', 'MARK_CONFLICT', 'REWARD_CONFLICT', 'BAD_INPUT', 'THEME_UNAVAILABLE'].includes(reason.code)) uncertain = false;
+      if (envelope) {
+        const retryAfterLogin = !mutationStarted && reason instanceof ConnectionError && ['AUTH_REQUIRED', 'CHALLENGE', 'OFFLINE'].includes(reason.code);
+        try { await checkpoint(uncertain || !mutationStarted && envelope.state === 'uncertain' ? 'uncertain' : retryAfterLogin ? 'ready' : 'review', true); }
+        catch { /* Previous durable checkpoint remains conservative after navigation/storage failure. */ }
+      }
+      if (version === sessionVersion.current) {
+        storeDraft(key, { ...pending, needsReload: true });
+        failed(reason);
+      }
+    } finally { operation.current = false; setBusy(false); setAttendanceSaving(false); setRosterRevision(value => value + 1); }
   }
   const lessonTableContext = useMemo(() => ({ draftKey, students: presentData.students }), [draftKey, presentData.students]);
   const studentTable = (items: RemoteRecord[]) => {
@@ -608,21 +749,21 @@ export function LiveWorkspace({ onDemo }: { onDemo: () => void }) {
             onDatePick={date => void refresh(weekForDate(date))}/>}
         </WorkspacePageHeading>
         {error && <WorkspaceError message={error} busy={busy} authNeeded={authNeeded}
-          onRetry={() => void (authNeeded ? connect() : snapshot ? refresh() : connect())}/>}
+          onClose={() => setError('')} onRetry={() => void (authNeeded ? connect() : snapshot ? refresh() : connect())}/>}
         {switchingTeacher && <TeacherSwitchingState/>}
+        {tab === 'settings' && <WorkspaceSettings interval={connectionInterval} onSave={setConnectionInterval}/>}
         {tab === 'help' && <HelpPage onDemo={openDemo}/>}
-        {!snapshot && !switchingTeacher && tab !== 'help' && <ConnectionCard busy={busy} waiting={waiting}
+        {!snapshot && !switchingTeacher && tab !== 'help' && tab !== 'settings' && <ConnectionCard busy={busy} waiting={waiting}
           extension={isExtension()} changingAccount={changingAccount} connectionState={connectionState}
           onLogin={login} onConnect={() => void connect()} onDemo={onDemo}/>}
         {snapshot && <>
           {tab === 'lesson' && <div className="lesson-workspace">
             {isExtension() && <LessonSaveBar busy={busy} saving={attendanceSaving} draft={draft} hasTheme={hasTheme}
-              unavailable={attendanceReason} onSave={() => void saveLessonDraft()}
+              unavailable={draft?.needsReload ? attendanceUnavailable(presentData) : attendanceReason} pendingUpload={bufferedDrafts.some(entry => entry.key === draftKey)} onSave={() => void saveLessonDraft()}
               onDiscard={() => { if (window.confirm('Удалить локальный черновик этого урока?')) clearLessonDraft(); }}/>}
             <LessonBanner account={snapshot.account} fetchedAt={snapshot.fetchedAt} date={selectedDate} students={lessonStudents} theme={currentTheme} draft={draft} estimate={estimates.current}>
               {isExtension() && <LessonThemeEditor key={draftKey} embedded contextKey={draftKey} busy={busy} unavailable={attendanceReason} currentTheme={currentTheme} draft={draft?.theme}
                 onLoad={loadLessonThemes} onSave={stageTheme} onPreviewTheme={theme => setMaterialsView({ context: draftKey, theme })}/>}
-              <button className="button secondary" disabled={busy || !label(presentData.cur_group)} onClick={() => { setMaterialsView({ context: draftKey }); void loadCurrentMaterials().catch(() => {}); }}>Посмотреть материалы</button>
             </LessonBanner>
             <LessonSelectors date={selectedDate} today={today} presents={presentData} dayLessons={dayLessons}
               busy={busy} onDatePick={date => void loadLesson(undefined, undefined, date)}
@@ -651,18 +792,19 @@ export function LiveWorkspace({ onDemo }: { onDemo: () => void }) {
             groupsSection={snapshot.groups} groups={groups} groupName={groupName}
             groupId={groupId} studentsSection={groupStudents} busy={busy} onGroupPick={group => void openGroup(group)}
             onOpen={student => void openStudent(student)}
-            onRefresh={() => { const group = groups.find(item => label(item.id_tgroups) === groupId); if (group) void openGroup(group); }}/>}
-          {tab === 'homework' && <HomeworkPanel busy={busy} onRefresh={() => void refresh()}
+            onRefresh={() => { const group = groups.find(item => label(item.id_tgroups) === groupId); if (group) void openGroup(group, true); }}/>}
+          {tab === 'homework' && <HomeworkPanel busy={busy} onRefresh={() => void refreshHomework()}
             section={snapshot.newHomework} items={reviewItems} studentAverages={studentAverages} studentPhotos={averages.photos} studentAveragesLoading={averages.loading} studentAveragesError={averages.error}
             responseDraftContext={snapshot?.newHomework.data}
             grading={isExtension() ? { busy, unavailable: homeworkNeedsReload ? 'Перед следующей оценкой нажмите «Обновить работы».' : undefined, onGrade: gradeHomework } : undefined}/>}
-          {tab === 'dossier' && <TeacherDossier key={`${snapshot.account.id}:${snapshot.account.branch}:${sessionVersion.current}`}
-            accountId={snapshot.account.id} accountName={snapshot.account.name} branch={snapshot.account.branch} schedule={snapshot.schedule} today={today} disabled={busy} onConnectionError={failed} onIncomeLoading={setIncomeBusy}/>}
-          {tab === 'materials' && <>
-            <TeachingMaterials key={`${snapshot.account.id}:${snapshot.account.branch}`} accountId={snapshot.account.id} disabled={busy} onConnectionError={failed}/>
+          <RetainedSection key={`dossier:${snapshot.account.id}:${snapshot.account.branch}:${sessionVersion.current}`} active={tab === 'dossier'}><TeacherDossier
+            accountId={snapshot.account.id} accountName={snapshot.account.name} branch={snapshot.account.branch} schedule={snapshot.schedule} today={today} disabled={workspaceBusy} active={tab === 'dossier'} refreshKey={dossierRefreshKey} onConnectionError={failed}
+            onIncomeLoading={loading => { if (currentAccount.current === snapshot.account.id && lastBranch.current === (snapshot.account.branch || '') && sessionVersion.current === incomeGeneration) setIncomeBusy(loading); }}/></RetainedSection>
+          <RetainedSection key={`materials:${snapshot.account.id}:${snapshot.account.branch}:${sessionVersion.current}`} active={tab === 'materials'}>
+            <TeachingMaterials accountId={snapshot.account.id} active={tab === 'materials'} refreshKey={snapshot.groups} disabled={busy} onConnectionError={failed}/>
             <IssuedMaterialsPanel lesson={lesson} busy={busy} date={selectedDate} groupSelected={!!presentData.cur_group}
               onLoad={() => void loadLesson(label(presentData.cur_group), label(presentData.cur_lenta))}/>
-          </>}
+          </RetainedSection>
           <div className="bottom-actions"><span><ShieldCheck size={17}/>{isExtension() ? 'Данные Omni · отметки посещаемости сохраняются на сервере' : 'Данные загружены из Omni · только чтение'}</span></div>
         </>}
         <footer className="page-footer"><span>omni workspace</span><span>Больше внимания ученикам.</span><span>Локальное подключение</span></footer>

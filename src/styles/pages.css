@@ -1,1 +1,1 @@
-.pages-beta-notice{position:relative;z-index:100;padding:12px 20px;background:#efe8ff;color:#503778;text-align:center;font:500 13px/1.5 sans-serif}
+.pages-beta-notice{position:relative;z-index:100;padding:12px 20px;background:var(--omni-primary-soft, #efe8ff);color:var(--omni-accent-text, #503778);text-align:center;font:500 13px/1.5 sans-serif}
