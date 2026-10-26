@@ -1,3 +1,4 @@
+import { isFileSourceHost } from '../../../shared/file-sources.mjs';
 import { lazy, Suspense, useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronDown, ChevronUp, ExternalLink } from 'lucide-react';
@@ -77,8 +78,7 @@ export function FilePreview({ url, filename = '', mime = '', fallback, linkLabel
 }
 
 function Preview({ url, kind, title, compact = false }: { url: string; kind: Kind; title: string; compact?: boolean }) {
-  const host = new URL(url).hostname;
-  if (host === 'fs.top-academy.ru' || host === 'storage.yandexcloud.net') return <AcademyPreview url={url} title={title} compact={compact}/>;
+  if (isFileSourceHost(new URL(url).hostname)) return <AcademyPreview url={url} title={title} compact={compact}/>;
   return <DirectPreview url={url} kind={kind} title={title} compact={compact}/>;
 }
 

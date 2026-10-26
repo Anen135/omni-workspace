@@ -1,5 +1,6 @@
+import { fileSourcePermissions } from '../shared/file-sources.mjs';
 import { build as bundle } from 'esbuild';
-import { copyFile, cp, mkdir, readFile, rm } from 'node:fs/promises';
+import { copyFile, cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { basename, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
@@ -30,7 +31,9 @@ await bundle({ entryPoints: ['src/app/extension/extension-entry.tsx'], bundle: t
 await bundle({ entryPoints: ['extension/background.mjs'], bundle: true, format: 'esm', platform: 'browser', target: 'chrome120', outfile: 'dist-extension/background.js', define: { __OMNI_BUILD_ID__: JSON.stringify(buildId) } });
 await bundle({ entryPoints: ['shared/omni-agent.mjs'], bundle: true, format: 'iife', globalName: 'OmniDesktopAgent', platform: 'browser', target: 'chrome120', outfile: 'dist-extension/agent.js', footer: { js: `OmniDesktopAgent.build = ${JSON.stringify(buildId)};` } });
 await cp('public', 'dist-extension', { recursive: true });
-await copyFile('extension/manifest.json', 'dist-extension/manifest.json');
+const manifest = JSON.parse(await readFile('extension/manifest.json', 'utf8'));
+manifest.host_permissions = [...new Set([...(manifest.host_permissions || []), ...fileSourcePermissions()])];
+await writeFile('dist-extension/manifest.json', JSON.stringify(manifest, null, 2) + '\n');
 await copyFile('extension/launcher.html', 'dist-extension/index.html');
 await copyFile('extension/launcher.js', 'dist-extension/launcher.js');
 await copyFile('LICENSE', 'dist-extension/LICENSE');

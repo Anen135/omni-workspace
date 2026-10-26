@@ -1,0 +1,20 @@
+{
+  "sources": [
+    {
+      "host": "fs.top-academy.ru",
+      "pathPrefixes": ["/api/v1/files/"],
+      "fileId": true
+    },
+    {
+      "host": "storage.yandexcloud.net",
+      "pathPrefixes   ": [
+        "/top-academy-services-omni/",
+        "/top-academy-services-msapi/"
+      ]
+    },
+    {
+      "host": "s3.twcstorage.ru",
+      "pathPrefixes": ["/top-academy-services-msapi/"]
+    }
+  ]
+}

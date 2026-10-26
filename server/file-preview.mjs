@@ -1,14 +1,7 @@
+import { allowedFileSource } from '../shared/file-sources.mjs';
 const maxBytes = 50 * 1024 * 1024;
 
-export function allowedPreviewUrl(value) {
-  try {
-    const url = new URL(value);
-    return url.protocol === 'https:' && !url.username && !url.password && !url.port && (
-      url.hostname === 'fs.top-academy.ru' && /^\/api\/v1\/files\/[A-Za-z0-9_-]+$/.test(url.pathname) ||
-      url.hostname === 'storage.yandexcloud.net' && (url.pathname.startsWith('/top-academy-services-omni/') || url.pathname.startsWith('/top-academy-services-msapi/'))
-    );
-  } catch { return false; }
-}
+export const allowedPreviewUrl = allowedFileSource;
 
 export async function loadFilePreview(value, fetchFile = fetch) {
   let url = value;

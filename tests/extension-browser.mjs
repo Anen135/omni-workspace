@@ -23,8 +23,8 @@ try {
     globalThis.fetch = async (url, options) => {
       if (!['https://fs.top-academy.ru/api/v1/files/pdf-fixture', 'https://fs.top-academy.ru/api/v1/files/png-fixture'].includes(url) || options.credentials !== 'omit') throw new Error('Unexpected network request in fixture');
       const image = url.endsWith('/png-fixture');
-      const result = new Response(image ? Uint8Array.from(atob(png), char => char.charCodeAt(0)) : pdf, { headers: { 'Content-Type': 'application/octet-stream' } });
-      Object.defineProperty(result, 'url', { value: image ? 'https://storage.yandexcloud.net/top-academy-services-msapi/fixtures/answer.png' : url });
+      const result = new Response(image ? Uint8Array.from(atob(png), char => char.charCodeAt(0)) : pdf, { headers: image ? {} : { 'Content-Type': 'application/octet-stream' } });
+      Object.defineProperty(result, 'url', { value: image ? 'https://s3.twcstorage.ru/top-academy-services-msapi/fixtures/answer.png' : url });
       return result;
     };
   }, { pdf, png: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=' });
@@ -281,7 +281,19 @@ try {
   await official.addInitScript(() => localStorage.setItem('omni.connection-check-seconds', '15'));
   await official.reload();
   await official.locator('#omni-workspace-root #root').waitFor();
-  if (process.env.OMNI_DRAFT_RECOVERY_ONLY === '1') {
+  if (process.env.OMNI_PNG_PREVIEW_ONLY === '1') {
+    await initialRoster.started;
+    initialRoster.release();
+    await ui.locator('.attendance-select').first().waitFor();
+    await ui.getByRole('button', { name: 'Домашние задания', exact: true }).click();
+    await ui.getByRole('button', { name: 'Открыть работу', exact: true }).nth(1).click();
+    await ui.locator('.remote-attachment').getByRole('button', { name: 'Превью', exact: true }).click();
+    await ui.locator('.file-preview-full img').waitFor();
+    await ui.waitForFunction(() => document.querySelector('#omni-workspace-root')?.shadowRoot?.querySelector('.file-preview-full img')?.naturalWidth === 1);
+    assert.equal(await ui.locator('.file-preview-error').count(), 0);
+    assert.deepEqual(errors, []);
+    console.log('PASS: homework PNG preview through extension with TWC destination and no Content-Type. Fictional image.');
+  } else   if (process.env.OMNI_DRAFT_RECOVERY_ONLY === '1') {
     await initialRoster.started;
     initialRoster.release();
     await ui.locator('.attendance-select').first().waitFor();

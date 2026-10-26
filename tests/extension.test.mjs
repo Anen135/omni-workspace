@@ -1,3 +1,4 @@
+import { fileSourcePermissions } from '../shared/file-sources.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
@@ -58,9 +59,11 @@ test('extension file previews allow only the two explicit Academy storage bucket
     }
   }
   const manifest = JSON.parse(await readFile(new URL('../extension/manifest.json', import.meta.url), 'utf8'));
-  assert.deepEqual(manifest.host_permissions, [
-    'https://omni.top-academy.ru/*', 'https://fs.top-academy.ru/*',
+  assert.deepEqual(manifest.host_permissions, ['https://omni.top-academy.ru/*']);
+  assert.deepEqual([...manifest.host_permissions, ...fileSourcePermissions()], [
+    'https://omni.top-academy.ru/*', 'https://fs.top-academy.ru/api/v1/files/*',
     'https://storage.yandexcloud.net/top-academy-services-omni/*',
     'https://storage.yandexcloud.net/top-academy-services-msapi/*',
+    'https://s3.twcstorage.ru/top-academy-services-msapi/*',
   ]);
 });

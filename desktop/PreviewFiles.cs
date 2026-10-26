@@ -1,5 +1,8 @@
 using System;
 using System.IO;
+using System.Collections.Generic;
+using System.Linq;
+using System.Web.Script.Serialization;
 using System.Net.Http;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -9,9 +12,27 @@ using System.Threading.Tasks;
 namespace OmniDesktop {
 internal static class PreviewFiles {
     const int Limit = 1 * 1024 * 1024 * 1024;
-    internal static bool Allowed(Uri uri) => uri.Scheme == "https" && uri.IsDefaultPort && uri.UserInfo == "" && (
-        uri.Host == "fs.top-academy.ru" && Regex.IsMatch(uri.AbsolutePath, "^/api/v1/files/[A-Za-z0-9_-]+$") ||
-        uri.Host == "storage.yandexcloud.net" && (uri.AbsolutePath.StartsWith("/top-academy-services-omni/", StringComparison.Ordinal) || uri.AbsolutePath.StartsWith("/top-academy-services-msapi/", StringComparison.Ordinal)));
+    sealed class FileSource { public string Host; public string[] Prefixes; public bool FileId; }
+    static readonly FileSource[] Sources = ReadSources();
+    static FileSource[] ReadSources() {
+        using (var stream = typeof(PreviewFiles).Assembly.GetManifestResourceStream("file-sources.json"))
+        using (var reader = new StreamReader(stream)) {
+            var configuration = new JavaScriptSerializer().DeserializeObject(reader.ReadToEnd()) as Dictionary<string, object>;
+            if (configuration == null || configuration.Count != 1 || !configuration.ContainsKey("sources") || !(configuration["sources"] is object[] entries) || entries.Length == 0) throw new InvalidOperationException("Invalid file source configuration.");
+            var sources = new List<FileSource>();
+            var hosts = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var entry in entries) {
+                var source = entry as Dictionary<string, object>;
+                if (source == null || source.Keys.Any(key => key != "host" && key != "pathPrefixes" && key != "fileId") || !source.ContainsKey("host") || !(source["host"] is string host) || !Regex.IsMatch(host, "^[a-z0-9]+(?:[.-][a-z0-9]+)*\\.[a-z]{2,}$") || !hosts.Add(host) || !source.ContainsKey("pathPrefixes") || !(source["pathPrefixes"] is object[] paths) || paths.Length == 0 || paths.Any(path => !(path is string prefix) || !Regex.IsMatch(prefix, "^/(?:[A-Za-z0-9_-]+/)+$")) || paths.Distinct().Count() != paths.Length || source.ContainsKey("fileId") && !(source["fileId"] is bool)) throw new InvalidOperationException("Invalid file source configuration.");
+                sources.Add(new FileSource { Host = host, Prefixes = paths.Cast<string>().ToArray(), FileId = source.ContainsKey("fileId") && (bool)source["fileId"] });
+            }
+            return sources.ToArray();
+        }
+    }
+    internal static bool Allowed(Uri uri) => uri.Scheme == "https" && uri.IsDefaultPort && uri.UserInfo == "" &&
+        Sources.Any(source => uri.Host == source.Host && source.Prefixes.Any(prefix =>
+            uri.AbsolutePath.StartsWith(prefix, StringComparison.Ordinal) &&
+            (!source.FileId || Regex.IsMatch(uri.AbsolutePath.Substring(prefix.Length), "^[A-Za-z0-9_-]+$"))));
     internal static async Task<object> Load(string address) {
         using (var handler = new HttpClientHandler { AllowAutoRedirect = false, UseCookies = false })
         using (var client = new HttpClient(handler))

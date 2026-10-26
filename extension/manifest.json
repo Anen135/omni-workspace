@@ -10,10 +10,7 @@
     "storage"
   ],
   "host_permissions": [
-    "https://omni.top-academy.ru/*",
-    "https://fs.top-academy.ru/*",
-    "https://storage.yandexcloud.net/top-academy-services-omni/*",
-    "https://storage.yandexcloud.net/top-academy-services-msapi/*"
+    "https://omni.top-academy.ru/*"
   ],
   "background": {
     "service_worker": "background.js",

@@ -1,3 +1,4 @@
+import { allowedFileSource } from '../shared/file-sources.mjs';
 import { validateInput } from '../server/bridge-protocol.mjs';
 import { validateDraftBufferRequest } from './draft-buffer.mjs';
 export const officialOrigin = 'https://omni.top-academy.ru';
@@ -31,11 +32,4 @@ export function validateMessage(message) {
   if (!actions.has(message.action)) throw new Error('Команда не поддерживается расширением.');
   validateInput(message.action, message.input ?? {});
 }
-export function allowedFile(value) {
-  try {
-    const url = new URL(value);
-    return url.protocol === 'https:' && !url.username && !url.password && !url.port && (
-      url.hostname === 'fs.top-academy.ru' && /^\/api\/v1\/files\/[A-Za-z0-9_-]+$/.test(url.pathname) ||
-      url.hostname === 'storage.yandexcloud.net' && (url.pathname.startsWith('/top-academy-services-omni/') || url.pathname.startsWith('/top-academy-services-msapi/')));
-  } catch { return false; }
-}
+export const allowedFile = allowedFileSource;
