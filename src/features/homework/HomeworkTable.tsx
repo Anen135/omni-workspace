@@ -189,8 +189,8 @@ function GradeEditor({ item, name, disabled, onSave }: {
   </form>;
 }
 
-export function HomeworkTable({ section, render, items: suppliedItems, grading, responseDraftContext, studentAverages, studentPhotos, studentAveragesLoading = false, studentAveragesError }: {
-  section: Section; render: (value: unknown) => ReactNode; items?: HomeworkReviewItem[]; grading?: Grading; responseDraftContext?: unknown; studentAverages?: ReadonlyMap<string, string>; studentPhotos?: ReadonlyMap<string, string>; studentAveragesLoading?: boolean; studentAveragesError?: string;
+export function HomeworkTable({ active = true, section, render, items: suppliedItems, grading, responseDraftContext, studentAverages, studentPhotos, studentAveragesLoading = false, studentAveragesError }: {
+  active?: boolean; section: Section; render: (value: unknown) => ReactNode; items?: HomeworkReviewItem[]; grading?: Grading; responseDraftContext?: unknown; studentAverages?: ReadonlyMap<string, string>; studentPhotos?: ReadonlyMap<string, string>; studentAveragesLoading?: boolean; studentAveragesError?: string;
 }) {
   const [query, setQuery] = useState('');
   const [group, setGroup] = useState('');
@@ -205,6 +205,7 @@ export function HomeworkTable({ section, render, items: suppliedItems, grading, 
   const [opened, setOpened] = useState<{ data: HomeworkReviewItem[]; key: string } | null>(null);
   const [previewed, setPreviewed] = useState<{ data: HomeworkReviewItem[]; key: string } | null>(null);
   const [responseDrafts, setResponseDrafts] = useState<{ data: unknown; values: Record<string, ResponseEdit> } | null>(null);
+  useLayoutEffect(() => { if (!active) setPreviewed(null); }, [active]);
   const submittingRef = useRef(false);
   const tableId = useId();
   const items = useMemo(() => suppliedItems ?? fallbackItems(section.data), [suppliedItems, section.data]);
@@ -316,7 +317,7 @@ export function HomeworkTable({ section, render, items: suppliedItems, grading, 
     const workLabel = (item.studentName || 'Без имени') + ', ' + (item.theme || 'Работа без темы') + ', строка ' + ((currentPage - 1) * pageSize + index + 1);
     const rowKey = item.key + '-' + ((currentPage - 1) * pageSize + index);
     const expanded = opened?.data === items && opened.key === rowKey;
-    const previewExpanded = previewed?.data === items && previewed.key === rowKey;
+    const previewExpanded = active && previewed?.data === items && previewed.key === rowKey;
     const detailId = tableId + '-detail-' + index;
     const average = item.studentId ? studentAverages?.get(item.studentId) : undefined;
     const photoId = studentId({ id_stud: item.studentId });

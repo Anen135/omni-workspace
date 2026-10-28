@@ -1,3 +1,5 @@
+import type { WorkspaceConnectionProps } from './Workspace';
+import { UiTestPage } from '../features/ui-tests/UiTestPage';
 import { bufferRequest, type BufferedLessonDraft } from '../services/lesson-draft-buffer';
 import { WorkspaceSettings, readConnectionInterval } from '../features/settings/WorkspaceSettings';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -44,14 +46,14 @@ import { HelpPage } from '../features/help/HelpPage';
 
 const emptySection: Section = { data: null, error: null };
 
-export function LiveWorkspace({ onDemo }: { onDemo: () => void }) {
+export function LiveWorkspace({ onDemo, connectionForm, onNativeLogin }: { onDemo: () => void } & WorkspaceConnectionProps) {
   const [connectionInterval, setConnectionInterval] = useState(readConnectionInterval);
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [lesson, setLesson] = useState<RemoteLesson | null>(null);
   const [materialsView, setMaterialsView] = useState<{ context: string; theme?: RemoteRecord } | null>(null);
   const [materialLesson, setMaterialLesson] = useState<{ context: string; lesson: RemoteLesson } | null>(null);
   const [tab, setTab] = useState<WorkspaceTab>(() => {
-    try { const saved = localStorage.getItem('omni.workspace.tab'); return workspaceTabs.find(item => item.key === saved)?.key || 'lesson'; } catch { return 'lesson'; }
+    try { const saved = localStorage.getItem('omni.workspace.tab'); return saved === 'ui-tests' ? saved : workspaceTabs.find(item => item.key === saved)?.key || 'lesson'; } catch { return 'lesson'; }
   });
   useEffect(() => { try { localStorage.setItem('omni.workspace.tab', tab); } catch { /* Storage may be unavailable. */ } }, [tab]);
   const [workspaceBusy, setBusy] = useState(false);
@@ -752,10 +754,11 @@ export function LiveWorkspace({ onDemo }: { onDemo: () => void }) {
           onClose={() => setError('')} onRetry={() => void (authNeeded ? connect() : snapshot ? refresh() : connect())}/>}
         {switchingTeacher && <TeacherSwitchingState/>}
         {tab === 'settings' && <WorkspaceSettings interval={connectionInterval} onSave={setConnectionInterval}/>}
-        {tab === 'help' && <HelpPage onDemo={openDemo}/>}
-        {!snapshot && !switchingTeacher && tab !== 'help' && tab !== 'settings' && <ConnectionCard busy={busy} waiting={waiting}
+        {tab === 'help' && <HelpPage onDemo={openDemo} onUiTests={() => setTab('ui-tests')}/>}
+        {tab === 'ui-tests' && <UiTestPage onBack={() => setTab('help')}/>}
+        {!snapshot && !switchingTeacher && tab !== 'help' && tab !== 'settings' && tab !== 'ui-tests' && <ConnectionCard connectionForm={connectionForm} busy={busy} waiting={waiting}
           extension={isExtension()} changingAccount={changingAccount} connectionState={connectionState}
-          onLogin={login} onConnect={() => void connect()} onDemo={onDemo}/>}
+          onLogin={login} onConnect={onNativeLogin || (() => void connect())} onDemo={onDemo}/>}
         {snapshot && <>
           {tab === 'lesson' && <div className="lesson-workspace">
             {isExtension() && <LessonSaveBar busy={busy} saving={attendanceSaving} draft={draft} hasTheme={hasTheme}
@@ -793,8 +796,8 @@ export function LiveWorkspace({ onDemo }: { onDemo: () => void }) {
             groupId={groupId} studentsSection={groupStudents} busy={busy} onGroupPick={group => void openGroup(group)}
             onOpen={student => void openStudent(student)}
             onRefresh={() => { const group = groups.find(item => label(item.id_tgroups) === groupId); if (group) void openGroup(group, true); }}/>}
-          {tab === 'homework' && <HomeworkPanel busy={busy} onRefresh={() => void refreshHomework()}
-            section={snapshot.newHomework} items={reviewItems} studentAverages={studentAverages} studentPhotos={averages.photos} studentAveragesLoading={averages.loading} studentAveragesError={averages.error}
+          {tab === 'homework' && <HomeworkPanel key={`${snapshot.account.id}:${snapshot.account.branch}:${sessionVersion.current}`} busy={busy} onRefresh={() => void refreshHomework()}
+            accountId={snapshot.account.id} catalog={snapshot.homework} section={snapshot.newHomework} items={reviewItems} studentAverages={studentAverages} studentPhotos={averages.photos} studentAveragesLoading={averages.loading} studentAveragesError={averages.error}
             responseDraftContext={snapshot?.newHomework.data}
             grading={isExtension() ? { busy, unavailable: homeworkNeedsReload ? 'Перед следующей оценкой нажмите «Обновить работы».' : undefined, onGrade: gradeHomework } : undefined}/>}
           <RetainedSection key={`dossier:${snapshot.account.id}:${snapshot.account.branch}:${sessionVersion.current}`} active={tab === 'dossier'}><TeacherDossier

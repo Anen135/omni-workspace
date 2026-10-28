@@ -1,3 +1,4 @@
+import { loadHomeworkHistory } from '../server/homework-history.mjs';
 import { loadHomeworkQueue } from '../server/homework-queue.mjs';
 import { validateInput, BridgeError } from '../server/bridge-protocol.mjs';
 import { loadMaterialsCatalog, loadMethodPackage } from '../server/teaching-materials.mjs';
@@ -51,6 +52,7 @@ export async function dispatch(action, input = {}) {
   if (action === 'set-lesson-reward') return saveLessonReward(input, { request: read, identity });
   if (action === 'set-homework-marks') return saveHomeworkMarks(input, { request: read, identity });
   if (action === 'lesson-themes' || action === 'set-lesson-theme') return lessonTheme(action, input, { request: read, identity });
+  if (action === 'homework-history') return loadHomeworkHistory(input, { identity, section });
   if (action === 'homework-queue') return loadHomeworkQueue(input, { identity, section });
   if (action === 'schedule-range') return loadScheduleRange(input, { identity, section });
   const account = await identity();

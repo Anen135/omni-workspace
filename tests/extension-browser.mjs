@@ -275,8 +275,8 @@ try {
   assert.equal(await official.locator('#omni-workspace-root').count(), 0);
   assert.equal(await official.locator('[data-login-challenge="fixture"]').count(), 1);
   // Simulates completion of Omni's own login and challenge without a real credential.
-  await official.evaluate(() => { document.querySelector('input[type=password]').closest('form')?.remove(); document.querySelector('[data-login-challenge="fixture"]')?.remove(); sessionStorage.setItem('IdLocalHash', 'fixture-hash'); });
   signedIn = true;
+  await official.evaluate(() => { document.querySelector('input[type=password]').closest('form')?.remove(); document.querySelector('[data-login-challenge="fixture"]')?.remove(); sessionStorage.setItem('IdLocalHash', 'fixture-hash'); });
   const initialRoster = holdNextRoster();
   await official.addInitScript(() => localStorage.setItem('omni.connection-check-seconds', '15'));
   await official.reload();
@@ -864,6 +864,7 @@ try {
   assert.equal(await reward.inputValue(), '1');
   ui.once('dialog', dialog => dialog.accept());
   await ui.getByRole('button', { name: 'Отменить черновик', exact: true }).click();
+  await lessonSave.waitFor({ state: 'detached' });
   await setReward(0);
   assert.equal(await reward.inputValue(), '0', 'removal sentinel is displayed as zero on the slider');
   assert.equal(lessonWrites.length, beforeRewardConflict, 'staging removal still makes no write');

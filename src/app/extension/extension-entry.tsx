@@ -1,3 +1,7 @@
+import { ExtensionAuthGate } from '../../features/auth/ExtensionAuthGate';
+import authStyles from '../../features/auth/extension-auth.css?inline';
+import { submitOfficialLogin, loginErrors } from '../../../server/login.mjs';
+import { loginPageState, nativeLoginKey } from '../../../extension/login-page.mjs';
 import React from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { Workspace } from '../Workspace';
@@ -30,38 +34,67 @@ import * as pdfjsWorker from 'pdfjs-dist/build/pdf.worker.min.mjs';
 
 (globalThis as unknown as { pdfjsWorker: unknown }).pdfjsWorker = pdfjsWorker;
 
+type Bootstrap = {
+  host: HTMLDivElement; conceal: HTMLStyleElement; active: boolean;
+  adopt: (failure: () => void) => void; ready: () => void; release: () => void;
+};
+
 function start() {
   if (location.origin !== 'https://omni.top-academy.ru' || window.top !== window) return;
-  const context = globalThis as unknown as { omniWorkspaceStarted?: boolean };
+  const context = globalThis as unknown as { omniWorkspaceStarted?: boolean; omniWorkspaceBootstrap?: Bootstrap };
   if (context.omniWorkspaceStarted) return;
+  const bootstrap = context.omniWorkspaceBootstrap;
   context.omniWorkspaceStarted = true;
   const runtime = (window.chrome as unknown as { runtime: { id: string; onMessage: { addListener: (listener: (message: { action?: string }, sender: { id?: string; tab?: unknown }, respond: (value: unknown) => void) => void) => void } } }).runtime;
   runtime.onMessage.addListener((message, sender, respond) => {
     if (sender.id === runtime.id && !sender.tab && message.action === 'workspace-ping') respond({ ready: true });
   });
-  // A native login document also clears any failed logout notice left by its
-  // predecessor, without granting content scripts access to session storage.
   void extensionRequest('capabilities', {}).catch(() => {});
   const hostId = 'omni-workspace-root';
   let host: HTMLDivElement | undefined;
   let root: Root | undefined;
   let conceal: HTMLStyleElement | undefined;
+  let mode: 'loading' | 'login' | 'workspace' | undefined;
+  let official = false;
+  let manualOfficial = false;
+  let lastOfficialState: ReturnType<typeof loginPageState> | undefined;
   let checking = false;
+  let generation = 0;
+  let loadingTimer: ReturnType<typeof setTimeout> | undefined;
+  let loginController: AbortController | undefined;
   const originals = new Map<HTMLElement, { inert: boolean; ariaHidden: string | null }>();
-  const nativeLogin = () => location.pathname.startsWith('/login') || location.pathname.startsWith('/auth/logout') || !!document.querySelector('input[type=password]') || /DDOS.GUARD/i.test(document.title);
 
   function restore() {
-    root?.unmount(); root = undefined;
-    host?.remove(); host = undefined;
-    conceal?.remove(); conceal = undefined;
-    for (const [node, state] of originals) {
-      node.inert = state.inert;
-      if (state.ariaHidden === null) node.removeAttribute('aria-hidden'); else node.setAttribute('aria-hidden', state.ariaHidden);
+    generation++;
+    loginController?.abort(); loginController = undefined;
+    clearTimeout(loadingTimer);
+    try { root?.unmount(); }
+    finally {
+      root = undefined; mode = undefined;
+      host?.remove(); host = undefined;
+      conceal?.remove(); conceal = undefined;
+      bootstrap?.release();
+      for (const [node, state] of originals) {
+        node.inert = state.inert;
+        if (state.ariaHidden === null) node.removeAttribute('aria-hidden'); else node.setAttribute('aria-hidden', state.ariaHidden);
+      }
+      originals.clear();
     }
-    originals.clear();
+  }
+  function showOfficial(explicit = false) {
+    official = true;
+    lastOfficialState = loginPageState(document, location.pathname);
+    manualOfficial ||= explicit;
+    try {
+      if (sessionStorage.getItem(nativeLoginKey) === '1') sessionStorage.removeItem(nativeLoginKey);
+      manualOfficial ||= sessionStorage.getItem(nativeLoginKey) === 'manual';
+      if (explicit) sessionStorage.setItem(nativeLoginKey, 'manual');
+    } catch { /* Native content must remain usable without storage. */ }
+    restore();
+    if (explicit && !location.pathname.startsWith('/login') && loginPageState(document, location.pathname) !== 'official') location.assign('/login/index');
   }
   function hideOriginals() {
-    if (!host) return;
+    if (!host || !document.body) return;
     for (const node of document.body.children) {
       if (node === host || !(node instanceof HTMLElement) || originals.has(node)) continue;
       originals.set(node, { inert: node.inert, ariaHidden: node.getAttribute('aria-hidden') });
@@ -69,64 +102,124 @@ function start() {
       node.setAttribute('aria-hidden', 'true');
     }
   }
-  function mount(warning?: string) {
-    if (host || nativeLogin() || !document.body) return;
-    host = document.createElement('div'); host.id = hostId;
-    const shadow = host.attachShadow({ mode: 'open' });
+  function ensureShell() {
+    if (root) return;
+    host = bootstrap?.active ? bootstrap.host : document.createElement('div');
+    host.id = hostId;
+    const shadow = host.shadowRoot || host.attachShadow({ mode: 'open' });
     const style = document.createElement('style');
-    style.textContent = `:host{all:initial;display:block;position:fixed;inset:0;z-index:2147483647;overflow:auto;isolation:isolate;color-scheme:light} ${styles}\n${help}\n${pages}\n${live}\n${workspace}\n${navigation}\n${login}\n${schedule}\n${materials}\n${homework}\n${students}\n${dossier}\n${income}\n${preview}\n${table}\n${averageGrade}\n${rewardAllocation}\n${searchableSelect}\n${lessonMaterials}\n${theme}\n@media print{:host{position:static!important;overflow:visible!important;height:auto!important}}`;
+    style.textContent = `:host{all:initial;display:block;position:fixed;inset:0;z-index:2147483647;overflow:auto;isolation:isolate;color-scheme:light} ${styles}\n${help}\n${pages}\n${live}\n${workspace}\n${navigation}\n${login}\n${schedule}\n${materials}\n${homework}\n${students}\n${dossier}\n${income}\n${preview}\n${table}\n${averageGrade}\n${rewardAllocation}\n${searchableSelect}\n${lessonMaterials}\n${theme}\n${authStyles}\n@media print{:host{position:static!important;overflow:visible!important;height:auto!important}}`;
     const container = document.createElement('div'); container.id = 'root';
-    shadow.append(style);
+    shadow.replaceChildren(style, container);
+    conceal = bootstrap?.active ? bootstrap.conceal : document.createElement('style');
+    conceal.textContent = `html,body{overflow:hidden!important}body>:not(#${hostId}){display:none!important}@media print{html,body{overflow:visible!important}}`;
+    if (!conceal.isConnected) document.documentElement.append(conceal);
+    if (!host.isConnected) document.documentElement.append(host);
+    if (document.body && host.parentElement !== document.body) document.body.append(host);
+    bootstrap?.adopt(() => showOfficial());
+    hideOriginals();
+    root = createRoot(container, { onUncaughtError: () => showOfficial() });
+  }
+  async function login(username: string, password: string) {
+    if (official || mode !== 'login' || loginPageState(document, location.pathname) !== 'login') { showOfficial(); return; }
+    if (loginController) return;
+    const version = generation;
+    const controller = new AbortController(); loginController = controller;
+    const timeout = setTimeout(() => controller.abort(), 20000);
+    try {
+      const result = await submitOfficialLogin({ username, password }, controller.signal);
+      if (official || version !== generation) return;
+      if (controller.signal.aborted) throw new Error(loginErrors.LOGIN_UNAVAILABLE);
+      if (loginPageState(document, location.pathname) !== 'login') { showOfficial(); return; }
+      if (!result.success) {
+        if (['CHALLENGE', 'AUTH_REQUIRED', 'LOGIN_PERMISSION'].includes(result.code || '')) { showOfficial(); return; }
+        throw new Error(loginErrors[result.code || 'LOGIN_UNAVAILABLE'] || loginErrors.LOGIN_UNAVAILABLE);
+      }
+      renderGate('loading');
+      location.assign('/');
+    } finally {
+      password = '';
+      clearTimeout(timeout);
+      if (loginController === controller) loginController = undefined;
+    }
+  }
+  function renderGate(next: 'loading' | 'login') {
+    if (official || mode === next && root) return;
+    ensureShell(); generation++; mode = next;
+    clearTimeout(loadingTimer);
+    if (next === 'loading') loadingTimer = setTimeout(() => showOfficial(), 30000);
+    else bootstrap?.ready();
+    root!.render(<React.StrictMode><Workspace key="connecting" connectionForm={next === 'login' ? <ExtensionAuthGate onLogin={login}/> : undefined} onNativeLogin={() => showOfficial(true)}/></React.StrictMode>);
+  }
+  function mountWorkspace(warning?: string) {
+    if (official || mode === 'workspace') return;
+    ensureShell(); generation++; mode = 'workspace';
+    clearTimeout(loadingTimer); bootstrap?.ready();
+    manualOfficial = false;
+    try { sessionStorage.removeItem(nativeLoginKey); } catch { /* Visual preference only. */ }
+    root!.render(<React.StrictMode><Workspace key="connected"/></React.StrictMode>);
     if (warning) {
       const alert = document.createElement('div'); alert.setAttribute('role', 'alert');
       alert.style.cssText = 'position:fixed;bottom:16px;left:16px;right:16px;z-index:200;background:var(--omni-warning-soft,#fffaef);border:1px solid var(--omni-warning-border,#efdbb2);border-radius:8px;padding:14px 18px;color:var(--omni-warning-text,#805d20);font:13px/1.6 sans-serif;display:flex;align-items:center;gap:16px';
       const text = document.createElement('span'); text.textContent = warning;
       const dismiss = document.createElement('button'); dismiss.textContent = 'Закрыть'; dismiss.onclick = () => alert.remove();
-      alert.append(text, dismiss); shadow.append(alert);
+      alert.append(text, dismiss); host!.shadowRoot!.append(alert);
     }
-    shadow.append(container);
-    document.body.append(host);
-    conceal = document.createElement('style');
-    conceal.textContent = `html,body{overflow:hidden!important}body>:not(#${hostId}){display:none!important}@media print{html,body{overflow:visible!important}}`;
-    document.head.append(conceal);
-    hideOriginals();
-    root = createRoot(container);
-    root.render(<React.StrictMode><Workspace/></React.StrictMode>);
   }
   async function check(): Promise<PollOutcome> {
-    if (nativeLogin()) { if (host) restore(); return 'local'; }
-    if (host && !host.isConnected) restore();
-    // A hidden tab sends nothing; it is checked again as soon as it is shown (see visibilitychange below).
-    if (host || checking || document.readyState !== 'complete' || document.hidden) return 'local';
+    const state = loginPageState(document, location.pathname);
+    let bypass = false;
+    try { bypass = sessionStorage.getItem(nativeLoginKey) === 'manual'; } catch { /* In-memory manual choice still applies. */ }
+    if ((manualOfficial || bypass) && location.pathname.startsWith('/login')) { showOfficial(); return 'local'; }
+    if (official) {
+      const changed = state !== lastOfficialState;
+      lastOfficialState = state;
+      if (manualOfficial || !changed || (state !== 'login' && state !== 'workspace')) return 'local';
+      // Automatic fallback is temporary; a positively recognized page can resume.
+      official = false;
+    }
+    if (state === 'official') { showOfficial(); return 'local'; }
+    if (state === 'login') {
+      if (bypass) showOfficial(); else renderGate('login');
+      return 'local';
+    }
+    if (host && !host.isConnected) { showOfficial(); return 'local'; }
+    if (mode === 'workspace') return 'local';
+    renderGate('loading');
+    if (state === 'loading' || checking || document.readyState !== 'complete' || document.hidden) return 'local';
+    const version = generation;
     checking = true;
     try {
       const status = await extensionRequest<{ connected: boolean; state: string; warning?: string }>('status', {});
+      if (official || version !== generation) return 'local';
+      if (loginPageState(document, location.pathname) === 'official') { showOfficial(); return 'local'; }
+      if (status.state === 'challenge') { showOfficial(); return 'local'; }
       if (!status.connected) return 'retry';
-      mount(status.warning);
+      mountWorkspace(status.warning);
       return 'mounted';
     } catch (reason) {
-      // Loading, busy, or an expired session; keep official recovery usable.
       return (reason as { code?: string }).code === 'BUSY' ? 'busy' : 'retry';
-    }
-    finally { checking = false; }
+    } finally { checking = false; }
   }
-  onOfficialLoginRequired(restore);
+  onOfficialLoginRequired(() => { if (!official) renderGate('loading'); });
   const observer = new MutationObserver(() => {
-    if (host) {
-      if (nativeLogin() || !host.isConnected) restore(); else hideOriginals();
-    }
+    if (official) { if (!manualOfficial) poller.nudge(); return; }
+    const state = loginPageState(document, location.pathname);
+    if (state === 'official') showOfficial();
+    else if (host && !host.isConnected) showOfficial();
+    else { hideOriginals(); if (mode !== 'workspace' || state === 'login') poller.nudge(); }
   });
-  observer.observe(document.documentElement, { childList: true, subtree: true });
-  // Retry after native login, Angular navigation, or a teacher-switch reload.
-  // In particular, a new document must wait for the old mutation's BUSY lock.
-  // Requests which found nothing to mount back off (1.5 s up to 30 s); local checks and BUSY stay at 1.5 s.
-  const poller = createPoller(check);
+  observer.observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['src', 'class', 'name'] });
+  let poller = createPoller(check);
   poller.start();
-  window.addEventListener('pagehide', event => {
-    if (event.persisted) return;
-    poller.stop(); observer.disconnect(); restore();
+  window.addEventListener('pagehide', () => { poller.stop(); observer.disconnect(); restore(); });
+  window.addEventListener('pageshow', event => {
+    if (event.persisted) {
+      official = false;
+      observer.observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['src', 'class', 'name'] });
+      poller = createPoller(check); poller.start();
+    } else poller.nudge();
   });
-  window.addEventListener('pageshow', () => poller.nudge());
   window.addEventListener('focus', () => poller.nudge());
   document.addEventListener('visibilitychange', () => { if (!document.hidden) poller.nudge(); });
 }

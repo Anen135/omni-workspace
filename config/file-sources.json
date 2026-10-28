@@ -7,7 +7,7 @@
     },
     {
       "host": "storage.yandexcloud.net",
-      "pathPrefixes   ": [
+      "pathPrefixes": [
         "/top-academy-services-omni/",
         "/top-academy-services-msapi/"
       ]

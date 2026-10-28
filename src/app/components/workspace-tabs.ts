@@ -11,4 +11,4 @@ export const workspaceTabs = [
   { key: 'help', icon: CircleHelp, title: 'Справка', eyebrow: 'ПОМОЩЬ' },
 ] as const;
 
-export type WorkspaceTab = typeof workspaceTabs[number]['key'];
+export type WorkspaceTab = typeof workspaceTabs[number]['key'] | 'ui-tests';

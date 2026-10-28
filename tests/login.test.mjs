@@ -16,7 +16,7 @@ async function runLogin(response, options = {}) {
     location: { origin: options.origin || 'https://omni.top-academy.ru' },
     document: { querySelector: selector => options.challenge ? null : selector.startsWith('meta') ? { getAttribute: () => 'csrf-fixture' } : {} },
     sessionStorage: { setItem: (key, value) => stored.set(key, value), removeItem: key => stored.delete(key) },
-    AbortSignal,
+    AbortSignal, externalSignal: options.signal,
     fetch: async (path, init) => {
       calls++;
       assert.equal(path, '/auth/login');
@@ -27,7 +27,7 @@ async function runLogin(response, options = {}) {
       return response;
     },
   });
-  const result = await vm.runInContext(`(${submitOfficialLogin.toString()})({username:'fixture',password:'test-password'})`, context);
+  const result = await vm.runInContext(`(${submitOfficialLogin.toString()})({username:'fixture',password:'test-password'}, externalSignal)`, context);
   return { result: JSON.parse(JSON.stringify(result)), stored, calls };
 }
 test('login matches official protocol and keeps session hash inside Omni', async () => {
@@ -43,4 +43,16 @@ test('login handles rejected credentials, challenges, throttling and permission 
   }
   assert.equal((await runLogin(null, { challenge: true })).calls, 0);
   assert.equal((await runLogin(null, { origin: 'https://evil.test' })).calls, 0);
+});
+
+
+test('cancelled login never stores a late successful session hash', async () => {
+  const before = new AbortController(); before.abort();
+  const stopped = await runLogin(Response.json({ success: true, IdLocalHash: 'must-not-store' }), { signal: before.signal });
+  assert.equal(stopped.calls, 0);
+  assert.equal(stopped.stored.has('IdLocalHash'), false);
+  const during = new AbortController();
+  const late = await runLogin({ ok: true, status: 200, json: async () => { during.abort(); return { success: true, IdLocalHash: 'must-not-store' }; } }, { signal: during.signal });
+  assert.equal(late.result.code, 'LOGIN_UNAVAILABLE');
+  assert.equal(late.stored.has('IdLocalHash'), false);
 });

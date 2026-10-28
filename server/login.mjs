@@ -1,11 +1,12 @@
 // Runs inside the official Omni origin. Never return cookies, CSRF or IdLocalHash.
-export async function submitOfficialLogin({ username, password }) {
+export async function submitOfficialLogin({ username, password }, signal) {
   if (location.origin !== 'https://omni.top-academy.ru') return { code: 'AUTH_REQUIRED' };
+  if (signal?.aborted) return { code: 'LOGIN_UNAVAILABLE' };
   const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
   if (!csrf || !document.querySelector('input[type=password]')) return { code: 'CHALLENGE' };
   try {
     const response = await fetch('/auth/login', {
-      method: 'POST', credentials: 'same-origin', redirect: 'error', signal: AbortSignal.timeout(20000),
+      method: 'POST', credentials: 'same-origin', redirect: 'error', signal: signal || AbortSignal.timeout(20000),
       headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-Token': csrf },
       body: JSON.stringify({ LoginForm: { id_city: null, username, password } }),
     });
@@ -14,6 +15,7 @@ export async function submitOfficialLogin({ username, password }) {
     if (!response.ok) return { code: 'LOGIN_UNAVAILABLE' };
     let result;
     try { result = await response.json(); } catch { return { code: 'CHALLENGE' }; }
+    if (signal?.aborted) return { code: 'LOGIN_UNAVAILABLE' };
     if (result.success === true) {
       if (typeof result.IdLocalHash === 'string') {
         sessionStorage.setItem('IdLocalHash', result.IdLocalHash);

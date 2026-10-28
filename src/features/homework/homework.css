@@ -74,3 +74,24 @@
   .homework-pagination > span:first-child { width: 100%; margin: 0; }
   .homework-details { grid-template-columns: 1fr; gap: 16px; }
 }
+
+.homework-history { border: 1px solid var(--border, #e7e9f2); border-radius: 10px; overflow: hidden; }
+.homework-history-controls { display: flex; align-items: end; flex-wrap: wrap; gap: 12px; padding: 16px 20px; }
+.homework-history-controls label { display: grid; gap: 6px; font-size: 12px; min-width: 100px; }
+.homework-history-controls select, .homework-history-controls input { max-width: 280px; padding: 8px; color: inherit; background: var(--surface, #fff); border: 1px solid var(--border, #e7e9f2); border-radius: 6px; }
+.homework-history-controls input { width: 100px; }
+.homework-history-filters { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 20px 16px; }
+.homework-history-filters [aria-pressed=true] { background: var(--primary-soft, #f1edff); color: var(--purple, #6c4df6); }
+.homework-history-help, .homework-history > .warning, .homework-history > [role=status] { margin: 0; padding: 0 20px 16px; font-size: 13px; line-height: 1.6; }
+.homework-history-help { color: var(--muted, #697386); }
+.homework-history-status { white-space: nowrap; }
+.homework-history-status-unknown { color: var(--muted, #697386); }
+.homework-history-status-overdue { color: var(--danger, #b53b45); }
+.homework-history-detail td { padding: 16px; background: var(--background, #f7f8fc); }
+.homework-history-detail h4 { margin: 0 0 8px; }
+.homework-history-detail-grid { display: grid; grid-template-columns: repeat(2, minmax(180px, 1fr)); gap: 20px; }
+.homework-history-detail-grid > section { min-width: 0; overflow-wrap: anywhere; }
+@media (max-width: 760px) {
+  .homework-history-controls, .homework-history-filters { padding-inline: 12px; }
+  .homework-history-detail-grid { grid-template-columns: 1fr; }
+}

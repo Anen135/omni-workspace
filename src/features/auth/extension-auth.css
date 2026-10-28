@@ -1,0 +1,10 @@
+.extension-auth-form{display:grid;gap:20px;margin-top:28px}
+.extension-auth-label{display:grid;gap:8px;font-size:13px;font-weight:500}
+.extension-auth-input{width:100%;min-width:0;min-height:46px;padding:11px 13px;border:1px solid var(--omni-border,#ded6eb);border-radius:10px;background:var(--omni-surface-muted,#faf8fd);color:var(--omni-text,#172033);font:inherit;font-size:16px}
+.extension-auth-submit{display:flex;align-items:center;justify-content:center;gap:9px;min-height:46px;border:0;border-radius:10px;font:inherit;cursor:pointer;width:100%;background:var(--omni-accent-fill,#6c4df6);color:#fff}
+.extension-auth-submit:hover:enabled{background:var(--omni-accent-hover,#5b3ee0)}
+.extension-auth-input:disabled,.extension-auth-submit:disabled{opacity:.65;cursor:wait}
+.extension-auth-error{margin:0;padding:12px;border:1px solid var(--omni-danger-border,#edc0c8);border-radius:10px;background:var(--omni-danger-soft,#fff0f2);color:var(--omni-danger-text,#a52743);font-size:13px;overflow-wrap:anywhere}
+.extension-auth-spinner{flex-shrink:0;animation:extension-auth-spin 1s linear infinite}
+@keyframes extension-auth-spin{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){.extension-auth-spinner{animation:none}}

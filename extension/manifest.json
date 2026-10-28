@@ -22,6 +22,17 @@
         "https://omni.top-academy.ru/*"
       ],
       "js": [
+        "bootstrap.js"
+      ],
+      "run_at": "document_start",
+      "all_frames": false,
+      "world": "ISOLATED"
+    },
+    {
+      "matches": [
+        "https://omni.top-academy.ru/*"
+      ],
+      "js": [
         "content.js"
       ],
       "run_at": "document_idle",

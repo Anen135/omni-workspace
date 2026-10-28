@@ -1,3 +1,4 @@
+import { loadHomeworkHistory } from './homework-history.mjs';
 import { loadHomeworkQueue } from './homework-queue.mjs';
 import { chromium } from 'playwright';
 import { resolve } from 'node:path';
@@ -12,7 +13,7 @@ const readPaths = new Set([
   '/profile/get-profile', '/auth/get-start-info', '/auth/get-teach-list', '/students/get-groups-list',
   '/students/get-students', '/students/get-details-stud', '/students/get-stud-vizit',
   '/schedule/get-schedule', '/presents/get-presents', '/presents/get-materials',
-  '/presents/get-homework', '/homework/get-group-spec', '/homework/get-new-homeworks',
+  '/presents/get-homework', '/homework/get-group-spec', '/homework/get-new-homeworks', '/homework/get-students', '/homework/get-homeworks',
   '/bind/get-public-form', '/bind/get-public-direction', '/bind/get-public-spec',
   '/bind/get-materials-type', '/bind/get-materials', '/bind/get-count-week',
   '/dossier/get-single-data', '/dossier/get-data-graphics', '/dossier/get-all-data',
@@ -159,6 +160,7 @@ export function createBridge() {
         } finally { input.password = ''; }
       }
       if (['set-attendance', 'lesson-themes', 'set-lesson-theme', 'set-lesson-mark', 'set-lesson-reward', 'set-homework-marks'].includes(action)) throw new BridgeError('NOT_SUPPORTED', 'Изменяйте урок через расширение браузера.', 400);
+      if (action === 'homework-history') return loadHomeworkHistory(input, { identity, section });
       if (action === 'homework-queue') return loadHomeworkQueue(input, { identity, section });
       if (action === 'schedule-range') return loadScheduleRange(input, { identity, section });
       const account = await identity();

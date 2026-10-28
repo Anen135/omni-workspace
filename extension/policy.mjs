@@ -2,7 +2,7 @@ import { allowedFileSource } from '../shared/file-sources.mjs';
 import { validateInput } from '../server/bridge-protocol.mjs';
 import { validateDraftBufferRequest } from './draft-buffer.mjs';
 export const officialOrigin = 'https://omni.top-academy.ru';
-const actions = new Set(['connect', 'status', 'snapshot', 'homework-queue', 'schedule-range', 'lesson', 'student', 'group', 'switch-teacher', 'materials-catalog', 'method-package', 'teacher-dossier', 'set-attendance', 'lesson-themes', 'set-lesson-theme', 'set-lesson-mark', 'set-lesson-reward', 'set-homework-marks']);
+const actions = new Set(['connect', 'status', 'snapshot', 'homework-queue', 'homework-history', 'schedule-range', 'lesson', 'student', 'group', 'switch-teacher', 'materials-catalog', 'method-package', 'teacher-dossier', 'set-attendance', 'lesson-themes', 'set-lesson-theme', 'set-lesson-mark', 'set-lesson-reward', 'set-homework-marks']);
 export function officialUrl(value) {
   try { const u = new URL(value); return u.origin === officialOrigin && !u.username && !u.password; } catch { return false; }
 }

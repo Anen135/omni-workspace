@@ -8,6 +8,18 @@ export class BridgeError extends Error {
 
 export function validateInput(action, input) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw new BridgeError('BAD_INPUT', 'Некорректный запрос.', 400);
+  if (action === 'homework-history') {
+    const fields = ['accountId', 'groupId', 'specKey', 'year', 'month', 'limit', 'offset'];
+    const validId = value => typeof value === 'string' && /^[1-9]\d{0,11}$/.test(value);
+    if (Object.keys(input).length !== fields.length || Object.keys(input).some(key => !fields.includes(key)) ||
+        !validId(input.accountId) || !validId(input.groupId) || typeof input.specKey !== 'string' || !input.specKey || input.specKey.length > 512 ||
+        !(input.year === '' || typeof input.year === 'string' && /^(20\d{2}|19\d{2})$/.test(input.year)) ||
+        !(input.month === '' || typeof input.month === 'string' && /^(?:[1-9]|1[0-2])$/.test(input.month)) ||
+        !Number.isInteger(input.limit) || input.limit < 1 || input.limit > 50 || !Number.isInteger(input.offset) || input.offset < 0 || input.offset > 10000) {
+      throw new BridgeError('BAD_INPUT', 'Некорректные параметры журнала домашних заданий.', 400);
+    }
+    return input;
+  }
   if (action === 'homework-queue') {
     if (Object.keys(input).length !== 1 || typeof input.accountId !== 'string' || !/^[1-9]\d{0,11}$/.test(input.accountId)) throw new BridgeError('BAD_INPUT', 'Укажите аккаунт для загрузки работ.', 400);
     return input;

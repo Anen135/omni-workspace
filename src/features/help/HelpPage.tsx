@@ -1,4 +1,4 @@
-export function HelpPage({ mode = 'live', onDemo }: { mode?: 'live' | 'demo'; onDemo?: () => void }) {
+export function HelpPage({ mode = 'live', onDemo, onUiTests }: { mode?: 'live' | 'demo'; onDemo?: () => void; onUiTests?: () => void }) {
   return <article className="help-page" aria-label="Справка Omni Workspace">
     <nav className="help-page-intro" aria-label="Разделы справки">
       {['Урок и черновики', 'Разделы рабочего пространства', 'Расчёт дохода', 'Подключение', 'Демонстрация'].map((title, index) => <a key={title} href={`#help-${index}`} onClick={event => {
@@ -34,5 +34,8 @@ export function HelpPage({ mode = 'live', onDemo }: { mode?: 'live' | 'demo'; on
       {mode === 'live' && onDemo && <div className="help-interface-example"><h3>Пример интерфейса</h3><p>Посмотрите, как устроено рабочее пространство, на вымышленных учениках, уроках и оценках. Пример работает отдельно от ваших данных Omni.</p><button type="button" className="button secondary help-demo-link" onClick={onDemo}>Пример интерфейса</button></div>}
       <p>{mode === 'demo' ? 'Вы сейчас в демонстрационном режиме. ' : ''}Демо использует вымышленных учеников, оценки и материалы и не отправляет изменения в Omni. Черновик демо хранится в этом браузере; последний вручную сохранённый снимок доступен в истории. Очистка данных браузера удалит эти записи.</p><p>Для резервной копии текущего демо-урока используйте экспорт JSON. Открываемые локальные файлы предназначены для предпросмотра и не загружаются в Omni.</p>
     </section>
+    {onUiTests && <details className="help-page-section"><summary>Для разработчика</summary>
+      <button type="button" className="button secondary" style={{ marginTop: 12 }} onClick={onUiTests}>Тесты UI элементов</button>
+    </details>}
   </article>;
 }

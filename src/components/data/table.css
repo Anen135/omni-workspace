@@ -1,5 +1,9 @@
 .data-table { width: 100%; border-collapse: collapse; }
 .data-table th { text-align: left; }
+.data-table-sort { display: inline-flex; align-items: center; gap: 6px; padding: 4px 0; border: 0; background: transparent; color: inherit; font: inherit; font-weight: inherit; text-align: inherit; cursor: pointer; }
+.data-table-sort:focus-visible { outline: 2px solid var(--primary, #6750a4); outline-offset: 3px; border-radius: 2px; }
+.data-table-sort:disabled { opacity: .55; cursor: not-allowed; }
+.data-table-sort-indicator { font-size: .9em; }
 .data-table .data-table-selection { width: 44px; min-width: 44px; text-align: center; }
 .data-table-selected { background: var(--primary-soft, #f1edff); }
 .data-table-muted, .table-bulk-help { color: var(--muted, #697386); }
@@ -18,3 +22,7 @@
   .table-bulk-editor { padding-inline: 12px; }
   .table-bulk-controls .button.primary { flex-grow: 1; }
 }
+
+.data-table-view { min-width: 0; }
+.data-table-summary { padding-inline: 16px; margin-block: 8px 12px; }
+.data-table-view > .table-scroll { max-width: 100%; }

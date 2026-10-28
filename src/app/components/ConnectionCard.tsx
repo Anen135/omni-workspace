@@ -1,8 +1,10 @@
+import type { ReactNode } from 'react';
 import { ArrowRight, ExternalLink, LogIn } from 'lucide-react';
 import { LoginForm } from '../../features/auth/LoginForm';
 import { HelpTip } from '../../components/ui/HelpTip';
 
-export function ConnectionCard({ busy, waiting, extension, changingAccount, connectionState, onLogin, onConnect, onDemo }: {
+export function ConnectionCard({ busy, waiting, extension, changingAccount, connectionState, onLogin, onConnect, onDemo, connectionForm }: {
+  connectionForm?: ReactNode;
   busy: boolean; waiting: boolean; extension: boolean; changingAccount: boolean; connectionState: string;
   onLogin: (username: string, password: string) => Promise<void>; onConnect: () => void; onDemo: () => void;
 }) {
@@ -18,8 +20,8 @@ export function ConnectionCard({ busy, waiting, extension, changingAccount, conn
         : 'Введите данные аккаунта академии. Для подключения используйте форму ниже или официальное окно входа.';
   return <section className="panel connection-card">
     <span className="lesson-icon"><LogIn size={26}/></span><div className="help-heading"><h2>{title}</h2><HelpTip label="О подключении к Omni">Сессия остаётся на этом компьютере. Демонстрация использует отдельные вымышленные данные.</HelpTip></div><p>{explanation}</p>
-    {!changingAccount && <LoginForm busy={busy} onLogin={onLogin}/>}
-    <button className="button secondary" disabled={busy} onClick={onConnect}><ExternalLink size={17}/>Открыть официальный вход</button>
+    {!changingAccount && (connectionForm ?? <LoginForm busy={busy} onLogin={onLogin}/>)}
+    <button className="button secondary" disabled={busy && !connectionForm} onClick={onConnect}><ExternalLink size={17}/>Открыть официальный вход</button>
     <button className="text-button" onClick={onDemo}>Пока посмотреть демонстрацию<ArrowRight size={15}/></button>
   </section>;
 }
