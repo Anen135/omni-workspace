@@ -133,22 +133,23 @@ export function StudentTable({ items, busy, onOpen, attendance, marks, rewards, 
     onBulkChange!(students, change);
   }
   return <>
-    <div className="workspace-table-tools">
-      <input type="search" aria-label="Поиск ученика" placeholder="Поиск ученика" value={query} onChange={event => { setQuery(event.target.value); setPage(0); setSelection(null); }}/><span>{filtered.length} из {items.length}</span>
+    <div className="workspace-table-tools lesson-table-toolbar">
+      <div className="lesson-table-view-tools"><input type="search" aria-label="Поиск ученика" placeholder="Поиск ученика" value={query} onChange={event => { setQuery(event.target.value); setPage(0); setSelection(null); }}/>{(query || filterGroups.length > 0) && <span role="status">Найдено: {filtered.length}</span>}{selected.length > 0 && <span>Выбрано: {selected.length}</span>}
       {lessonView && <button type="button" className="button secondary" aria-haspopup="dialog" onClick={() => setSettingsOpen(true)}>Настройки таблицы{customSort ? ` · сортировок: ${sorts.length}` : ''}{filterGroups.length ? ` · фильтров: ${filterGroups.flat().length}` : ''}</button>}
       {lessonView && customSort && <button type="button" className="text-button" onClick={() => changeSorts(defaultLessonSort)}>Сбросить сортировку</button>}
       {lessonView && filterGroups.length > 0 && <button type="button" className="text-button" onClick={() => changeFilters([])}>Сбросить фильтры</button>}
+      </div><div className="lesson-table-actions">
       {attendance && <button className="button secondary" title={attendance.unavailable || 'Вся группа, включая скрытых поиском учеников'} disabled={busy || !!attendance.unavailable || items.every(row => attendanceStatus(row.was) === 1)} onClick={attendance.onAll}>Все присутствуют</button>}
-      {rewards && <span className="reward-budget" role="status" title="Лимит на полный урок, включая скрытые строки и текущий черновик.">{rewardBudget.used === null ? 'Топкойны: количество неизвестно · увеличение недоступно' : `Топкойны: ${rewardBudget.used} из ${LESSON_REWARD_LIMIT} · Осталось: ${rewardBudget.remaining}`}</span>}
+      {rewards && <span className="reward-budget"><span role="status">Топкойны: {rewardBudget.used === null ? '?' : rewardBudget.used} / {LESSON_REWARD_LIMIT}</span><HelpTip label="О бюджете топкойнов">Бюджет всего урока, включая скрытых учеников и черновик. {rewardBudget.used === null ? 'Количество неизвестно; увеличение недоступно.' : `Осталось: ${rewardBudget.remaining}.`}</HelpTip></span>}
       {rewards && onRewardAllocation && <RewardAllocation items={items} studentAverages={studentAverages} studentAveragesLoading={studentAveragesLoading} studentAveragesError={studentAveragesError} draftRewardIds={draftRewardIds} contextToken={contextToken} disabled={busy || !!rewards.unavailable} reason={rewards.unavailable} onApply={onRewardAllocation}/>}
+      </div>
     </div>
     {lessonView && averageFilterUnavailable && <p className="table-bulk-help" role="status">Фильтр средней оценки недоступен: {studentAveragesLoading ? 'дождитесь загрузки средних оценок.' : studentAveragesError}</p>}
-    {lessonView && filterGroups.length > 0 && <p className="table-bulk-help" role="status">По фильтрам и поиску: {filtered.length} из {items.length}. Выбрано: {selected.length}.</p>}
-    {canBulk && (lessonView && onFill ? <LessonBulkEditor fields={fields} items={items} filteredRows={filtered} selectedRows={selected} locked={busy || !!attendance?.saving}
+    {canBulk && <details className="lesson-bulk-disclosure"><summary>Массовое редактирование</summary>{(lessonView && onFill ? <LessonBulkEditor fields={fields} items={items} filteredRows={filtered} selectedRows={selected} locked={busy || !!attendance?.saving}
       contextKey={selectionContext} contextToken={contextToken} averages={studentAverages} averageUnavailable={studentAveragesLoading ? 'Дождитесь загрузки средних оценок.' : studentAveragesError}
       onBulkApply={applyBulk} onFill={onFill}/> : <TableBulkEditor contextKey={selectionContext} fields={fields} filteredRows={filtered} selectedRows={selected} locked={busy || !!attendance?.saving}
       defaultField={marks ? 'mark4' : fields[0]?.id} defaultValue={marks ? '12' : ''} valueLabel="Значение / расчёт" applyLabel="Заполнить столбец" maxTargets={Math.max(100, items.length)}
-      onApply={applyBulk}/>)}
+      onApply={applyBulk}/>)}</details>}
     {attendance?.unavailable && <div className="attendance-help">{attendance.unavailable === 'Выберите доступное занятие в Omni и загрузите урок.' ? <HelpTip label="Как выбрать доступное занятие">{attendance.unavailable}</HelpTip> : attendance.unavailable}</div>}
     {attendance?.saving && <p className="attendance-help" role="status">Сохраняю изменения и проверяю ответ Omni…</p>}
     <div className="table-scroll" tabIndex={lessonView ? 0 : undefined} role={lessonView ? 'region' : undefined} aria-label={lessonView ? 'Таблица учеников' : undefined}>

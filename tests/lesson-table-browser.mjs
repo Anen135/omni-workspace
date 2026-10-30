@@ -62,6 +62,7 @@ try {
     }
     createRoot(document.getElementById('root')).render(React.createElement(Fixture));
   });
+  await page.getByText('Массовое редактирование', { exact: true }).click();
   const bulk = page.locator('.table-bulk-editor');
   const fillPreview = page.getByRole('dialog', { name: 'Предварительное заполнение' });
   const confirmFill = async () => { await fillPreview.getByRole('button', { name: /^В черновик/ }).click(); await fillPreview.waitFor({ state: 'detached' }); };
@@ -246,7 +247,7 @@ try {
   await page.waitForFunction(() => Object.keys(window.lessonDraft.marks).length === 0);
   await page.getByLabel('Поиск ученика', { exact: true }).fill('Student 01');
   const rewards = page.getByRole('group', { name: 'Распределение топкойнов', exact: true });
-  assert.match(await rewards.innerText(), /Вся группа: 30/);
+  assert.doesNotMatch(await rewards.innerText(), /Вся группа: 30/);
   const rewardGear = rewards.getByRole('button', { name: 'Настройки распределения топкойнов', exact: true });
   await rewardGear.click();
   const rewardDialog = page.getByRole('dialog', { name: 'Настройки распределения топкойнов', exact: true });
@@ -263,6 +264,7 @@ try {
   assert.equal(await page.locator('.panel.reward-allocation').count(), 0);
   await page.getByLabel('Поиск ученика', { exact: true }).fill('');
   assert.deepEqual(await page.evaluate(() => window.requests), []);
+  await page.getByText('Массовое редактирование', { exact: true }).click();
   await mkdir('.omni-browser/lesson-bulk', { recursive: true });
   await page.screenshot({ path: '.omni-browser/lesson-bulk/desktop.png' });
   await page.setViewportSize({ width: 390, height: 844 });

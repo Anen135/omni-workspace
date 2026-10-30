@@ -55,8 +55,8 @@ export function TableBulkEditor<Row>({ fields, filteredRows, selectedRows, allRo
 
   return <div className={'table-bulk-editor ' + className} aria-busy={busy}>
     <div className="table-bulk-controls">
-      <span>Найдено: <strong>{filteredRows.length}</strong></span>
-      <span>Выбрано: <strong>{selectedRows.length}</strong></span>
+      {!allRows && <span>Найдено: <strong>{filteredRows.length}</strong></span>}
+      {!allRows && <span>Выбрано: <strong>{selectedRows.length}</strong></span>}
       <label>Столбец<select aria-label="Столбец для массового редактирования" value={fieldId} disabled={busy || !fields.length} onChange={event => {
         const next = fields.find(candidate => candidate.id === event.target.value);
         setFieldId(event.target.value); setValue(next?.input.kind === 'select' ? next.input.options[0]?.value ?? '' : '');

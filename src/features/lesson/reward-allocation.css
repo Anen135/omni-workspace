@@ -18,3 +18,25 @@
   .reward-allocation-options > label { width: 100%; }
   .reward-allocation-options select { width: 100%; }
 }
+.lesson-table-toolbar { display: flex; justify-content: space-between; align-items: flex-start; }
+.lesson-table-view-tools, .lesson-table-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
+.lesson-table-view-tools { flex: 1 1 320px; }
+.lesson-table-actions { flex: 0 1 auto; }
+.lesson-table-toolbar .button { min-height: 38px; }
+.reward-budget { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; font-size: 12px; }
+.lesson-bulk-disclosure { margin: 0 20px 12px; border-top: 1px solid var(--border); }
+.lesson-bulk-disclosure > summary, .reward-calculation-details > summary { cursor: pointer; padding: 12px 0; font-size: 13px; font-weight: 500; }
+.lesson-bulk-disclosure .table-bulk-editor { margin-left: 0; margin-right: 0; }
+.reward-allocation-controls { gap: 0; flex-wrap: nowrap; }
+.reward-allocation-controls > .button:first-child { border-radius: 8px 0 0 8px; }
+.reward-allocation-controls > .reward-allocation-settings { border-radius: 0 8px 8px 0; margin-left: -1px; }
+.reward-allocation-controls > .help-tip-trigger { margin-left: 6px; }
+@media (max-width: 700px) {
+  .lesson-table-toolbar > div { flex-basis: 100%; }
+  .lesson-table-view-tools input[type=search] { width: 100%; }
+  .lesson-bulk-disclosure { margin-left: 16px; margin-right: 16px; }
+}
+.lesson-table-actions { align-items: flex-start; }
+.lesson-table-actions > .reward-budget { min-height: 38px; }
+.live-workspace .lesson-workspace .lesson-students .lesson-table-actions .reward-budget { margin-left: 0; width: auto; }
+.reward-allocation-feedback { margin-top: 4px; }

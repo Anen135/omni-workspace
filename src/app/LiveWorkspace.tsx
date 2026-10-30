@@ -782,12 +782,13 @@ export function LiveWorkspace({ onDemo, connectionForm, connectionPending = fals
             </LessonBanner>
             <LessonSelectors date={selectedDate} today={today} presents={presentData} dayLessons={dayLessons}
               busy={busy} onDatePick={date => void loadLesson(undefined, undefined, date)}
-              onSchedule={() => setTab('schedule')} onSlotPick={slot => void loadLesson(undefined, slot)}/>
-            {isExtension() && <div className="lesson-preparation">
+              onSchedule={() => setTab('schedule')} onSlotPick={slot => void loadLesson(undefined, slot)}>
+            {isExtension() && <>
               <PreviousLessonCopy key={`copy:${draftKey}`} busy={busy} unavailable={attendanceReason} students={lessonStudents}
                 date={selectedDate} slot={label(presentData.cur_lenta)} dayLessons={dayLessons}
                 onLoad={loadPreviousLesson} onCopy={stagePreviousLesson}/>
-            </div>}
+            </>}
+            </LessonSelectors>
             {busy && <WorkspaceLoading/>}
             <LessonStudentsPanel busy={busy} date={selectedDate} students={lessonStudents}
               groups={rows(presentData.groups)} selectedGroup={label(presentData.cur_group)}

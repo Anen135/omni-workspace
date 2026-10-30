@@ -52,6 +52,8 @@ try {
   assert.equal((await page.evaluate(() => window.applied)).length, 1, 'failure never retries');
   await page.evaluate(() => { window.rejectApply = false; });
   await gear.click();
+  assert.equal(await dialog.locator('table').isVisible(), false, 'details are collapsed initially');
+  await dialog.getByText('Подробности расчёта', { exact: true }).click();
   assert.deepEqual(await dialog.locator('tbody tr').evaluateAll(rows => rows.map(row => row.cells[3].textContent)), ['3', '2', '0']);
   await dialog.getByLabel('Минимальный балл для топкойнов').fill('11');
   await dialog.getByRole('button', { name: 'Закрыть', exact: true }).click();

@@ -32,8 +32,8 @@ export function LessonSaveBar({ busy, saving, draft, hasTheme, unavailable, onSa
   </div>;
 }
 
-export function LessonSelectors({ date, today, presents, dayLessons, busy, onDatePick, onSchedule, onSlotPick }: {
-  date: string; today: string; presents: RemoteRecord; dayLessons: ReturnType<typeof presentLessons>; busy: boolean;
+export function LessonSelectors({ date, today, presents, dayLessons, busy, onDatePick, onSchedule, onSlotPick, children }: {
+  children?: ReactNode; date: string; today: string; presents: RemoteRecord; dayLessons: ReturnType<typeof presentLessons>; busy: boolean;
   onDatePick: (date: string) => void; onSchedule: () => void; onSlotPick: (slot: string) => void;
 }) {
   const currentSlot = label(presents.cur_lenta);
@@ -43,7 +43,7 @@ export function LessonSelectors({ date, today, presents, dayLessons, busy, onDat
       <div className="lesson-context-date"><span>Дата урока</span><div><DatePickerPopover unrestricted today={today} value={date || today} busy={busy} onPick={onDatePick}/><strong>{date || 'не выбрана'}</strong></div></div>
       {dayLessons.length > 0 && <div className="lesson-context-slot" role="group" aria-label="Пары выбранного дня"><label>Пара<select aria-label="Пара выбранного дня" disabled={busy} value={dayLessons.some(item => item.slot === currentSlot) ? currentSlot : ''} onChange={event => onSlotPick(event.target.value)}><option value="" disabled>Выберите пару</option>{dayLessons.map(item => <option key={item.slot} value={item.slot}>{item.title}{item.time ? ` · ${item.time}` : ''}</option>)}</select></label></div>}
       <div className="lesson-context-current"><span>Группа: <strong>{label(group?.name_tgroups) || label(presents.cur_group) || '—'}</strong></span><span>Пара: <strong>{label(presents.cur_lenta_number) || currentSlot || '—'}</strong></span></div>
-      <button className="button secondary" disabled={busy} onClick={onSchedule}>Выбрать пару в расписании</button>
+      <button className="button secondary" disabled={busy} onClick={onSchedule}>Выбрать пару в расписании</button>{children}
     </div>
     {dayLessons.length > 0 && <div className="lesson-context-source help-heading"><span>{dayLessons.length} пар</span><HelpTip label="Об источнике списка пар">Список получен из раздела «Присутствующие» Omni.</HelpTip></div>}
   </section>;

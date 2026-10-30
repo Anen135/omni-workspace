@@ -66,6 +66,7 @@ try {
   }
   const lessonWrites = [];
   const lessonStudents = [{ id_stud: 101, fio_stud: 'Тестовый ученик А', was: null, id_vizit: null, theme: '', primary_teach: 0, prize: 0 }, { id_stud: 102, fio_stud: 'Тестовый ученик Б', was: 2, id_vizit: 9, theme: '', primary_teach: 0, prize: 0 }];
+  let rejectCopySource = false;
   const copySourceDate = '2026-09-28';
   const copySourceStudents = [
     { id_stud: 102, fio_stud: 'Тестовый ученик Б', was: null, mark2: null, mark4: null, id_vizit: 9702, theme: 'Другая тема', prize: 2 },
@@ -167,7 +168,7 @@ try {
       const requestedDate = request.postDataJSON().date || '2026-09-30';
       if (requestedDate !== copySourceDate) lessonDate = requestedDate;
       const slot = Number(request.postDataJSON().lenta || 0);
-      data = { cur_date: requestedDate, cur_group: 10, cur_lenta: slot, cur_schedule: slot === 4 ? 54 : 50, students: requestedDate === copySourceDate ? copySourceStudents : slot === 4 ? [] : lessonStudents, schedule: { 0: { name_spec: 'Первая пара', l_start: '09:00', l_end: '10:30' }, 4: { name_spec: 'Пара без учеников', l_start: '15:00', l_end: '16:30' } }, scheduleType: 'planned', can_set_theme: true, cur_spec: { id_spec: 3, source: 'fixture', id_base_spec: 4 } };
+      data = { cur_date: rejectCopySource && requestedDate === copySourceDate ? '2000-01-01' : requestedDate, cur_group: 10, cur_lenta: slot, cur_schedule: slot === 4 ? 54 : 50, students: requestedDate === copySourceDate ? copySourceStudents : slot === 4 ? [] : lessonStudents, schedule: { 0: { name_spec: 'Первая пара', l_start: '09:00', l_end: '10:30' }, 4: { name_spec: 'Пара без учеников', l_start: '15:00', l_end: '16:30' } }, scheduleType: 'planned', can_set_theme: true, cur_spec: { id_spec: 3, source: 'fixture', id_base_spec: 4 } };
     }
     if (path === '/presents/set-mark') {
       lessonWrites.push('mark');
@@ -281,7 +282,54 @@ try {
   await official.addInitScript(() => localStorage.setItem('omni.connection-check-seconds', '15'));
   await official.reload();
   await official.locator('#omni-workspace-root #root').waitFor();
-  if (process.env.OMNI_QUICK_REWARDS_ONLY === '1') {
+  if (process.env.OMNI_COPY_MODAL_ONLY === '1') {
+    await initialRoster.started; initialRoster.release();
+    const trigger = ui.locator('.lesson-context').getByRole('button', { name: 'Скопировать с прошлой пары', exact: true });
+    const modal = ui.getByRole('dialog', { name: 'Скопировать с прошлой пары', exact: true });
+    assert.equal(await ui.locator('.panel.lesson-copy').count(), 0);
+    await trigger.click();
+    assert.equal(await modal.locator('tbody tr').count(), 0, 'opening never loads automatically');
+    await modal.getByLabel('Дата прошлой пары', { exact: true }).fill(copySourceDate);
+    rejectCopySource = true;
+    await modal.getByRole('button', { name: 'Загрузить прошлую пару', exact: true }).click();
+    await modal.getByRole('alert').waitFor();
+    assert.equal(await modal.locator('tbody tr').count(), 0, 'failed load cannot be copied');
+    rejectCopySource = false;
+    await modal.getByRole('button', { name: 'Загрузить прошлую пару', exact: true }).click();
+    await modal.getByText('Совпали ученики: 2 из 2', { exact: true }).waitFor();
+    assert.deepEqual(lessonWrites, []);
+    await ui.setViewportSize({ width: 390, height: 844 });
+    assert.equal(await modal.evaluate(node => node.scrollWidth <= node.clientWidth), true);
+    for (let i = 0; i < 20; i++) {
+      await ui.keyboard.press(i % 2 ? 'Shift+Tab' : 'Tab');
+      assert.equal(await modal.evaluate(node => node.contains(node.getRootNode().activeElement)), true);
+    }
+    await ui.screenshot({ path: 'tmp/copy-modal-extension-narrow.png' });
+    await ui.keyboard.press('Escape');
+    assert.equal(await trigger.evaluate(node => node === node.getRootNode().activeElement), true);
+    assert.equal(await ui.locator('.lesson-save-bar').count(), 0, 'cancel leaves draft unchanged');
+    await trigger.click();
+    assert.equal(await modal.locator('tbody tr').count(), 0, 'reopening discards old source');
+    await modal.getByLabel('Дата прошлой пары', { exact: true }).fill(copySourceDate);
+    await modal.getByRole('button', { name: 'Загрузить прошлую пару', exact: true }).click();
+    await modal.getByText('Совпали ученики: 2 из 2', { exact: true }).waitFor();
+    await modal.getByRole('checkbox', { name: 'Топкойны', exact: true }).uncheck();
+    await modal.getByRole('button', { name: 'В черновик', exact: true }).click();
+    assert.deepEqual(lessonWrites, [], 'copy only stages draft');
+    await modal.getByRole('checkbox', { name: 'Заменить заполненные значения', exact: true }).check();
+    ui.once('dialog', dialog => dialog.accept());
+    await modal.getByRole('button', { name: 'В черновик', exact: true }).click();
+    assert.deepEqual(lessonWrites, [], 'explicit overwrite remains draft-only');
+    await modal.getByRole('button', { name: 'Закрыть', exact: true }).click();
+    await ui.setViewportSize({ width: 1200, height: 900 });
+    await ui.getByLabel('Пара выбранного дня', { exact: true }).selectOption('4');
+    await ui.getByLabel('Пара выбранного дня', { exact: true }).selectOption('0');
+    await trigger.click();
+    assert.equal(await modal.locator('tbody tr').count(), 0, 'changed lesson has no old source');
+    await ui.keyboard.press('Escape');
+    assert.deepEqual(errors, []);
+    console.log('PASS copy modal: context placement, explicit load, cancel/reopen/context reset, keyboard/focus/narrow and draft-only staging');
+  } else if (process.env.OMNI_QUICK_REWARDS_ONLY === '1') {
     await initialRoster.started;
     initialRoster.release();
     const table = ui.locator('.lesson-students');
@@ -291,10 +339,12 @@ try {
     await table.getByRole('button', { name: 'Работа на уроке: Тестовый ученик А', exact: true }).filter({ hasText: /^12$/ }).waitFor();
     await table.getByLabel('Поиск ученика', { exact: true }).fill('ученик А');
     const allocation = table.getByRole('group', { name: 'Распределение топкойнов', exact: true });
-    assert.match(await allocation.innerText(), /Вся группа: 2/);
+    assert.doesNotMatch(await allocation.innerText(), /Вся группа: 2/);
     const gear = allocation.getByRole('button', { name: 'Настройки распределения топкойнов', exact: true });
     await gear.click();
     const settings = ui.getByRole('dialog', { name: 'Настройки распределения топкойнов', exact: true });
+    assert.equal(await settings.locator('table').isVisible(), false);
+    await settings.getByText('Подробности расчёта', { exact: true }).click();
     assert.equal(await settings.locator('tbody tr').count(), 2);
     assert.match(await settings.innerText(), /Сохранено: 1/);
     await ui.setViewportSize({ width: 390, height: 844 });
@@ -327,6 +377,7 @@ try {
     const table = ui.locator('.lesson-students');
     await table.locator('tbody tr').filter({ hasText: 'Тестовый ученик Б' }).locator('td:last-child').filter({ hasText: /^10\.5$/ }).waitFor();
     await table.getByRole('checkbox', { name: 'Выбрать ученика: Тестовый ученик Б', exact: true }).check();
+    await table.getByText('Массовое редактирование', { exact: true }).click();
     await ui.getByLabel('Способ заполнения', { exact: true }).selectOption('mean');
     await table.getByLabel('Область расчёта среднего', { exact: true }).selectOption('selected');
     await table.getByRole('button', { name: 'Заполнить столбец (1)', exact: true }).click();
@@ -601,6 +652,7 @@ try {
   await lessonTable.locator('tbody tr').filter({ hasText: 'Тестовый ученик А' }).locator('td:last-child').filter({ hasText: /^0$/ }).waitFor();
   assert.equal(await lessonTable.locator('tbody tr').filter({ hasText: 'Тестовый ученик Б' }).locator('td:last-child').innerText(), '10.5', 'a later refresh recovers roster averages');
   // Shared admin-table operations stage a complete lesson candidate, never writes.
+  await lessonTable.getByText('Массовое редактирование', { exact: true }).click();
   const lessonBulk = lessonTable.locator('.table-bulk-editor');
   assert.equal(await lessonBulk.locator('.table-bulk-controls').evaluate(node => getComputedStyle(node).display), 'flex', 'shared table CSS is present in extension Shadow DOM');
   const averageStudent = lessonTable.getByRole('checkbox', { name: 'Выбрать ученика: Тестовый ученик Б', exact: true });
@@ -643,7 +695,7 @@ try {
   await lessonBulk.getByRole('button', { name: 'Заполнить столбец (2)', exact: true }).click();
   const allocation = lessonTable.getByRole('group', { name: 'Распределение топкойнов', exact: true });
   await allocation.getByRole('button', { name: 'Распределить топкойны', exact: true }).click();
-  assert.match(await allocation.innerText(), /Распределено: 4, остаток: 1/);
+  assert.match(await allocation.innerText(), /В черновике: 2 учеников/);
   assert.equal(await ui.getByLabel('Топкойны: Тестовый ученик А', { exact: true }).inputValue(), '2');
   assert.equal(await ui.getByLabel('Топкойны: Тестовый ученик Б', { exact: true }).inputValue(), '2');
   assert.deepEqual(lessonWrites, [], 'bulk marks, attendance and automatic rewards stay local before explicit Save');
@@ -934,7 +986,7 @@ try {
   await rewardB.press('End');
   assert.equal(await reward.inputValue(), '3');
   assert.equal(await rewardB.inputValue(), '2', 'a second slider cannot allocate more than the lesson remainder');
-  await ui.getByText('Топкойны: 5 из 5 · Осталось: 0', { exact: true }).waitFor();
+  await ui.getByText('Топкойны: 5 / 5', { exact: true }).waitFor();
   await rewardB.press('ArrowRight');
   assert.equal(await rewardB.inputValue(), '2', 'exhausted budget prevents an increase');
   await ui.getByLabel('Поиск ученика', { exact: true }).fill('Тестовый ученик Б');
@@ -950,7 +1002,7 @@ try {
   await ui.getByRole('button', { name: 'Отменить черновик', exact: true }).click();
   assert.equal(await reward.inputValue(), '1');
   assert.equal(await rewardB.inputValue(), '0');
-  await ui.getByText('Топкойны: 1 из 5 · Осталось: 4', { exact: true }).waitFor();
+  await ui.getByText('Топкойны: 1 / 5', { exact: true }).waitFor();
   const beforeRewards = lessonWrites.length;
   rejectReward = true;
   await setReward(2);
@@ -1004,8 +1056,9 @@ try {
   // Reading a previous lesson never switches the destination or copies its
   // visit IDs. Default copy protects filled values, explicit overwrite stages
   // only the selected categories, and Save is the first mutation request.
-  const copyPanel = ui.getByLabel('Перенос с прошлой пары', { exact: true });
-  await copyPanel.getByRole('button', { name: 'Перенести с прошлой пары', exact: true }).click();
+  const copyTrigger = ui.locator('.lesson-context').getByRole('button', { name: 'Скопировать с прошлой пары', exact: true });
+  await copyTrigger.click();
+  const copyPanel = ui.getByRole('dialog', { name: 'Скопировать с прошлой пары', exact: true });
   await copyPanel.getByLabel('Дата прошлой пары', { exact: true }).fill(copySourceDate);
   const beforeCopy = lessonWrites.length;
   await copyPanel.getByRole('button', { name: 'Загрузить прошлую пару', exact: true }).click();
@@ -1024,11 +1077,18 @@ try {
   assert.equal(await presence.inputValue(), '0');
   assert.equal(await ui.getByRole('button', { name: 'Контрольная: Тестовый ученик А', exact: true }).textContent(), '9', 'attendance-only copy must not replace grades');
   assert.equal(lessonWrites.length, beforeCopy, 'copy remains a local draft until Save');
+  await copyPanel.getByRole('button', { name: 'Закрыть', exact: true }).click();
   await lessonSave.click();
   await ui.getByRole('status').filter({ hasText: 'Изменения урока сохранены в Omni' }).waitFor();
   assert.deepEqual(lessonWrites.slice(beforeCopy), ['attendance']);
   assert.equal(lessonStudents[0].id_vizit, 8, 'copied old source visit must never become target visit');
   assert.equal(lessonStudents[0].theme, 'Тестовая тема', 'source theme is never copied');
+  await copyTrigger.click();
+  await copyPanel.getByLabel('Дата прошлой пары', { exact: true }).fill(copySourceDate);
+  await copyPanel.getByRole('button', { name: 'Загрузить прошлую пару', exact: true }).click();
+  await copyPanel.getByText('Совпали ученики: 2 из 2', { exact: true }).waitFor();
+  await copyPanel.getByRole('checkbox', { name: 'Заменить заполненные значения', exact: true }).check();
+  await copyPanel.getByRole('checkbox', { name: 'Топкойны', exact: true }).uncheck();
   await copyPanel.getByRole('checkbox', { name: 'Посещаемость', exact: true }).uncheck();
   await copyPanel.getByRole('checkbox', { name: 'Оценки', exact: true }).check();
   ui.once('dialog', dialog => dialog.accept());
@@ -1036,16 +1096,24 @@ try {
   assert.equal(await ui.getByRole('button', { name: 'Контрольная: Тестовый ученик А', exact: true }).textContent(), '6');
   assert.equal(await presence.inputValue(), '0');
   assert.equal(lessonWrites.length, beforeCopy + 1);
+  await copyPanel.getByRole('button', { name: 'Закрыть', exact: true }).click();
   await lessonSave.click();
   await ui.getByRole('status').filter({ hasText: 'Изменения урока сохранены в Omni' }).waitFor();
   assert.deepEqual(lessonWrites.slice(beforeCopy), ['attendance', 'mark']);
   assert.equal(lessonStudents[0].mark2, 6);
   assert.equal(lessonStudents[0].mark4, 11, 'empty source grades must not delete filled destination grades');
+  await copyTrigger.click();
+  await copyPanel.getByLabel('Дата прошлой пары', { exact: true }).fill(copySourceDate);
+  await copyPanel.getByRole('button', { name: 'Загрузить прошлую пару', exact: true }).click();
+  await copyPanel.getByText('Совпали ученики: 2 из 2', { exact: true }).waitFor();
+  await copyPanel.getByRole('checkbox', { name: 'Заменить заполненные значения', exact: true }).check();
+  await copyPanel.getByRole('checkbox', { name: 'Посещаемость', exact: true }).uncheck();
   await copyPanel.getByRole('checkbox', { name: 'Оценки', exact: true }).uncheck();
   await copyPanel.getByRole('checkbox', { name: 'Топкойны', exact: true }).check();
   ui.once('dialog', dialog => dialog.accept());
   await copyPanel.getByRole('button', { name: 'В черновик', exact: true }).click();
   assert.equal(lessonWrites.length, beforeCopy + 2, 'copied rewards remain local until Save');
+  await copyPanel.getByRole('button', { name: 'Закрыть', exact: true }).click();
   await lessonSave.click();
   await ui.getByRole('status').filter({ hasText: 'Изменения урока сохранены в Omni' }).waitFor();
   assert.deepEqual(lessonWrites.slice(beforeCopy), ['attendance', 'mark', 'reward']);
