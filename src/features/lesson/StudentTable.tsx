@@ -134,10 +134,11 @@ export function StudentTable({ items, busy, onOpen, attendance, marks, rewards, 
   }
   return <>
     <div className="workspace-table-tools lesson-table-toolbar">
-      <div className="lesson-table-view-tools"><input type="search" aria-label="Поиск ученика" placeholder="Поиск ученика" value={query} onChange={event => { setQuery(event.target.value); setPage(0); setSelection(null); }}/>{(query || filterGroups.length > 0) && <span role="status">Найдено: {filtered.length}</span>}{selected.length > 0 && <span>Выбрано: {selected.length}</span>}
+      <div className="lesson-table-view-tools"><input type="search" aria-label="Поиск ученика" placeholder="Поиск ученика" value={query} onChange={event => { setQuery(event.target.value); setPage(0); setSelection(null); }}/>
       {lessonView && <button type="button" className="button secondary" aria-haspopup="dialog" onClick={() => setSettingsOpen(true)}>Настройки таблицы{customSort ? ` · сортировок: ${sorts.length}` : ''}{filterGroups.length ? ` · фильтров: ${filterGroups.flat().length}` : ''}</button>}
       {lessonView && customSort && <button type="button" className="text-button" onClick={() => changeSorts(defaultLessonSort)}>Сбросить сортировку</button>}
       {lessonView && filterGroups.length > 0 && <button type="button" className="text-button" onClick={() => changeFilters([])}>Сбросить фильтры</button>}
+      <div className="lesson-table-summary" aria-live="polite">{(query || filterGroups.length > 0) && <span role="status">Найдено: {filtered.length}</span>}{selected.length > 0 && <span>Выбрано: {selected.length}</span>}</div>
       </div><div className="lesson-table-actions">
       {attendance && <button className="button secondary" title={attendance.unavailable || 'Вся группа, включая скрытых поиском учеников'} disabled={busy || !!attendance.unavailable || items.every(row => attendanceStatus(row.was) === 1)} onClick={attendance.onAll}>Все присутствуют</button>}
       {rewards && <span className="reward-budget"><span role="status">Топкойны: {rewardBudget.used === null ? '?' : rewardBudget.used} / {LESSON_REWARD_LIMIT}</span><HelpTip label="О бюджете топкойнов">Бюджет всего урока, включая скрытых учеников и черновик. {rewardBudget.used === null ? 'Количество неизвестно; увеличение недоступно.' : `Осталось: ${rewardBudget.remaining}.`}</HelpTip></span>}

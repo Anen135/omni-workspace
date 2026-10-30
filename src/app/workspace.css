@@ -358,3 +358,70 @@
 .lesson-copy table { width: 100%; border-collapse: collapse; font-size: 12px; }
 .lesson-copy th, .lesson-copy td { padding: 10px 6px; text-align: left; overflow-wrap: anywhere; border-bottom: 1px solid var(--border); }
 .lesson-copy .table-scroll { max-height: 40vh; }
+/* Lesson audit: readable values and predictable control positions. */
+.live-workspace .lesson-workspace .lesson-students td .text-button { font-size: 13px; min-height: 32px; min-width: 28px; }
+.lesson-workspace .reward-slider-ticks { font-size: 12px; line-height: 1.2; }
+/* Lesson composition: compact context, then a consistent table command area. */
+.lesson-copy-label-short { display: none; }
+.live-workspace .lesson-workspace .lesson-banner.lesson-overview {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px 20px;
+  padding: 14px 20px; background: var(--surface, #fff);
+}
+.live-workspace .lesson-workspace .lesson-banner h2 { margin: 3px 0; font-size: 20px; }
+.lesson-workspace .lesson-meta { display: none; }
+.lesson-workspace .lesson-overview-controls { grid-column: 1 / -1; padding-top: 0; border-top: 0; }
+.lesson-workspace .lesson-theme-toolbar { gap: 8px; }
+.lesson-workspace .lesson-estimate.is-empty { align-self: start; display: flex; align-items: baseline; gap: 6px; }
+.lesson-workspace .lesson-estimate.is-empty strong { font-size: 13px; }
+.lesson-workspace .lesson-context { padding: 12px 20px; }
+.lesson-workspace .lesson-context-row { display: grid; grid-template-columns: auto minmax(140px, 1fr) auto auto; align-items: end; gap: 12px; }
+.lesson-workspace .lesson-context-slot { max-width: none; }
+.lesson-workspace .lesson-context-actions { display: flex; align-items: center; gap: 8px; }
+.lesson-workspace .lesson-context-actions .button { white-space: nowrap; }
+.live-workspace .lesson-workspace .lesson-students .panel-heading { padding: 14px 20px; }
+.live-workspace .lesson-workspace .lesson-table-toolbar { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; padding: 0 20px 10px; }
+.lesson-workspace .lesson-table-view-tools { display: grid; grid-template-columns: minmax(130px, 300px) auto 1fr; align-items: center; gap: 8px; }
+.lesson-workspace .lesson-table-view-tools input[type=search] { width: 100%; min-width: 0; }
+.lesson-workspace .lesson-table-summary { display: flex; justify-content: end; gap: 8px; font-size: 12px; }
+.lesson-workspace .lesson-table-actions { display: flex; align-items: center; gap: 8px; padding-top: 10px; border-top: 1px solid var(--border); }
+.lesson-workspace .lesson-table-actions .reward-budget { order: 3; margin-left: auto; }
+.lesson-workspace .lesson-bulk-disclosure { margin-bottom: 0; }
+.lesson-workspace .lesson-bulk-disclosure > summary { padding: 9px 0; }
+.lesson-workspace .lesson-students .table-scroll:focus-visible { outline: 2px solid var(--omni-focus, var(--purple)); outline-offset: -2px; }
+.live-workspace .lesson-workspace .reward-allocation-options > label { align-items: flex-start; text-align: left; }
+@media (max-width: 1100px) {
+  .lesson-workspace .lesson-context-row { grid-template-columns: auto minmax(0, 1fr); }
+  .lesson-workspace .lesson-context-current { padding: 0; align-self: center; }
+  .lesson-workspace .lesson-context-actions { justify-content: end; }
+}
+@media (max-width: 760px) {
+  .lesson-copy-label { display: none; }
+  .lesson-copy-label-short { display: inline; }
+  .live-workspace .lesson-workspace { gap: 10px; }
+  .live-workspace .lesson-workspace .lesson-banner.lesson-overview { padding: 12px 16px; gap: 8px; }
+  .live-workspace .lesson-workspace .lesson-banner h2 { font-size: 18px; }
+  .lesson-workspace .lesson-estimate { grid-column: 1 / -1; }
+  .lesson-workspace .lesson-context { padding: 12px 16px; }
+  .lesson-workspace .lesson-context-row { gap: 10px; }
+  .lesson-workspace .lesson-context-date > div { gap: 6px; }
+  .lesson-workspace .lesson-context-current { grid-column: 1 / -1; }
+  .lesson-workspace .lesson-context-actions { grid-column: 1 / -1; justify-content: start; flex-wrap: wrap; }
+  .live-workspace .lesson-workspace .lesson-students .panel-heading { padding: 12px 16px; flex-wrap: nowrap; gap: 8px; }
+  .lesson-workspace .lesson-students .panel-heading > .button { width: 36px; min-width: 36px; height: 36px; padding: 9px; font-size: 0; gap: 0; }
+  .live-workspace .lesson-workspace .lesson-table-toolbar { padding: 0 16px 8px; gap: 8px; }
+  .lesson-workspace .lesson-table-view-tools { grid-template-columns: minmax(0, 1fr) auto; }
+  .lesson-workspace .lesson-table-view-tools .button { padding-inline: 8px; }
+  .lesson-workspace .lesson-table-summary { grid-column: 1 / -1; justify-content: start; }
+  .lesson-workspace .lesson-table-summary:empty { display: none; }
+  .lesson-workspace .lesson-table-actions { gap: 6px; }
+  .lesson-workspace .lesson-table-actions > .button { flex: 1; }
+  .lesson-workspace .lesson-table-actions > .reward-budget { order: 0; }
+  .lesson-workspace .reward-allocation { flex: 1 1 100%; }
+  .lesson-workspace .reward-allocation-controls > .button:first-child { flex: 1; }
+}
+@media (min-width: 1101px) {
+  .live-workspace .lesson-workspace .lesson-banner.lesson-overview { grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; }
+  .lesson-workspace .lesson-overview-controls { grid-column: auto; width: auto; }
+  .lesson-workspace .lesson-overview-controls:has(form) { grid-column: 1 / -1; }
+  .lesson-workspace .lesson-estimate.is-empty { align-self: center; }
+}

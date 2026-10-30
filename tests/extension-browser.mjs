@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { chromium } from 'playwright';
 import { resolve } from 'node:path';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, mkdir, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 
 const profile = await mkdtemp(resolve(tmpdir(), 'omni-extension-test-'));
@@ -282,7 +282,73 @@ try {
   await official.addInitScript(() => localStorage.setItem('omni.connection-check-seconds', '15'));
   await official.reload();
   await official.locator('#omni-workspace-root #root').waitFor();
-  if (process.env.OMNI_COPY_MODAL_ONLY === '1') {
+  if (process.env.OMNI_VISUAL_AUDIT_ONLY === '1') {
+    await initialRoster.started; initialRoster.release();
+    const table = ui.locator('.lesson-students');
+    await table.locator('tbody tr').filter({ hasText: 'Тестовый ученик Б' }).locator('td:last-child').filter({ hasText: /^10\.5$/ }).waitFor();
+    const directory = 'tmp/visual-audit';
+    await mkdir(directory, { recursive: true });
+    const report = { page: 'Мой урок', fixture: 'fictional extension fixture', extensionVersion: manifest.version, platform: process.platform, node: process.version, browser: await ui.evaluate(() => navigator.userAgent), fonts: 'Google Fonts blocked; system fallback', screenshots: [], observations: [] };
+    const capture = async (name, state) => {
+      const file = `${name}-${state}.png`;
+      await ui.screenshot({ path: `${directory}/${file}`, animations: 'disabled', fullPage: state === 'default' });
+      report.screenshots.push({ file, viewport: ui.viewportSize(), state });
+    };
+    for (const [name, width, height] of [['desktop', 1440, 1000], ['tablet', 820, 1180], ['mobile', 390, 844]]) {
+      await ui.setViewportSize({ width, height });
+      await ui.evaluate(() => { const root = document.querySelector('#omni-workspace-root')?.shadowRoot; root?.activeElement?.blur(); });
+      await ui.locator('h1').first().scrollIntoViewIfNeeded();
+      await capture(name, 'default');
+      await table.scrollIntoViewIfNeeded();
+      await capture(name, 'workspace');
+      report.observations.push(await table.evaluate(node => ({
+        viewport: innerWidth,
+        tableScroll: node.querySelector('.table-scroll')?.scrollWidth > node.querySelector('.table-scroll')?.clientWidth,
+        documentOverflow: document.documentElement.scrollWidth > innerWidth,
+        smallText: [...node.querySelectorAll('button, th, td, label')].filter(el => parseFloat(getComputedStyle(el).fontSize) < 12).slice(0, 10).map(el => ({ text: el.textContent?.trim().slice(0, 55), size: getComputedStyle(el).fontSize })),
+      })));
+      const settingsPosition = () => table.getByRole('button', { name: /^Настройки таблицы/ }).evaluate(node => ({ x: node.offsetLeft, y: node.offsetTop }));
+      const originalSettingsPosition = await settingsPosition();
+      const search = table.getByLabel('Поиск ученика', { exact: true });
+      await search.focus(); await capture(name, 'focus');
+      await search.fill('Нет такого ученика'); await capture(name, 'empty');
+      await search.fill('');
+      await table.getByRole('checkbox', { name: 'Выбрать ученика: Тестовый ученик А', exact: true }).check();
+      await capture(name, 'selected');
+      assert.deepEqual(await settingsPosition(), originalSettingsPosition, 'selection must not shift table settings');
+      await table.getByRole('checkbox', { name: 'Выбрать ученика: Тестовый ученик А', exact: true }).uncheck();
+      const settingsButton = table.getByRole('button', { name: /^Настройки таблицы/ });
+      await settingsButton.hover(); await capture(name, 'hover');
+      await settingsButton.click();
+      const modal = ui.getByRole('dialog', { name: 'Настройки таблицы', exact: true });
+      await capture(name, 'settings');
+      assert.equal(await modal.evaluate(node => node.scrollWidth <= node.clientWidth), true);
+      const focusableCount = await modal.locator('button:enabled, input:enabled, select:enabled').count();
+      for (const direction of ['Tab', 'Shift+Tab']) {
+        for (let index = 0; index <= focusableCount; index++) {
+          await ui.keyboard.press(direction);
+          assert.equal(await modal.evaluate(node => node.contains(node.getRootNode().activeElement)), true);
+        }
+      }
+      await ui.keyboard.press('Escape');
+      assert.equal(await settingsButton.evaluate(node => node === node.getRootNode().activeElement), true);
+      const gear = table.getByRole('button', { name: 'Настройки распределения топкойнов', exact: true });
+      await gear.click();
+      const rewards = ui.getByRole('dialog', { name: 'Настройки распределения топкойнов', exact: true });
+      await rewards.getByLabel('Минимальный балл для топкойнов').fill('');
+      await rewards.getByRole('status').waitFor();
+      assert.equal(await table.getByRole('button', { name: 'Распределить топкойны', exact: true }).isDisabled(), true);
+      await capture(name, 'invalid');
+      await rewards.getByLabel('Минимальный балл для топкойнов').fill('7');
+      await ui.keyboard.press('Escape');
+      assert.deepEqual(lessonWrites, [], 'visual audit never sends mutations');
+    }
+    assert.deepEqual(errors, []);
+    await writeFile(`${directory}/report.json`, JSON.stringify(report, null, 2));
+    const pictures = report.screenshots.map(item => `<figure><a href="${item.file}"><img loading="lazy" src="${item.file}" width="360"></a><figcaption>${item.file}</figcaption></figure>`).join('');
+    await writeFile(`${directory}/index.html`, `<!doctype html><meta charset="utf-8"><title>Omni visual audit</title><style>body{font:14px system-ui;background:#eee;padding:24px}main{display:flex;flex-wrap:wrap;gap:20px}figure{margin:0}img{max-width:100%;height:auto}</style><h1>Мой урок — fictional fixtures</h1><p>Chromium / desktop 1440 / tablet 820 / mobile 390. Screenshots require human/model inspection; no pixel baseline approved.</p><main>${pictures}</main>`);
+    console.log('PASS visual capture and interaction checks; inspect tmp/visual-audit/index.html and report.json. Visual quality is not automatically approved.');
+  } else if (process.env.OMNI_COPY_MODAL_ONLY === '1') {
     await initialRoster.started; initialRoster.release();
     const trigger = ui.locator('.lesson-context').getByRole('button', { name: 'Скопировать с прошлой пары', exact: true });
     const modal = ui.getByRole('dialog', { name: 'Скопировать с прошлой пары', exact: true });

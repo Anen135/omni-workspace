@@ -20,6 +20,7 @@
     "build": "tsc && vite build",
     "build:pages": "tsc && vite build --mode pages",
     "build:extension": "tsc && node extension/build.mjs",
+    "test:visual": "node tests/visual-audit.mjs",
     "test:extension-ui": "node tests/extension-browser.mjs",
     "test:workspace-ui": "node tests/workspace-browser.mjs",
     "desktop:build": "node desktop/build-agent.mjs && dotnet build desktop/Omni.Desktop.csproj -c Release",

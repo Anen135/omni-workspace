@@ -1,4 +1,4 @@
-import { BookOpen, Save, Upload } from 'lucide-react';
+import { Save, Upload } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { DatePickerPopover } from '../../components/DatePickerPopover';
 import { label, rows, type Account, type RemoteRecord } from '../../services/omni-client';
@@ -11,7 +11,7 @@ export function LessonBanner({ account, fetchedAt, date, students, theme, draft,
   account: Account; fetchedAt: string; date: string; students: RemoteRecord[]; theme: string; draft?: LessonDraft;
   children?: ReactNode; estimate?: { amount: number | null; initial: boolean };
 }) {
-  return <section className="lesson-banner lesson-overview"><span className="lesson-icon"><BookOpen size={25}/></span><div className="lesson-description"><div className="lesson-meta"><span>РЕАЛЬНЫЕ ДАННЫЕ</span><span>{date}</span></div><h2>{draft?.theme?.theme || theme || (students.length ? 'Текущее занятие' : 'Omni не вернул текущую пару')}</h2><div className="lesson-time">Обновлено {new Date(fetchedAt).toLocaleTimeString('ru-RU')} · {account.branch}{draft?.theme && ' · тема в черновике'}</div></div>{estimate && <aside className="lesson-estimate" title={(estimate.initial ? 'Расчёт по начальным ставкам. ' : 'Расчёт по сохранённым ставкам. ') + 'Измените ставки в разделе «Доход». Это приблизительная оценка, а не подтверждённая выплата Omni.'}><span>{estimate.initial ? 'Начальные ставки' : 'Оценка за занятие'}</span><strong>{estimate.amount === null || !Number.isFinite(estimate.amount) ? 'Нет данных' : '≈ ' + new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', maximumFractionDigits: 2 }).format(estimate.amount)}</strong></aside>}{children && <div className="lesson-overview-controls">{children}</div>}</section>;
+  return <section className="lesson-banner lesson-overview"><div className="lesson-description"><div className="lesson-meta"><span>РЕАЛЬНЫЕ ДАННЫЕ</span></div><h2>{draft?.theme?.theme || theme || (students.length ? 'Текущее занятие' : 'Omni не вернул текущую пару')}</h2><div className="lesson-time">Обновлено {new Date(fetchedAt).toLocaleTimeString('ru-RU')} · {account.branch}{draft?.theme && ' · тема в черновике'}</div></div>{estimate && <aside className={`lesson-estimate${estimate.amount === null || !Number.isFinite(estimate.amount) ? ' is-empty' : ''}`} title={(estimate.initial ? 'Расчёт по начальным ставкам. ' : 'Расчёт по сохранённым ставкам. ') + 'Измените ставки в разделе «Доход». Это приблизительная оценка, а не подтверждённая выплата Omni.'}><span>{estimate.initial ? 'Начальные ставки' : 'Оценка за занятие'}</span><strong>{estimate.amount === null || !Number.isFinite(estimate.amount) ? 'Нет данных' : '≈ ' + new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', maximumFractionDigits: 2 }).format(estimate.amount)}</strong></aside>}{children && <div className="lesson-overview-controls">{children}</div>}</section>;
 }
 
 export function LessonSaveBar({ busy, saving, draft, hasTheme, unavailable, onSave, onDiscard, pendingUpload = false }: {
@@ -42,9 +42,9 @@ export function LessonSelectors({ date, today, presents, dayLessons, busy, onDat
     <div className="lesson-context-row">
       <div className="lesson-context-date"><span>Дата урока</span><div><DatePickerPopover unrestricted today={today} value={date || today} busy={busy} onPick={onDatePick}/><strong>{date || 'не выбрана'}</strong></div></div>
       {dayLessons.length > 0 && <div className="lesson-context-slot" role="group" aria-label="Пары выбранного дня"><label>Пара<select aria-label="Пара выбранного дня" disabled={busy} value={dayLessons.some(item => item.slot === currentSlot) ? currentSlot : ''} onChange={event => onSlotPick(event.target.value)}><option value="" disabled>Выберите пару</option>{dayLessons.map(item => <option key={item.slot} value={item.slot}>{item.title}{item.time ? ` · ${item.time}` : ''}</option>)}</select></label></div>}
-      <div className="lesson-context-current"><span>Группа: <strong>{label(group?.name_tgroups) || label(presents.cur_group) || '—'}</strong></span><span>Пара: <strong>{label(presents.cur_lenta_number) || currentSlot || '—'}</strong></span></div>
-      <button className="button secondary" disabled={busy} onClick={onSchedule}>Выбрать пару в расписании</button>{children}
+      <div className="lesson-context-current"><span>Группа: <strong>{label(group?.name_tgroups) || label(presents.cur_group) || '—'}</strong></span></div>
+      <div className="lesson-context-actions"><button className="button secondary" disabled={busy} onClick={onSchedule}>Расписание</button>{children}</div>
     </div>
-    {dayLessons.length > 0 && <div className="lesson-context-source help-heading"><span>{dayLessons.length} пар</span><HelpTip label="Об источнике списка пар">Список получен из раздела «Присутствующие» Omni.</HelpTip></div>}
+
   </section>;
 }

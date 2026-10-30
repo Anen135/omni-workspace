@@ -57,7 +57,6 @@ function RewardAllocationControls({ items, studentAverages, studentAveragesLoadi
       <HelpTip label="Об области распределения">Вся группа, включая скрытых поиском и фильтрами учеников. Изменится: {blocked ? 0 : proposal.targets.length}.</HelpTip>
     </div>
     {blocked && <p className="reward-allocation-feedback" role="status">{blocked}</p>}
-    {noChanges && !notice && <p className="reward-allocation-feedback" role="status">Нет изменений.</p>}
     {failure?.fingerprint === fingerprint && <p className="reward-allocation-feedback" role="alert">{failure.message}</p>}
     {notice && <p className="reward-allocation-feedback" role="status">{notice}</p>}
     {open && <RewardSettingsDialog onClose={() => setOpen(false)}>
