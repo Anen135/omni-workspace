@@ -148,6 +148,12 @@ try {
   assert.deepEqual(await values(), [['501', '0']], 'fresh snapshot recovers and retains a real zero average');
   assert.equal(await page.locator('#error').textContent(), '');
   assert.deepEqual(requests.map(request => request.group), ['1', '2', '3', 'transport', '4', '5', '5']);
+  const malformed = hold('6', roster('teacher-b', '601', false));
+  await page.evaluate(() => window.freshAverages('teacher-b', '6'));
+  await wait(malformed.started); malformed.release();
+  await page.waitForFunction(() => document.querySelector('#loading').textContent === 'false');
+  assert.match(await page.locator('#error').textContent(), /некорректный средний балл/);
+  assert.deepEqual(await values(), [], 'malformed nonempty average is reported as an error, not a skippable missing value');
   assert.deepEqual(unexpected, []);
   assert.deepEqual(errors, []);
   console.log('PASS real averages hook: same-context verified cache reuse, account isolation, queued background abort, stopped error skeleton and fresh-snapshot recovery');

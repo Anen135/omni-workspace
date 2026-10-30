@@ -1,3 +1,4 @@
+import { studentRow } from '../students/students';
 import { attendanceStatus, type AttendanceStatus } from './attendance';
 import { emptyLessonDraft, stageAttendanceChange, stageMarkChange, stageRewardChange, type LessonDraft } from './lesson-draft';
 import { lessonRewardDraftAllowed, rewardLevel, type LessonReward } from './lesson-reward';
@@ -5,6 +6,7 @@ import { lessonRewardDraftAllowed, rewardLevel, type LessonReward } from './less
 export type LessonBulkChange =
   | { column: 'attendance'; value: AttendanceStatus }
   | { column: 'mark2' | 'mark4'; value: number }
+  | { column: 'average2' | 'average4' }
   | { column: 'reward'; value: LessonReward };
 export type RewardTarget = { id: string; coins: 0 | 1 | 2 | 3 };
 type Row = Record<string, unknown>;
@@ -19,10 +21,25 @@ function resolveTargets(students: readonly Row[], ids: readonly string[]) {
   });
 }
 
+export function roundedStudentAverage(student: Row, averages?: ReadonlyMap<string, string>): number | null {
+  const raw = averages?.get(idOf(student)) ?? studentRow(student).values.average;
+  if (typeof raw !== 'string' || !/^\d+(?:[.,]\d+)?$/.test(raw.trim())) return null;
+  const value = Number(raw.trim().replace(',', '.'));
+  return Number.isFinite(value) && value >= 1 && value <= 100 ? Math.ceil(value) : null;
+}
+
 // Build one complete candidate; callers publish it only after every check passes.
-export function stageLessonBulk(students: readonly Row[], draft: LessonDraft, ids: readonly string[], change: LessonBulkChange): LessonDraft {
+export function stageLessonBulk(students: readonly Row[], draft: LessonDraft, ids: readonly string[], change: LessonBulkChange, averages?: ReadonlyMap<string, string>): LessonDraft {
   if (draft.needsReload) throw new Error('Перед массовой правкой загрузите урок заново.');
   const targets = resolveTargets(students, ids);
+  if (change.column === 'average2' || change.column === 'average4') {
+    const type = change.column === 'average2' ? 2 : 4;
+    return targets.reduce<LessonDraft>((next, student) => {
+      const mark = roundedStudentAverage(student, averages);
+      if (mark === null) throw new Error('У выбранного ученика нет допустимой средней оценки от 1 до 100.');
+      return stageMarkChange(next, student, type, mark);
+    }, draft);
+  }
   if (change.column === 'attendance') {
     if (![0, 1, 2].includes(change.value)) throw new Error('Недопустимый статус присутствия.');
     return targets.reduce<LessonDraft>((next, student) => stageAttendanceChange(next, student, change.value), draft);

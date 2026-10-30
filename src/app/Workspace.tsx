@@ -7,6 +7,7 @@ const DemoApp = lazy(() => import('../demo/DemoApp'));
 
 export interface WorkspaceConnectionProps {
   connectionForm?: ReactNode;
+  connectionPending?: boolean;
   onNativeLogin?: () => void;
 }
 

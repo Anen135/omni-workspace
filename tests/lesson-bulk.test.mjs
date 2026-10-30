@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { build } from 'esbuild';
 const { outputFiles } = await build({ entryPoints: ['src/features/lesson/lesson-bulk.ts'], bundle: true, platform: 'node', format: 'esm', write: false });
-const { stageLessonBulk, stageLessonRewardTargets } = await import(`data:text/javascript;base64,${Buffer.from(outputFiles[0].text).toString('base64')}`);
+const { stageLessonBulk, stageLessonRewardTargets, roundedStudentAverage } = await import(`data:text/javascript;base64,${Buffer.from(outputFiles[0].text).toString('base64')}`);
 const empty = () => ({ attendance: {}, marks: {}, rewards: {} });
 const roster = () => [{ id_stud: '1', id_vizit: '10', was: 1, mark2: 8, prize: 0 }, { id_stud: '2', id_vizit: '20', was: 2, mark2: 9, prize: 0 }];
 test('bulk marks affect only explicit IDs, retain first baselines and stages no transport', () => {
@@ -44,4 +44,32 @@ test('effective attendance is used and reward0 maps to removal sentinel', () => 
   assert.equal(stageLessonRewardTargets(rows, draft, [{ id: '1', coins: 0 }]).rewards['1'].reward, 4);
   rows[1].prize = 'unknown';
   assert.throws(() => stageLessonRewardTargets(rows, draft, [{ id: '2', coins: 1 }]));
+});
+
+
+test('average marks round each real average up and retain original baselines', () => {
+  const rows = roster();
+  const averages = new Map([['1', '10.5'], ['2', '9']]);
+  const first = stageLessonBulk(rows, empty(), ['1'], { column: 'mark2', value: 12 });
+  const next = stageLessonBulk(rows, first, ['1', '2'], { column: 'average2' }, averages);
+  assert.deepEqual(next.marks['1:2'], { stud: '1', type: 2, mark: 11, previousMark: '8', visit: '10' });
+  assert.equal(next.marks['2:2'], undefined, 'unchanged integer average removes redundant draft');
+  assert.equal(first.marks['1:2'].mark, 12);
+  assert.equal(stageLessonBulk(rows, empty(), ['2'], { column: 'average4' }, averages).marks['2:4'].mark, 9);
+  assert.equal(rows[0].mark2, 8);
+  assert.equal(roundedStudentAverage({ id_stud: '1', gpa: '7,01' }), 8);
+  assert.equal(roundedStudentAverage({ id_stud: '1', gpa: 100 }), 100);
+  assert.equal(roundedStudentAverage({ id_stud: '1', gpa: 3 }, averages), 11);
+});
+
+test('missing, zero, malformed and out-of-range averages reject atomically', () => {
+  const draft = empty();
+  for (const value of ['', ' ', '0', '-1', '0.5', '100.01', 'Infinity', 'NaN', '10abc', '1e1', '0x10']) {
+    assert.throws(() => stageLessonBulk(roster(), draft, ['1', '2'], { column: 'average4' }, new Map([['1', '10.5'], ['2', value]])));
+    assert.deepEqual(draft, empty());
+  }
+  assert.throws(() => stageLessonBulk(roster(), draft, ['1'], { column: 'average2' }));
+  for (const ids of [[], ['1', '1'], ['99']]) assert.throws(() => stageLessonBulk(roster(), draft, ids, { column: 'average4' }));
+  assert.throws(() => stageLessonBulk(roster(), { ...draft, needsReload: true }, ['1'], { column: 'average4' }, new Map([['1', '10']])));
+  assert.equal(roundedStudentAverage({ id_stud: '1', gpa: 9 }, new Map([['1', '']])), null, 'explicit missing roster average never falls back');
 });

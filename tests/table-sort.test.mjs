@@ -7,7 +7,7 @@ const { outputFiles } = await build({
   entryPoints: [resolve('src/components/data/table-sort.ts')],
   bundle: true, platform: 'node', format: 'esm', write: false,
 });
-const { sortTableRows } = await import(`data:text/javascript;base64,${Buffer.from(outputFiles[0].text).toString('base64')}`);
+const { sortTableRows, sortTableRowsByCriteria } = await import(`data:text/javascript;base64,${Buffer.from(outputFiles[0].text).toString('base64')}`);
 const columns = [{ id: 'value', kind: 'data', value: row => row.value }];
 const sorted = (rows, direction = 'ascending', cols = columns) => sortTableRows(rows, cols, { columnId: 'value', direction });
 
@@ -61,4 +61,20 @@ test('uses an explicit comparator for valid values while keeping empty values la
   const byLength = [{ ...columns[0], compare: (a, b) => a.length - b.length }];
   assert.deepEqual(sorted(rows, 'ascending', byLength).map(row => row.value), ['x', 'long', 'same', '']);
   assert.deepEqual(sorted(rows, 'descending', byLength).map(row => row.value), ['long', 'same', 'x', '']);
+});
+
+test('chains criteria in priority order, continuing through equal and empty values', () => {
+  const rows = Object.freeze([
+    { id: 'a', value: null, name: 'Борис' }, { id: 'b', value: 10, name: 'Яна' },
+    { id: 'c', value: 10, name: 'Анна' }, { id: 'd', value: 2, name: 'Вера' },
+    { id: 'e', value: undefined, name: 'Анна' }, { id: 'f', value: 10, name: 'Анна' },
+  ]);
+  const cols = [...columns, { id: 'name', kind: 'data', value: row => row.name }];
+  const number = { columnId: 'value', direction: 'descending' };
+  const name = { columnId: 'name', direction: 'ascending' };
+  assert.deepEqual(sortTableRowsByCriteria(rows, cols, [number, name]).map(row => row.id), ['c', 'f', 'b', 'd', 'e', 'a']);
+  assert.deepEqual(sortTableRowsByCriteria(rows, cols, [name, number]).map(row => row.id), ['c', 'f', 'e', 'a', 'd', 'b']);
+  assert.deepEqual(sortTableRowsByCriteria(rows, cols, []), rows);
+  assert.deepEqual(sortTableRowsByCriteria(rows, cols, [{ columnId: 'unknown' }, number, name]), sortTableRowsByCriteria(rows, cols, [number, name]));
+  assert.deepEqual(rows.map(row => row.id), ['a', 'b', 'c', 'd', 'e', 'f']);
 });

@@ -32,15 +32,28 @@ function compareValues(a: SortValue, b: SortValue): number {
 
 /** Stable, non-mutating sorting. Missing values stay last in either direction. */
 export function sortTableRows<Row>(rows: readonly Row[], columns: readonly SortableColumn<Row>[], sort: TableSort | null): Row[] {
-  const column = sort && columns.find(candidate => candidate.id === sort.columnId);
-  if (!sort || !column || column.kind !== 'data') return [...rows];
-  const direction = sort.direction === 'ascending' ? 1 : -1;
-  return rows.map((row, index) => ({ row, index, value: column.value(row) }))
+  return sortTableRowsByCriteria(rows, columns, sort ? [sort] : []);
+}
+
+/** Criteria are compared in priority order; ties retain the original input order. */
+export function sortTableRowsByCriteria<Row>(rows: readonly Row[], columns: readonly SortableColumn<Row>[], sorts: readonly TableSort[]): Row[] {
+  const criteria = sorts.flatMap(sort => {
+    const column = columns.find(candidate => candidate.id === sort.columnId);
+    return column?.kind === 'data' ? [{ column, direction: sort.direction === 'ascending' ? 1 : -1 }] : [];
+  });
+  return rows.map((row, index) => ({ row, index, values: criteria.map(({ column }) => column.value(row)) }))
     .sort((a, b) => {
-      const aEmpty = empty(a.value);
-      const bEmpty = empty(b.value);
-      if (aEmpty || bEmpty) return Number(aEmpty) - Number(bEmpty) || a.index - b.index;
-      const result = (column.compare ?? compareValues)(a.value, b.value);
-      return (Number.isNaN(result) ? 0 : result * direction) || a.index - b.index;
+      for (let i = 0; i < criteria.length; i++) {
+        const { column, direction } = criteria[i];
+        const av = a.values[i], bv = b.values[i];
+        const aEmpty = empty(av), bEmpty = empty(bv);
+        if (aEmpty || bEmpty) {
+          if (aEmpty !== bEmpty) return Number(aEmpty) - Number(bEmpty);
+          continue;
+        }
+        const result = (column.compare ?? compareValues)(av, bv);
+        if (result && !Number.isNaN(result)) return result * direction;
+      }
+      return a.index - b.index;
     }).map(item => item.row);
 }

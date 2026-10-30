@@ -13,6 +13,7 @@ try {
   page.setDefaultTimeout(10000);
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
+  await page.route('https://fonts.googleapis.com/**', route => route.abort());
   await page.goto('http://127.0.0.1:5196/');
   await page.setContent('<div id="root"></div>');
   await page.evaluate(async () => {
@@ -38,7 +39,7 @@ try {
       const eligibleKeys = new Set(rows.filter(row => !row.blocked).map(row => row.id));
       return React.createElement(React.Fragment, null,
         React.createElement(DataTable, {
-          rows: rows.slice(0, 5), getRowKey: row => row.id, caption: 'Fixture table',
+          rows: rows.slice(0, 5), getRowKey: row => row.id, caption: 'Fixture table', label: `Fixture ${mode}`,
           columns: [{ id: 'name', heading: 'Name', ariaSort: 'ascending', cell: row => row.name }],
           selection: { selectedKeys, eligibleKeys, getKey: row => row.id, locked: false,
             onToggle: (row, checked) => setSelectedKeys(previous => { const next = new Set(previous); if (checked) next.add(row.id); else next.delete(row.id); return next; }),
@@ -101,6 +102,7 @@ try {
   assert.equal((await page.evaluate(() => window.tableCalls[2])).value, 'no');
 
   await page.evaluate(() => window.showTableFixture('unavailable'));
+  await page.getByRole('table', { name: 'Fixture unavailable', exact: true }).waitFor();
   await scope.selectOption('filtered');
   assert.equal(await apply.isDisabled(), true, 'one unavailable target rejects the whole batch');
   assert.match(await page.locator('.table-bulk-help').innerText(), /Недоступно: 1.*Read only row/);
@@ -131,6 +133,7 @@ try {
   assert.equal(await page.evaluate(() => window.tableCalls.length), 6, 'a same-context rejection remains visible and never retries');
 
   await page.evaluate(() => window.showTableFixture('oversized'));
+  await page.getByRole('table', { name: 'Fixture oversized', exact: true }).waitFor();
   await scope.selectOption('filtered');
   assert.equal(await apply.isDisabled(), true, '101 targets cannot be split or submitted');
   assert.match(await page.getByRole('alert').innerText(), /не более 100/);

@@ -86,12 +86,23 @@ try {
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
   await page.goto(origin + '/login/index', { waitUntil: 'commit' });
-  await page.getByRole('status').filter({ hasText: 'Загружаем Omni Workspace' }).waitFor();
+  await page.getByRole('status', { name: 'Загрузка Omni Workspace', exact: true }).waitFor();
   await page.locator('#native-marker').waitFor({ state: 'attached' });
   assert.equal(await page.locator('#native-marker').isVisible(), false, 'native page is concealed before its blocking script finishes');
   assert.equal(await page.locator('.extension-auth-form').count(), 0, 'small bootstrap precedes the heavy app');
+  await page.locator('.outline-header').waitFor();
+  await page.locator('.outline-sidebar').waitFor();
+  assert.equal(await page.locator('.startup-recovery-message').isVisible(), false, 'early loader initially has no explanatory text');
+  assert.equal(await page.locator('.startup-native-escape').isVisible(), false, 'native recovery waits until loading is slow');
+  await mkdir('tmp', { recursive: true });
+  await page.screenshot({ path: 'tmp/startup-immediate.png', animations: 'disabled' });
+  await page.locator('.startup-recovery-message').waitFor();
+  await page.locator('.startup-native-escape').waitFor();
+  await page.screenshot({ path: 'tmp/startup-slow.png', animations: 'disabled' });
   delayNative = false; releaseNative();
   await page.getByLabel('Логин Omni', { exact: true }).waitFor();
+  await page.getByRole('heading', { name: 'Вход в Omni', exact: true }).waitFor();
+  assert.equal(await page.getByText('Завершите вход в этой вкладке', { exact: true }).count(), 0);
   assert.equal(await page.locator('#native-login').isVisible(), false);
   assert.equal(await page.frameLocator('#child-frame').locator('#omni-workspace-root').count(), 0, 'no takeover in a child frame');
   await mkdir('tmp', { recursive: true });
@@ -164,7 +175,19 @@ try {
   for (const fallback of ['captcha', 'ddos', 'otp', 'missing-csrf', 'reset']) {
     variant = fallback;
     await reset();
-    if (fallback === 'missing-csrf') await page.getByRole('button', { name: 'Открыть официальный вход', exact: true }).click();
+    if (fallback === 'missing-csrf') {
+      await page.locator('.workspace-startup').waitFor();
+      await page.locator('.live-workspace header').waitFor();
+      await page.locator('.sidebar').waitFor();
+      assert.equal(await page.locator('.workspace-startup-recovery').count(), 0);
+      await page.locator('.sidebar').getByRole('button', { name: 'Настройки', exact: true }).click();
+      await page.getByRole('heading', { name: 'Настройки', exact: true }).waitFor();
+      await page.locator('.sidebar').getByRole('button', { name: 'Мой урок', exact: true }).click();
+      await page.locator('.workspace-startup').waitFor();
+      await page.getByRole('button', { name: 'Открыть официальный вход', exact: true }).waitFor();
+      await page.screenshot({ path: 'tmp/startup-workspace-slow.png', animations: 'disabled' });
+      await page.getByRole('button', { name: 'Открыть официальный вход', exact: true }).click();
+    }
     await page.locator('#native-login input[type=password]').first().waitFor();
     assert.equal(await page.locator('#omni-workspace-root').count(), 0, `${fallback} keeps native recovery usable`);
   }
@@ -178,7 +201,7 @@ try {
   for (const delayed of ['delayed-form', 'delayed-csrf']) {
     variant = delayed;
     await reset();
-    await page.locator('.connection-card').waitFor();
+    await page.locator('.workspace-startup').waitFor();
     assert.equal(await page.getByText('Открываем рабочее пространство', { exact: true }).count(), 0);
     await page.locator('.sidebar').waitFor();
     assert.equal(await page.locator('#native-marker').isVisible(), false);

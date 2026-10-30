@@ -11,6 +11,7 @@ import { TeacherDossier } from '../features/dossier/TeacherDossier';
 import { isDesktop } from '../services/desktop-client';
 import { isExtension, onExtensionSessionChange } from '../services/extension-client';
 import { stageLessonBulk, stageLessonRewardTargets, type LessonBulkChange, type RewardTarget } from '../features/lesson/lesson-bulk';
+import { stageLessonFill, type LessonFillRequest } from '../features/lesson/lesson-fill';
 import { StudentTable } from '../features/lesson/StudentTable';
 import { homeworkItems, type HomeworkResponseDraft, type HomeworkReviewItem } from '../features/homework/homework';
 import { LessonThemeEditor, type ThemeChoice, type ThemeData } from '../features/lesson/LessonThemeEditor';
@@ -32,7 +33,7 @@ import { LessonStudentsPanel } from './components/LessonStudentsPanel';
 import { StudentsPage } from '../features/students/StudentsPage';
 import { HomeworkPanel } from './components/HomeworkPanel';
 import { IssuedMaterialsPanel } from './components/IssuedMaterialsPanel';
-import { StudentDetailDialog, TeacherSwitchingState, WorkspaceError, WorkspaceLoading, WorkspaceToast } from './components/WorkspaceFeedback';
+import { StudentDetailDialog, TeacherSwitchingState, WorkspaceError, WorkspaceLoading, WorkspaceStartup, WorkspaceToast } from './components/WorkspaceFeedback';
 import { WorkspaceQuickActions } from './components/WorkspaceQuickActions';
 import { workspaceTabs, type WorkspaceTab } from './components/workspace-tabs';
 import { useStudentAverages } from './useStudentAverages';
@@ -46,7 +47,7 @@ import { HelpPage } from '../features/help/HelpPage';
 
 const emptySection: Section = { data: null, error: null };
 
-export function LiveWorkspace({ onDemo, connectionForm, onNativeLogin }: { onDemo: () => void } & WorkspaceConnectionProps) {
+export function LiveWorkspace({ onDemo, connectionForm, connectionPending = false, onNativeLogin }: { onDemo: () => void } & WorkspaceConnectionProps) {
   const [connectionInterval, setConnectionInterval] = useState(readConnectionInterval);
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [lesson, setLesson] = useState<RemoteLesson | null>(null);
@@ -444,9 +445,19 @@ export function LiveWorkspace({ onDemo, connectionForm, onNativeLogin }: { onDem
   }
   function stageBulk(students: readonly RemoteRecord[], change: LessonBulkChange) {
     if (!snapshot || !isExtension() || operation.current || attendanceReason) throw new Error(attendanceReason || 'Дождитесь завершения операции.');
-    const next = stageLessonBulk(lessonStudents, draft || emptyLessonDraft(), students.map(student => label(student.id_stud)), change);
+    if ((change.column === 'average2' || change.column === 'average4') && (averages.loading || averages.error)) throw new Error(averages.error || 'Дождитесь загрузки средних оценок.');
+    const next = stageLessonBulk(lessonStudents, draft || emptyLessonDraft(), students.map(student => label(student.id_stud)), change, studentAverages);
     storeDraft(draftKey, next);
     setNotice(`Правка добавлена в черновик для ${students.length} учеников. Нажмите «Сохранить».`);
+  }
+  function stageFill(request: LessonFillRequest, fingerprint: string) {
+    if (!snapshot || !isExtension() || operation.current || attendanceReason) throw new Error(attendanceReason || 'Дождитесь завершения операции.');
+    const conflict = draft && lessonDraftConflict(draft, presentData);
+    if (conflict) throw new Error(conflict);
+    const next = stageLessonFill(lessonStudents, draft || emptyLessonDraft(), studentAverages, draftKey, request, fingerprint,
+      averages.loading ? 'Дождитесь загрузки средних оценок.' : averages.error || '');
+    storeDraft(draftKey, next);
+    setNotice('Заполнение добавлено в черновик. Проверьте оценки и нажмите «Сохранить».');
   }
   function stageRewardAllocation(targets: readonly RewardTarget[]) {
     if (!snapshot || !isExtension() || operation.current || attendanceReason) throw new Error(attendanceReason || 'Дождитесь завершения операции.');
@@ -729,7 +740,7 @@ export function LiveWorkspace({ onDemo, connectionForm, onNativeLogin }: { onDem
       const stud = label(student.id_stud);
       return { ...student, ...(draft.attendance[stud] ? { was: draft.attendance[stud].was } : {}), ...(draft.marks[`${stud}:2`] ? { mark2: draft.marks[`${stud}:2`].mark } : {}), ...(draft.marks[`${stud}:4`] ? { mark4: draft.marks[`${stud}:4`].mark } : {}), ...(draft.rewards?.[stud] ? { prize: draft.rewards[stud].reward } : {}) };
     }) : items;
-    return <StudentTable studentAveragesLoading={averages.loading} studentAveragesError={averages.error} selectionContext={lessonTableContext} onBulkChange={isExtension() ? stageBulk : undefined} onRewardAllocation={isExtension() ? stageRewardAllocation : undefined} draftRewardIds={new Set(Object.keys(draft?.rewards || {}))} contextToken={draftKey} studentPhotos={averages.photos} studentAverages={studentAverages} key={`${tab}:${groupId}:${draftKey}`} items={displayed} busy={busy} lessonView={tab === 'lesson'} onOpen={student => void openStudent(student)} marks={tab === 'lesson' && isExtension() ? { unavailable: attendanceReason, allowDraft: true, onChange: stageMark } : undefined} rewards={tab === 'lesson' && isExtension() ? { unavailable: attendanceReason, onChange: stageReward } : undefined} attendance={tab === 'lesson' && isExtension() ? { unavailable: attendanceReason, saving: attendanceSaving, onChange: (student, was) => markAttendance([student], was), onAll: () => markAttendance(displayed, 1, true) } : undefined}/>;
+    return <StudentTable studentAveragesLoading={averages.loading} studentAveragesError={averages.error} selectionContext={lessonTableContext} onBulkChange={isExtension() ? stageBulk : undefined} onFill={isExtension() ? stageFill : undefined} onRewardAllocation={isExtension() ? stageRewardAllocation : undefined} draftRewardIds={new Set(Object.keys(draft?.rewards || {}))} contextToken={draftKey} studentPhotos={averages.photos} studentAverages={studentAverages} key={`${tab}:${groupId}:${draftKey}`} items={displayed} busy={busy} lessonView={tab === 'lesson'} onOpen={student => void openStudent(student)} marks={tab === 'lesson' && isExtension() ? { unavailable: attendanceReason, allowDraft: true, onChange: stageMark } : undefined} rewards={tab === 'lesson' && isExtension() ? { unavailable: attendanceReason, onChange: stageReward } : undefined} attendance={tab === 'lesson' && isExtension() ? { unavailable: attendanceReason, saving: attendanceSaving, onChange: (student, was) => markAttendance([student], was), onAll: () => markAttendance(displayed, 1, true) } : undefined}/>;
   };
   function openDemo() {
     if (operation.current) return;
@@ -737,6 +748,7 @@ export function LiveWorkspace({ onDemo, connectionForm, onNativeLogin }: { onDem
     onDemo();
   }
 
+  const startup = isExtension() && !snapshot && !connectionForm && !changingAccount && (connectionPending || (!authNeeded && !waiting));
   return <div className="app-shell live-workspace">
     <WorkspaceSidebar account={snapshot?.account} tab={tab} onNavigate={setTab} hasHomework={reviewItems.some(item => item.canGrade)}/>
     <main>
@@ -745,20 +757,20 @@ export function LiveWorkspace({ onDemo, connectionForm, onNativeLogin }: { onDem
         onTeacherChange={id => void switchTeacher(id)} onAccountChange={() => void changeAccount()}/>
       <div className="page-content">
         <WorkspaceMobileNav tab={tab} onNavigate={setTab} onDemo={openDemo}/>
-        <WorkspacePageHeading tab={tab}>
+        {(!startup || tab === 'settings' || tab === 'help' || tab === 'ui-tests') && <WorkspacePageHeading tab={tab}>
           {tab === 'schedule' && snapshot && <ScheduleToolbar today={today} date={scheduleDates[0] || today}
             range={scheduleRange} week={week} busy={busy} onWeekChange={value => void refresh(value)}
             onDatePick={date => void refresh(weekForDate(date))}/>}
-        </WorkspacePageHeading>
+        </WorkspacePageHeading>}
         {error && <WorkspaceError message={error} busy={busy} authNeeded={authNeeded}
           onClose={() => setError('')} onRetry={() => void (authNeeded ? connect() : snapshot ? refresh() : connect())}/>}
         {switchingTeacher && <TeacherSwitchingState/>}
         {tab === 'settings' && <WorkspaceSettings interval={connectionInterval} onSave={setConnectionInterval}/>}
         {tab === 'help' && <HelpPage onDemo={openDemo} onUiTests={() => setTab('ui-tests')}/>}
         {tab === 'ui-tests' && <UiTestPage onBack={() => setTab('help')}/>}
-        {!snapshot && !switchingTeacher && tab !== 'help' && tab !== 'settings' && tab !== 'ui-tests' && <ConnectionCard connectionForm={connectionForm} busy={busy} waiting={waiting}
+        {!snapshot && !switchingTeacher && tab !== 'help' && tab !== 'settings' && tab !== 'ui-tests' && (startup ? <WorkspaceStartup onNative={onNativeLogin || (() => void connect())}/> : <ConnectionCard connectionForm={connectionForm} busy={busy} waiting={waiting}
           extension={isExtension()} changingAccount={changingAccount} connectionState={connectionState}
-          onLogin={login} onConnect={onNativeLogin || (() => void connect())} onDemo={onDemo}/>}
+          onLogin={login} onConnect={onNativeLogin || (() => void connect())} onDemo={onDemo}/>)}
         {snapshot && <>
           {tab === 'lesson' && <div className="lesson-workspace">
             {isExtension() && <LessonSaveBar busy={busy} saving={attendanceSaving} draft={draft} hasTheme={hasTheme}

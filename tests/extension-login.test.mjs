@@ -41,15 +41,15 @@ const { outputFiles } = await build({ entryPoints: ['extension/bootstrap.mjs'], 
 const bootstrap = outputFiles[0].text;
 function runBootstrap({ origin = 'https://omni.top-academy.ru', frame = false, challenge = false, bypass = false, legacy = false } = {}) {
   class Node {
-    constructor(tag = '') { this.tag = tag; this.children = []; this.isConnected = false; }
+    constructor(tag = '') { this.tag = tag; this.children = []; this.isConnected = false; this.attributes = {}; }
     append(...nodes) { for (const node of nodes) { node.isConnected = true; this.children.push(node); } }
     remove() { this.isConnected = false; }
-    setAttribute() {}
-    attachShadow() { return new Node('shadow'); }
+    setAttribute(key, value) { this.attributes[key] = value; }
+    attachShadow() { return this.shadowRoot = new Node('shadow'); }
   }
   const timers = new Map();
   const stored = new Map(bypass ? [['omni.native-login', 'manual']] : legacy ? [['omni.native-login', '1']] : []);
-  const document = { ...page({ password: false, challenge }), documentElement: new Node('html'), createElement: tag => new Node(tag) };
+  const document = { ...page({ password: false, challenge }), documentElement: new Node('html'), createElement: tag => new Node(tag), createElementNS: (_namespace, tag) => new Node(tag) };
   const window = {}; window.top = frame ? {} : window;
   const context = vm.createContext({ document, window, location: { origin, pathname: '/login/index', assign() {} },
     matchMedia: () => ({ matches: false }), localStorage: { getItem: () => null },
@@ -90,6 +90,50 @@ test('bootstrap leaves foreign frames, challenge and explicit native bypass unto
     assert.equal(state.controller, undefined);
     assert.equal(state.document.documentElement.children.length, 0);
     assert.equal(state.timers.size, 0);
+  }
+});
+
+test('bootstrap begins with inert workspace outlines and reveals recovery only after three seconds', () => {
+  const state = runBootstrap();
+  const [style, sidebar, header, main] = state.controller.host.shadowRoot.children;
+  assert.equal(sidebar.className, 'outline-sidebar');
+  assert.equal(header.className, 'outline-header');
+  for (const outline of [sidebar, header]) {
+    assert.equal(outline.attributes['aria-hidden'], 'true');
+    assert.equal(outline.attributes.inert, '');
+  }
+  assert.equal(main.attributes.role, 'status');
+  assert.equal(main.attributes['aria-label'], 'Загрузка Omni Workspace');
+  assert.match(style.textContent, /prefers-reduced-motion/);
+  const [logo, spinner, message, escape] = main.children[0].children;
+  assert.equal(logo.children[0].tag, 'svg');
+  assert.equal(spinner.className, 'spinner');
+  assert.equal(message.hidden, true);
+  assert.equal(escape.hidden, true);
+  assert.deepEqual([...state.timers.values()].map(timer => timer.delay), [30000, 3000]);
+  [...state.timers.values()].find(timer => timer.delay === 3000).callback();
+  assert.equal(message.hidden, false);
+  assert.equal(escape.hidden, false);
+  escape.onclick();
+  assert.equal(state.stored.get('omni.native-login'), 'manual');
+  assert.equal(state.controller.active, false);
+  assert.equal(state.timers.size, 0);
+});
+
+test('bootstrap cancels delayed recovery on adoption, readiness and release without updating removed nodes', () => {
+  for (const action of ['adopt', 'ready', 'release']) {
+    const state = runBootstrap();
+    const main = state.controller.host.shadowRoot.children[3];
+    const [, , message, escape] = main.children[0].children;
+    const delayed = [...state.timers.values()].find(timer => timer.delay === 3000);
+    if (action === 'adopt') state.controller.adopt(() => {});
+    else state.controller[action]();
+    assert.equal([...state.timers.values()].some(timer => timer.delay === 3000), false, action);
+    delayed.callback();
+    assert.equal(message.hidden, true, action);
+    assert.equal(escape.hidden, true, action);
+    if (action === 'adopt') assert.equal([...state.timers.values()][0].delay, 30000, 'adoption retains watchdog');
+    else assert.equal(state.timers.size, 0, action);
   }
 });
 

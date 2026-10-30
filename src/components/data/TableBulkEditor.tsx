@@ -13,6 +13,7 @@ export type TableBulkEditorProps<Row> = {
   fields: readonly BulkField<Row>[];
   filteredRows: readonly Row[];
   selectedRows: readonly Row[];
+  allRows?: readonly Row[];
   locked: boolean;
   applyLabel: string;
   onApply: (rows: Row[], fieldId: string, value: string) => Promise<unknown> | void;
@@ -26,7 +27,7 @@ export type TableBulkEditorProps<Row> = {
   valueAriaLabel?: string;
 };
 
-export function TableBulkEditor<Row>({ fields, filteredRows, selectedRows, locked, applyLabel, onApply, maxTargets = 100,
+export function TableBulkEditor<Row>({ fields, filteredRows, selectedRows, allRows, locked, applyLabel, onApply, maxTargets = 100,
   contextKey, defaultField, defaultValue = '', onFieldChange, className = '', valueLabel = 'Значение', valueAriaLabel }: TableBulkEditorProps<Row>) {
   const [fieldId, setFieldId] = useState(defaultField ?? fields[0]?.id ?? '');
   const [value, setValue] = useState(defaultValue);
@@ -36,7 +37,7 @@ export function TableBulkEditor<Row>({ fields, filteredRows, selectedRows, locke
   const submitting = useRef(false);
   const helpId = useId();
   const field = fields.find(candidate => candidate.id === fieldId);
-  const targets = scope === 'filtered' ? filteredRows : selectedRows;
+  const targets = scope === 'all' && allRows ? allRows : scope === 'filtered' ? filteredRows : selectedRows;
   const reasons = field ? targets.map(row => field.unavailableReason(row)).filter(Boolean) : [];
   const invalid = field?.validate(value) ?? 'Выберите столбец для редактирования.';
   const oversized = targets.length > maxTargets;
@@ -70,6 +71,7 @@ export function TableBulkEditor<Row>({ fields, filteredRows, selectedRows, locke
       <label>Применить к<select aria-label="Область массового редактирования" value={scope} disabled={busy} onChange={event => { setScope(event.target.value); setFailure(null); }}>
         <option value="selected">Выбранным строкам ({selectedRows.length})</option>
         <option value="filtered">Всем по фильтрам ({filteredRows.length})</option>
+        {allRows && <option value="all">Вся группа ({allRows.length})</option>}
       </select></label>
       <button type="button" className="button primary" aria-describedby={helpId} disabled={blocked} onClick={() => void apply()}>{busy ? 'Сохранение…' : applyLabel + (targets.length ? ' (' + targets.length + ')' : '')}</button>
     </div>

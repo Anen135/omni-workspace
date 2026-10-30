@@ -1,3 +1,4 @@
+import { BrandMark } from '../../components/ui/BrandMark';
 import { AlertCircle, CheckCheck, LoaderCircle, X } from 'lucide-react';
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import type { RemoteRecord, Section } from '../../services/omni-client';
@@ -22,6 +23,20 @@ export function WorkspaceError({ message, busy, authNeeded, onRetry, onClose }: 
 }
 export function TeacherSwitchingState() {
   return <section className="panel connection-card" role="status"><LoaderCircle className="spin" size={26}/><h2>Переключаю преподавателя…</h2><p>Загружаю его расписание, группы и домашние задания.</p></section>;
+}
+
+export function WorkspaceStartup({ onNative }: { onNative: () => void }) {
+  const [slow, setSlow] = useState(false);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setSlow(true), 3000);
+    return () => window.clearTimeout(timer);
+  }, []);
+  return <section className="workspace-startup" aria-label="Загрузка Omni Workspace" role="status" aria-live="polite">
+    <div className="workspace-startup-brand"><BrandMark size={48}/><strong>omni<span>.</span></strong></div>
+    <LoaderCircle className="spin" size={28} aria-hidden="true"/>
+    {slow && <div className="workspace-startup-recovery"><p>Загрузка занимает больше времени, чем обычно.</p>
+      <button type="button" className="button secondary" onClick={onNative}>Открыть официальный вход</button></div>}
+  </section>;
 }
 
 export function WorkspaceLoading() {

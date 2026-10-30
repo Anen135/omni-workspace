@@ -44,11 +44,11 @@ try {
   await submit();
   await page.getByRole('alert').filter({ hasText: 'Omni требует проверку браузера.' }).waitFor();
   await page.getByRole('button', { name: 'Открыть официальный вход', exact: true }).click();
-  await page.getByRole('heading', { name: 'Завершите вход в окне Omni' }).waitFor();
+  await page.getByRole('heading', { name: 'Вход в Omni' }).waitFor();
   assert.equal(connectCalls, 1);
   outcome = 'ready';
   await submit();
-  await page.getByText('Подключено', { exact: true }).waitFor();
+  await page.getByRole('status', { name: 'Подключено к Omni', exact: true }).waitFor();
   assert.equal(loginCalls, 3);
   assert.equal(await page.locator('input[type=password]').count(), 0);
   assert.equal(await page.evaluate(() => JSON.stringify({ ...localStorage, ...sessionStorage }).includes('fixture-password')), false);

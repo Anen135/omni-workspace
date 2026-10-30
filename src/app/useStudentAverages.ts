@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { ConnectionError, rows, type Snapshot } from '../services/omni-client';
 import { studentRow } from '../features/students/students';
 import { createRosterCache, type RosterCache } from './roster-cache';
+import { studentAverageValue } from './student-average-value';
 
 // Read-only roster data is kept separate from lesson drafts and homework records.
 export function useStudentAverages(snapshot: Snapshot | null, groupIds: string[], enabled: boolean, sharedCache?: RosterCache) {
@@ -49,7 +50,8 @@ export function useStudentAverages(snapshot: Snapshot | null, groupIds: string[]
             if (response.account.id !== account.id || (response.account.branch !== undefined && response.account.branch !== (account.branch || ''))) { setFailure({ context, message: 'Контекст студентов изменился. Обновите данные.' }); return; }
             for (const source of rows(response.students)) {
               const student = studentRow(source);
-              if (student.id && student.values.average) values.set(student.id, student.values.average);
+              const average = studentAverageValue(source);
+              if (student.id && average !== undefined) values.set(student.id, average);
               if (student.id && typeof source.photo_pas === 'string' && source.photo_pas.trim()) photos.set(student.id, source.photo_pas.trim());
             }
             setResult({ context, values: new Map(values), photos: new Map(photos) });

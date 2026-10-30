@@ -149,7 +149,7 @@ function start() {
     clearTimeout(loadingTimer);
     if (next === 'loading') loadingTimer = setTimeout(() => showOfficial(), 30000);
     else bootstrap?.ready();
-    root!.render(<React.StrictMode><Workspace key="connecting" connectionForm={next === 'login' ? <ExtensionAuthGate onLogin={login}/> : undefined} onNativeLogin={() => showOfficial(true)}/></React.StrictMode>);
+    root!.render(<React.StrictMode><Workspace key="connecting" connectionPending={next === 'loading'} connectionForm={next === 'login' ? <ExtensionAuthGate onLogin={login}/> : undefined} onNativeLogin={() => showOfficial(true)}/></React.StrictMode>);
   }
   function mountWorkspace(warning?: string) {
     if (official || mode === 'workspace') return;

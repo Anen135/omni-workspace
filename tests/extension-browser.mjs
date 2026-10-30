@@ -281,7 +281,111 @@ try {
   await official.addInitScript(() => localStorage.setItem('omni.connection-check-seconds', '15'));
   await official.reload();
   await official.locator('#omni-workspace-root #root').waitFor();
-  if (process.env.OMNI_PNG_PREVIEW_ONLY === '1') {
+  if (process.env.OMNI_QUICK_REWARDS_ONLY === '1') {
+    await initialRoster.started;
+    initialRoster.release();
+    const table = ui.locator('.lesson-students');
+    await table.locator('tbody tr').filter({ hasText: 'Тестовый ученик Б' }).locator('td:last-child').filter({ hasText: /^10\.5$/ }).waitFor();
+    lessonStudents.forEach((row, index) => { row.mark4 = 12; row.was = 1; row.prize = index === 1 ? 1 : 0; row.id_vizit = 80 + index; row.theme = 'Тестовая тема'; });
+    await ui.getByRole('button', { name: 'Загрузить урок', exact: true }).click();
+    await table.getByRole('button', { name: 'Работа на уроке: Тестовый ученик А', exact: true }).filter({ hasText: /^12$/ }).waitFor();
+    await table.getByLabel('Поиск ученика', { exact: true }).fill('ученик А');
+    const allocation = table.getByRole('group', { name: 'Распределение топкойнов', exact: true });
+    assert.match(await allocation.innerText(), /Вся группа: 2/);
+    const gear = allocation.getByRole('button', { name: 'Настройки распределения топкойнов', exact: true });
+    await gear.click();
+    const settings = ui.getByRole('dialog', { name: 'Настройки распределения топкойнов', exact: true });
+    assert.equal(await settings.locator('tbody tr').count(), 2);
+    assert.match(await settings.innerText(), /Сохранено: 1/);
+    await ui.setViewportSize({ width: 390, height: 844 });
+    assert.equal(await settings.evaluate(element => element.scrollWidth <= element.clientWidth), true);
+    assert.equal(await settings.locator('th').first().evaluate(element => getComputedStyle(element).minWidth), '0px');
+    for (let i = 0; i < 12; i++) {
+      await ui.keyboard.press(i % 2 ? 'Shift+Tab' : 'Tab');
+      assert.equal(await settings.evaluate(element => element.contains(element.getRootNode().activeElement)), true);
+    }
+    await ui.screenshot({ path: 'tmp/quick-rewards-settings-extension-narrow.png' });
+    await ui.keyboard.press('Escape');
+    assert.equal(await gear.evaluate(element => element === element.getRootNode().activeElement), true);
+    await allocation.getByRole('button', { name: 'Распределить топкойны', exact: true }).click();
+    assert.equal(await table.getByLabel('Топкойны: Тестовый ученик А', { exact: true }).inputValue(), '3');
+    assert.deepEqual(lessonWrites, [], 'quick action changes only draft');
+    await gear.click();
+    await settings.getByLabel('Заменить существующие награды и ручной черновик', { exact: true }).check();
+    await settings.getByRole('button', { name: 'Закрыть', exact: true }).click();
+    await allocation.getByRole('button', { name: 'Распределить топкойны', exact: true }).click();
+    assert.equal(await table.getByLabel('Топкойны: Тестовый ученик А', { exact: true }).inputValue(), '2');
+    await table.getByLabel('Поиск ученика', { exact: true }).fill('');
+    assert.equal(await table.getByLabel('Топкойны: Тестовый ученик Б', { exact: true }).inputValue(), '2', 'hidden reserved student participates only after explicit replacement');
+    assert.equal(await table.locator('.panel.reward-allocation').count(), 0);
+    assert.deepEqual(lessonWrites, [], 'replacement remains local before Save');
+    assert.deepEqual(errors, []);
+    console.log('PASS: actual extension quick rewards, hidden group budget/manual preservation, explicit replacement, settings Shadow DOM/keyboard/narrow and no writes before Save.');
+  } else if (process.env.OMNI_FILL_PREVIEW_ONLY === '1') {
+    await initialRoster.started;
+    initialRoster.release();
+    const table = ui.locator('.lesson-students');
+    await table.locator('tbody tr').filter({ hasText: 'Тестовый ученик Б' }).locator('td:last-child').filter({ hasText: /^10\.5$/ }).waitFor();
+    await table.getByRole('checkbox', { name: 'Выбрать ученика: Тестовый ученик Б', exact: true }).check();
+    await ui.getByLabel('Способ заполнения', { exact: true }).selectOption('mean');
+    await table.getByLabel('Область расчёта среднего', { exact: true }).selectOption('selected');
+    await table.getByRole('button', { name: 'Заполнить столбец (1)', exact: true }).click();
+    const preview = ui.getByRole('dialog', { name: 'Предварительное заполнение' });
+    await preview.getByRole('button', { name: 'В черновик (1)', exact: true }).waitFor();
+    assert.match(await preview.innerText(), /10\.5/);
+    for (let i = 0; i < 6; i++) {
+      await ui.keyboard.press(i % 2 ? 'Shift+Tab' : 'Tab');
+      assert.equal(await preview.evaluate(element => element.contains(element.getRootNode().activeElement)), true);
+    }
+    await ui.setViewportSize({ width: 390, height: 844 });
+    assert.equal(await preview.locator('th').first().evaluate(element => getComputedStyle(element).minWidth), '0px');
+    assert.equal(await preview.evaluate(element => element.scrollWidth <= element.clientWidth), true);
+    await ui.screenshot({ path: 'tmp/lesson-fill-extension-narrow.png' });
+    assert.deepEqual(lessonWrites, [], 'preview never writes');
+    await preview.getByRole('button', { name: 'В черновик (1)', exact: true }).click();
+    assert.equal(await table.getByRole('button', { name: 'Работа на уроке: Тестовый ученик Б', exact: true }).innerText(), '11');
+    assert.deepEqual(lessonWrites, [], 'aggregate fill remains local until explicit Save');
+    assert.deepEqual(errors, []);
+    console.log('PASS: aggregate fill in actual extension, narrow preview table, keyboard containment, local-only apply. Fictional data.');
+  } else if (process.env.OMNI_TABLE_SETTINGS_ONLY === '1') {
+    await initialRoster.started;
+    initialRoster.release();
+    await ui.locator('.attendance-select').first().waitFor();
+    const table = ui.locator('.lesson-students');
+    const opener = table.getByRole('button', { name: /^Настройки таблицы/ });
+    await opener.click();
+    const settings = ui.getByRole('dialog', { name: 'Настройки таблицы' });
+    await settings.getByLabel('Поле сортировки 1', { exact: true }).selectOption('average');
+    await settings.getByLabel('Направление сортировки 1', { exact: true }).selectOption('descending');
+    await settings.getByRole('button', { name: 'Добавить критерий', exact: true }).click();
+    await settings.getByLabel('Поле сортировки 2', { exact: true }).selectOption('student');
+    await settings.getByRole('button', { name: 'Добавить фильтр', exact: true }).click();
+    await settings.getByLabel('Значение фильтра 1.1', { exact: true }).fill('Тестовый');
+    await settings.getByRole('button', { name: 'Добавить условие в группу 1', exact: true }).click();
+    await settings.getByLabel('Поле фильтра 1.2', { exact: true }).selectOption('mark4');
+    await settings.getByLabel('Условие фильтра 1.2', { exact: true }).selectOption('filled');
+    await settings.getByLabel('Значение фильтра 1.1', { exact: true }).focus();
+    await ui.keyboard.press('Tab');
+    assert.equal(await settings.getByRole('button', { name: 'Удалить условие 1.1', exact: true }).evaluate(element => element === element.getRootNode().activeElement), true, 'Tab includes filter inputs in Shadow DOM');
+    assert.equal(await settings.evaluate(element => getComputedStyle(element).borderRadius), '12px', 'settings stylesheet is injected into Shadow DOM');
+    await settings.getByRole('button', { name: 'Добавить критерий', exact: true }).focus();
+    for (let i = 0; i < 20; i++) {
+      await ui.keyboard.press('Tab');
+      assert.equal(await settings.evaluate(element => element.contains(element.getRootNode().activeElement)), true, 'focus stays in modal in Shadow DOM');
+    }
+    await ui.keyboard.press('Escape');
+    await settings.waitFor({ state: 'detached' });
+    assert.equal(await opener.evaluate(element => element === element.getRootNode().activeElement), true);
+    await ui.setViewportSize({ width: 390, height: 844 });
+    await opener.click();
+    assert.equal(await settings.evaluate(element => element.scrollWidth <= element.clientWidth), true);
+    await settings.getByRole('button', { name: 'Сбросить сортировку', exact: true }).click();
+    await settings.getByRole('button', { name: 'Сбросить фильтры', exact: true }).click();
+    await settings.getByRole('button', { name: 'Закрыть', exact: true }).click();
+    assert.deepEqual(lessonWrites, [], 'sort settings never submit academic writes');
+    assert.deepEqual(errors, []);
+    console.log('PASS: lesson sort settings in actual extension Shadow DOM, multiple criteria, modal focus containment, Escape/return focus and narrow layout. Fictional data.');
+  } else if (process.env.OMNI_PNG_PREVIEW_ONLY === '1') {
     await initialRoster.started;
     initialRoster.release();
     await ui.locator('.attendance-select').first().waitFor();
@@ -499,25 +603,50 @@ try {
   // Shared admin-table operations stage a complete lesson candidate, never writes.
   const lessonBulk = lessonTable.locator('.table-bulk-editor');
   assert.equal(await lessonBulk.locator('.table-bulk-controls').evaluate(node => getComputedStyle(node).display), 'flex', 'shared table CSS is present in extension Shadow DOM');
+  const averageStudent = lessonTable.getByRole('checkbox', { name: 'Выбрать ученика: Тестовый ученик Б', exact: true });
+  await averageStudent.check();
+  const fillPreview = ui.getByRole('dialog', { name: 'Предварительное заполнение' });
+  const confirmFill = async () => { await fillPreview.getByRole('button', { name: /^В черновик/ }).click(); await fillPreview.waitFor({ state: 'detached' }); };
+  await ui.getByLabel('Способ заполнения', { exact: true }).selectOption('field');
+  await lessonBulk.getByLabel('Столбец для массового редактирования').selectOption('mark4');
+  await lessonBulk.getByRole('button', { name: 'Заполнить столбец (1)', exact: true }).click();
+  await confirmFill();
+  assert.equal(await lessonTable.getByRole('button', { name: 'Работа на уроке: Тестовый ученик Б', exact: true }).innerText(), '11');
+  await lessonBulk.getByLabel('Столбец для массового редактирования').selectOption('mark2');
+  await lessonBulk.getByRole('button', { name: 'Заполнить столбец (1)', exact: true }).click();
+  await confirmFill();
+  assert.equal(await lessonTable.getByRole('button', { name: 'Контрольная: Тестовый ученик Б', exact: true }).innerText(), '11');
+  await lessonBulk.getByLabel('Область массового редактирования').selectOption('filtered');
+  await lessonBulk.getByRole('button', { name: 'Заполнить столбец (2)', exact: true }).click();
+  assert.equal(await fillPreview.getByRole('button', { name: /^В черновик/ }).isDisabled(), true, 'zero average blocks the whole action');
+  await fillPreview.getByRole('button', { name: 'Закрыть', exact: true }).click();
+  assert.deepEqual(lessonWrites, [], 'rounded averages remain local before explicit Save');
+  ui.once('dialog', dialog => dialog.accept());
+  await ui.getByRole('button', { name: 'Отменить черновик', exact: true }).click();
+  await averageStudent.uncheck();
+  await ui.getByLabel('Способ заполнения', { exact: true }).selectOption('constant');
+  await lessonBulk.getByLabel('Область массового редактирования').selectOption('selected');
+  await lessonBulk.getByLabel('Столбец для массового редактирования').selectOption('mark4');
+  await lessonBulk.getByLabel('Значение / расчёт').fill('12');
+
   await lessonTable.getByRole('checkbox', { name: 'Выбрать ученика: Тестовый ученик А', exact: true }).check();
   await lessonBulk.getByRole('button', { name: 'Заполнить столбец (1)', exact: true }).click();
+  await confirmFill();
   assert.equal(await lessonTable.getByRole('button', { name: 'Работа на уроке: Тестовый ученик А', exact: true }).innerText(), '12');
   assert.equal(await lessonTable.getByRole('button', { name: 'Работа на уроке: Тестовый ученик Б', exact: true }).innerText(), '—');
   assert.equal(await lessonTable.getByRole('checkbox', { name: 'Выбрать ученика: Тестовый ученик А', exact: true }).isChecked(), true, 'selection survives local draft overlays');
   await lessonBulk.getByLabel('Область массового редактирования').selectOption('filtered');
   await lessonBulk.getByRole('button', { name: 'Заполнить столбец (2)', exact: true }).click();
+  await confirmFill();
   await lessonBulk.getByLabel('Столбец для массового редактирования').selectOption('attendance');
-  await lessonBulk.getByLabel('Единое значение').selectOption('1');
+  await lessonBulk.getByLabel('Значение / расчёт').selectOption('1');
   await lessonBulk.getByRole('button', { name: 'Заполнить столбец (2)', exact: true }).click();
-  const allocation = lessonTable.getByRole('region', { name: 'Распределение топкойнов', exact: true });
+  const allocation = lessonTable.getByRole('group', { name: 'Распределение топкойнов', exact: true });
   await allocation.getByRole('button', { name: 'Распределить топкойны', exact: true }).click();
-  await allocation.getByRole('button', { name: 'Рассчитать предложение', exact: true }).click();
-  assert.match(await allocation.innerText(), /Предложено: 4.*Остаток: 1/);
-  await allocation.getByRole('button', { name: 'В черновик', exact: true }).click();
+  assert.match(await allocation.innerText(), /Распределено: 4, остаток: 1/);
   assert.equal(await ui.getByLabel('Топкойны: Тестовый ученик А', { exact: true }).inputValue(), '2');
   assert.equal(await ui.getByLabel('Топкойны: Тестовый ученик Б', { exact: true }).inputValue(), '2');
   assert.deepEqual(lessonWrites, [], 'bulk marks, attendance and automatic rewards stay local before explicit Save');
-  await allocation.getByRole('button', { name: 'Распределить топкойны', exact: true }).click();
   ui.once('dialog', dialog => dialog.accept());
   await ui.getByRole('button', { name: 'Отменить черновик', exact: true }).click();
   assert.equal(await ui.getByRole('button', { name: 'Сохранить', exact: true }).count(), 0);
@@ -1081,7 +1210,7 @@ try {
   await ui.locator('nav button').nth(1).click();
   await ui.locator('.schedule-tools').waitFor();
   await actAs.selectOption('2');
-  await secondUi.getByRole('heading', { name: 'Завершите вход в этой вкладке' }).waitFor();
+  await secondUi.getByRole('heading', { name: 'Вход в Omni' }).waitFor();
   assert.equal(await secondUi.locator('.act-as select').count(), 0);
   await ui.locator('.act-as select').waitFor();
   assert.equal(await actAs.inputValue(), '2');
@@ -1093,7 +1222,13 @@ try {
   assert.equal(await ui.locator('.lesson-workspace').count(), 0, 'teacher switching must not navigate back to My lesson');
   rejectSwitch = true;
   await actAs.selectOption('1');
-  await ui.getByRole('alert').filter({ hasText: 'Omni отклонил переключение' }).waitFor();
+  try {
+    await ui.getByRole('alert').filter({ hasText: 'Omni отклонил переключение' }).waitFor();
+  } catch (error) {
+    console.error('Rejected teacher switch fixture state:', JSON.stringify({ teacherId, alerts: await ui.getByRole('alert').allTextContents(), selected: await actAs.inputValue().catch(() => 'absent'), lastPaths: paths.slice(-8) }));
+    await ui.screenshot({ path: 'tmp/rejected-teacher-switch-failure.png' });
+    throw error;
+  }
   assert.equal(await ui.locator('.lesson-banner').count(), 0);
   assert.equal(teacherId, 2);
   await ui.reload();

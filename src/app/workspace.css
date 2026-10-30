@@ -344,3 +344,10 @@
 }
 
 .live-workspace:has(.lesson-save-actions) .workspace-error-toast { bottom: auto; }
+
+.workspace-startup { min-height: min(60vh, 520px); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 24px; color: var(--muted); text-align: center; }
+.workspace-startup-brand { display: flex; align-items: center; gap: 12px; color: var(--text); }
+.workspace-startup-brand strong { font-size: 36px; letter-spacing: -2px; }
+.workspace-startup-brand strong span { color: var(--purple); }
+.workspace-startup-recovery p { margin: 0 0 16px; }
+@media (prefers-reduced-motion: reduce) { .workspace-startup .spin { animation: none; } }
