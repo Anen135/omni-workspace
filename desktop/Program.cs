@@ -63,6 +63,7 @@ internal sealed class Workspace : Form {
     string navigationStatus;
     async Task SmokeTest() {
         smokeStage = "origin-policy";
+        if (TrustedUi("https://omni-workspace.example/index.html.evil") || TrustedUi("https://omni-workspace.example/other.html")) throw new InvalidOperationException();
         if (TrustedUi("https://evil.test/omni-workspace/") || TrustedUi("https://anen135.github.io/other-project/") || TrustedOmni("https://omni.top-academy.ru.evil.test/")) throw new InvalidOperationException();
         smokeStage = "ui-ready";
         for (var n = 0; n < 40; n++) {
