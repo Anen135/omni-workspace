@@ -1,7 +1,6 @@
 import { useRef, useState, type FormEvent } from 'react';
 import { LoaderCircle, LogIn } from 'lucide-react';
 import './login.css';
-import { isDesktop } from '../../services/desktop-client';
 import { isExtension } from '../../services/extension-client';
 import { HelpTip } from '../../components/ui/HelpTip';
 
@@ -18,7 +17,7 @@ export function LoginForm({ busy, onLogin }: { busy: boolean; onLogin: (username
     try { await onLogin(username.trim(), secret); }
     finally { secret = ''; submitting.current = false; }
   }
-  if (isDesktop() || isExtension()) return null;
+  if (isExtension()) return null;
   return <form className="omni-login-form" onSubmit={event => void submit(event)}>
     <label>Логин Omni<input name="username" autoComplete="username" required maxLength={256} value={username} onChange={event => setUsername(event.target.value)} disabled={busy}/></label>
     <label>Пароль<input ref={password} name="password" type="password" autoComplete="current-password" required maxLength={1024} disabled={busy}/></label>

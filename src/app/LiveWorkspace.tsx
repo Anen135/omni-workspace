@@ -8,7 +8,6 @@ import { ConnectionError, invalidatePendingOmniRequests, label, omniRequest, rec
 import { ScheduleView } from '../features/schedule/ScheduleView';
 import { TeachingMaterials } from '../features/materials/TeachingMaterials';
 import { TeacherDossier } from '../features/dossier/TeacherDossier';
-import { isDesktop } from '../services/desktop-client';
 import { isExtension, onExtensionSessionChange } from '../services/extension-client';
 import { stageLessonBulk, stageLessonRewardTargets, type LessonBulkChange, type RewardTarget } from '../features/lesson/lesson-bulk';
 import { stageLessonFill, type LessonFillRequest } from '../features/lesson/lesson-fill';
@@ -753,7 +752,7 @@ export function LiveWorkspace({ onDemo, connectionForm, connectionPending = fals
     <WorkspaceSidebar account={snapshot?.account} tab={tab} onNavigate={setTab} hasHomework={reviewItems.some(item => item.canGrade)}/>
     <main>
       <WorkspaceHeader account={snapshot?.account} teachers={teachers} busy={busy} authNeeded={authNeeded}
-        desktop={isDesktop()} extension={isExtension()} onRefresh={() => void refresh()}
+        desktop={false} extension={isExtension()} onRefresh={() => void refresh()}
         onTeacherChange={id => void switchTeacher(id)} onAccountChange={() => void changeAccount()}/>
       <div className="page-content">
         <WorkspaceMobileNav tab={tab} onNavigate={setTab} onDemo={openDemo}/>

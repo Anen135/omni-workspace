@@ -1,3 +1,4 @@
+declare global { interface Window { chrome?: unknown } }
 type ExtensionRuntime = {
   id?: string;
   sendMessage: (message: unknown) => Promise<{ data?: unknown; error?: { code: string; message: string } }>;
