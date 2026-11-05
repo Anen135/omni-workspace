@@ -31,7 +31,7 @@ export function createBridge() {
   let background = false;
   let lastLoginAttempt = 0;
 
-  async function attach(headless = false) {
+  const attach = async function(headless = false) {
     if (page && !page.isClosed()) return page;
     if (connecting) return connecting;
     connecting = (async () => {
@@ -58,9 +58,9 @@ export function createBridge() {
       return page;
     })().finally(() => { connecting = undefined; });
     return connecting;
-  }
+  };
 
-  async function status() {
+  const status = async function() {
     if (!page || page.isClosed()) return { connected: false, state: 'disconnected' };
     try {
       const current = new URL(page.url());
@@ -73,9 +73,9 @@ export function createBridge() {
       if (state.login || current.pathname.startsWith('/login')) return { connected: false, state: 'login' };
       return { connected: true, state: 'ready' };
     } catch { return { connected: false, state: 'loading' }; }
-  }
+  };
 
-  async function request(path, data = {}, switching = false, method = 'POST') {
+  const request = async function(path, data = {}, switching = false, method = 'POST') {
     if (!readPaths.has(path) && !(switching && path === '/auth/change-user')) throw new BridgeError('NOT_ALLOWED', 'Запрос не разрешён.', 400);
     const state = await status();
     if (!state.connected) throw new BridgeError(state.state === 'challenge' ? 'CHALLENGE' : 'AUTH_REQUIRED', 'Откройте окно Omni и завершите вход.', 401);
@@ -104,24 +104,24 @@ export function createBridge() {
     if (response.challenge) throw new BridgeError('CHALLENGE', 'Пройдите проверку браузера в окне Omni.', 401);
     if (response.invalid || response.status) throw new BridgeError('UPSTREAM_ERROR', `Omni не вернул данные${response.status ? ` (HTTP ${response.status})` : ''}. Повторите позже.`);
     return response.data;
-  }
+  };
 
   const read = (path, data, method) => request(path, data, false, method);
 
-  async function identity() {
+  const identity = async function() {
     const profile = await read('/profile/get-profile');
     const info = profile?.teach_info;
     if (!info?.id_teach || typeof info.fio_teach !== 'string') throw new BridgeError('SCHEMA_CHANGED', 'Не удалось распознать профиль Omni.');
     return { id: String(info.id_teach), name: info.fio_teach };
-  }
+  };
 
-  async function section(path, params, method) {
+  const section = async function(path, params, method) {
     try { return { data: await read(path, params, method), error: null }; }
     catch (error) {
       if (['AUTH_REQUIRED', 'ACCOUNT_CHANGED', 'CHALLENGE'].includes(error.code)) throw error;
       return { data: null, error: error.message };
     }
-  }
+  };
 
   const bridge = {
     async dispatch(action, input = {}) {
