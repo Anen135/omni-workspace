@@ -1,1 +1,15 @@
 :root{--bg:#f5f4ef;--surface:#fff;--text:#252b29;--muted:#535e57;--border:#ccd1c9;--purple:#3056d3} .panel,.button,input,select,textarea,.modal{border-radius:2px} .topbar{background:var(--surface)}
+
+/* Shared semantic colors keep legacy demo labels readable. */
+:root {
+  --omni-text: #252b29;
+  --omni-muted: #535e57;
+  --omni-surface: #fff;
+  --omni-surface-muted: #f5f4ef;
+  --omni-border: #ccd1c9;
+  --omni-primary-soft: #edf1fc;
+  --omni-accent-text: #3056d3;
+  --omni-success-text: #286448;
+  --omni-warning-text: #845411;
+  --omni-danger-text: #963f35;
+}
