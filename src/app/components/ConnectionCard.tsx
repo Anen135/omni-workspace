@@ -3,10 +3,10 @@ import { ExternalLink, LogIn } from 'lucide-react';
 import { LoginForm } from '../../features/auth/LoginForm';
 import { HelpTip } from '../../components/ui/HelpTip';
 
-export function ConnectionCard({ busy, waiting, extension, changingAccount, connectionState, onLogin, onConnect, onDemo, connectionForm }: {
+export function ConnectionCard({ busy, waiting, extension, changingAccount, connectionState, onLogin, onConnect, connectionForm }: {
   connectionForm?: ReactNode;
   busy: boolean; waiting: boolean; extension: boolean; changingAccount: boolean; connectionState: string;
-  onLogin: (username: string, password: string) => Promise<void>; onConnect: () => void; onDemo: () => void;
+  onLogin: (username: string, password: string) => Promise<void>; onConnect: () => void;
 }) {
   const title = 'Вход в Omni';
   const explanation = extension

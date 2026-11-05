@@ -46,7 +46,7 @@ import { HelpPage } from '../features/help/HelpPage';
 
 const emptySection: Section = { data: null, error: null };
 
-export function LiveWorkspace({ onDemo, connectionForm, connectionPending = false, onNativeLogin }: { onDemo: () => void } & WorkspaceConnectionProps) {
+export function LiveWorkspace({ connectionForm, connectionPending = false, onNativeLogin }: WorkspaceConnectionProps) {
   const [connectionInterval, setConnectionInterval] = useState(readConnectionInterval);
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [lesson, setLesson] = useState<RemoteLesson | null>(null);
@@ -741,11 +741,6 @@ export function LiveWorkspace({ onDemo, connectionForm, connectionPending = fals
     }) : items;
     return <StudentTable studentAveragesLoading={averages.loading} studentAveragesError={averages.error} selectionContext={lessonTableContext} onBulkChange={isExtension() ? stageBulk : undefined} onFill={isExtension() ? stageFill : undefined} onRewardAllocation={isExtension() ? stageRewardAllocation : undefined} draftRewardIds={new Set(Object.keys(draft?.rewards || {}))} contextToken={draftKey} studentPhotos={averages.photos} studentAverages={studentAverages} key={`${tab}:${groupId}:${draftKey}`} items={displayed} busy={busy} lessonView={tab === 'lesson'} onOpen={student => void openStudent(student)} marks={tab === 'lesson' && isExtension() ? { unavailable: attendanceReason, allowDraft: true, onChange: stageMark } : undefined} rewards={tab === 'lesson' && isExtension() ? { unavailable: attendanceReason, onChange: stageReward } : undefined} attendance={tab === 'lesson' && isExtension() ? { unavailable: attendanceReason, saving: attendanceSaving, onChange: (student, was) => markAttendance([student], was), onAll: () => markAttendance(displayed, 1, true) } : undefined}/>;
   };
-  function openDemo() {
-    if (operation.current) return;
-    if (hasDrafts && !window.confirm('При переходе в демо черновики уроков будут удалены. Продолжить?')) return;
-    onDemo();
-  }
 
   const startup = isExtension() && !snapshot && !connectionForm && !changingAccount && (connectionPending || (!authNeeded && !waiting));
   return <div className="app-shell live-workspace">
@@ -755,7 +750,7 @@ export function LiveWorkspace({ onDemo, connectionForm, connectionPending = fals
         desktop={false} extension={isExtension()} onRefresh={() => void refresh()}
         onTeacherChange={id => void switchTeacher(id)} onAccountChange={() => void changeAccount()}/>
       <div className="page-content">
-        <WorkspaceMobileNav tab={tab} onNavigate={setTab} onDemo={openDemo}/>
+        <WorkspaceMobileNav tab={tab} onNavigate={setTab}/>
         {(!startup || tab === 'settings' || tab === 'help' || tab === 'ui-tests') && <WorkspacePageHeading tab={tab}>
           {tab === 'schedule' && snapshot && <ScheduleToolbar today={today} date={scheduleDates[0] || today}
             range={scheduleRange} week={week} busy={busy} onWeekChange={value => void refresh(value)}
@@ -765,11 +760,11 @@ export function LiveWorkspace({ onDemo, connectionForm, connectionPending = fals
           onClose={() => setError('')} onRetry={() => void (authNeeded ? connect() : snapshot ? refresh() : connect())}/>}
         {switchingTeacher && <TeacherSwitchingState/>}
         {tab === 'settings' && <WorkspaceSettings interval={connectionInterval} onSave={setConnectionInterval}/>}
-        {tab === 'help' && <HelpPage onDemo={openDemo} onUiTests={() => setTab('ui-tests')}/>}
+        {tab === 'help' && <HelpPage onUiTests={() => setTab('ui-tests')}/>}
         {tab === 'ui-tests' && <UiTestPage onBack={() => setTab('help')}/>}
         {!snapshot && !switchingTeacher && tab !== 'help' && tab !== 'settings' && tab !== 'ui-tests' && (startup ? <WorkspaceStartup onNative={onNativeLogin || (() => void connect())}/> : <ConnectionCard connectionForm={connectionForm} busy={busy} waiting={waiting}
           extension={isExtension()} changingAccount={changingAccount} connectionState={connectionState}
-          onLogin={login} onConnect={onNativeLogin || (() => void connect())} onDemo={onDemo}/>)}
+          onLogin={login} onConnect={onNativeLogin || (() => void connect())}/>)}
         {snapshot && <>
           {tab === 'lesson' && <div className="lesson-workspace">
             {isExtension() && <LessonSaveBar busy={busy} saving={attendanceSaving} draft={draft} hasTheme={hasTheme}

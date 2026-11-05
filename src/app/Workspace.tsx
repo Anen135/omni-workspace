@@ -9,5 +9,5 @@ export interface WorkspaceConnectionProps {
 }
 
 export function Workspace(props: WorkspaceConnectionProps) {
-  return <ColorThemeProvider><LiveWorkspace {...props} onDemo={() => {}}/></ColorThemeProvider>;
+  return <ColorThemeProvider><LiveWorkspace {...props} /></ColorThemeProvider>;
 }
