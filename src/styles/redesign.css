@@ -1,0 +1,1 @@
+:root{--bg:#f5f4ef;--surface:#fff;--text:#252b29;--muted:#535e57;--border:#ccd1c9;--purple:#3056d3} .panel,.button,input,select,textarea,.modal{border-radius:2px} .topbar{background:var(--surface)}

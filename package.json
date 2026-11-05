@@ -1,5 +1,5 @@
 {
-  "name": "omni-workspace",
+  "name": "omni-design-demo",
   "version": "1.0.0",
   "private": true,
   "description": "Unofficial browser extension for Omni / Academy TOP teachers: schedule, lessons, students, homework and teaching materials.",
@@ -18,14 +18,7 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "tsc && vite build",
-    "build:pages": "tsc && vite build --mode pages",
-    "build:extension": "tsc && node extension/build.mjs",
-    "test:visual": "node tests/visual-audit.mjs",
-    "test:extension-ui": "node tests/extension-browser.mjs",
-    "test:workspace-ui": "node tests/workspace-browser.mjs",
-    "preview": "vite preview --host 127.0.0.1",
-    "test": "node --experimental-strip-types --test tests/*.test.mjs",
-    "test:materials-ui": "node tests/materials-browser.mjs"
+    "preview": "vite preview --host 127.0.0.1"
   },
   "dependencies": {
     "lucide-react": "^1.58.0",
