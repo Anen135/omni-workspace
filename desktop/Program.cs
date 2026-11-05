@@ -20,7 +20,7 @@ internal static class Program {
 
 internal sealed class Workspace : Form {
     const string Official = "https://omni.top-academy.ru";
-    const string Published = "https://anen135.github.io/omni-workspace/";
+    const string PackagedUi = "https://omni-workspace.example/index.html";
     readonly string uiUrl;
     readonly WebView2 ui = new WebView2 { Dock = DockStyle.Fill };
     readonly WebView2 omni = new WebView2 { Dock = DockStyle.Fill };
@@ -35,7 +35,7 @@ internal sealed class Workspace : Form {
     int generation;
 
     public Workspace(bool dev, bool smoke) {
-        uiUrl = dev ? "http://127.0.0.1:5173/" : Published;
+        uiUrl = dev ? "http://127.0.0.1:5173/" : PackagedUi;
         Text = "Omni Workspace — desktop prototype"; Width = 1440; Height = 950; MinimumSize = new Size(800, 600);
         var toolbar = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 40 };
         var signIn = new Button { Text = "Официальный вход", AutoSize = true };
@@ -54,7 +54,7 @@ internal sealed class Workspace : Form {
                     await SmokeTest();
                     File.WriteAllText(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "smoke-result.json"), json.Serialize(new { success = true, uiBridge = true, officialState = smokeState }));
                 }
-            } catch (Exception error) { if (smoke) { Environment.ExitCode = 1; File.WriteAllText(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "smoke-result.json"), json.Serialize(new { success = false, stage = smokeStage, errorType = error.GetType().Name, navigation = navigationStatus })); } else ShowFailure(); }
+            } catch (Exception error) { if (smoke) { Environment.ExitCode = 1; File.WriteAllText(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "smoke-result.json"), json.Serialize(new { success = false, stage = smokeStage, errorType = error.GetType().Name, navigation = navigationStatus, ui = ui.CoreWebView2 == null ? null : await ui.ExecuteScriptAsync("JSON.stringify({href:location.href,ready:document.readyState,root:document.querySelector('#root')?.innerHTML.slice(0,200),error:window.__smokeError})") })); } else ShowFailure(); }
             finally { if (smoke) Close(); }
         };
     }
@@ -66,9 +66,10 @@ internal sealed class Workspace : Form {
         if (TrustedUi("https://evil.test/omni-workspace/") || TrustedUi("https://anen135.github.io/other-project/") || TrustedOmni("https://omni.top-academy.ru.evil.test/")) throw new InvalidOperationException();
         smokeStage = "ui-ready";
         for (var n = 0; n < 40; n++) {
-            if (await ui.ExecuteScriptAsync("!!window.__OMNI_DESKTOP__ && document.readyState === 'complete'") == "true") break;
+            if (await ui.ExecuteScriptAsync("!!window.__OMNI_DESKTOP__ && document.readyState === 'complete' && !!document.querySelector('#root .app-shell')") == "true") break;
             await Task.Delay(250);
         }
+        if (uiUrl == PackagedUi && await ui.ExecuteScriptAsync("location.origin === 'https://omni-workspace.example' && !!document.querySelector('#root .app-shell')") != "true") throw new InvalidOperationException("Local interface did not mount");
         smokeStage = "ui-bridge";
         await ui.ExecuteScriptAsync("window.chrome.webview.addEventListener('message',e=>{if(e.data.id==='smoke')window.__smokeResult=e.data.result});window.chrome.webview.postMessage({id:'smoke',action:'status',input:{}})");
         var connected = false;
@@ -95,7 +96,7 @@ internal sealed class Workspace : Form {
         if (!Uri.TryCreate(value, UriKind.Absolute, out var uri)) return false;
         var expected = new Uri(uiUrl);
         return uri.GetLeftPart(UriPartial.Authority) == expected.GetLeftPart(UriPartial.Authority)
-            && uri.AbsolutePath.StartsWith(expected.AbsolutePath, StringComparison.Ordinal) && uri.UserInfo == "";
+            && (expected.AbsolutePath == "/" || uri.AbsolutePath == expected.AbsolutePath) && uri.UserInfo == "";
     }
     static bool TrustedOmni(string value) {
         return Uri.TryCreate(value, UriKind.Absolute, out var uri) && uri.GetLeftPart(UriPartial.Authority) == Official && uri.UserInfo == "";
@@ -113,11 +114,18 @@ internal sealed class Workspace : Form {
     async Task InitializeUi() {
         await ui.EnsureCoreWebView2Async(await CoreWebView2Environment.CreateAsync(null, Profile("interface")));
         Harden(ui);
+        ui.CoreWebView2.NavigationCompleted += (s, e) => { navigationStatus = e.WebErrorStatus.ToString() + ":" + e.HttpStatusCode; };
+        if (uiUrl == PackagedUi) {
+            var uiDirectory = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "ui");
+            if (!File.Exists(Path.Combine(uiDirectory, "index.html"))) throw new InvalidOperationException("Packaged interface is missing");
+            ui.CoreWebView2.SetVirtualHostNameToFolderMapping("omni-workspace.example", uiDirectory, CoreWebView2HostResourceAccessKind.DenyCors);
+        }
         ui.CoreWebView2.NavigationStarting += (s, e) => { generation++; if (!TrustedUi(e.Uri)) e.Cancel = true; };
         ui.CoreWebView2.WebMessageReceived += OnUiMessage;
         var trusted = json.Serialize(new Uri(uiUrl).GetLeftPart(UriPartial.Authority));
         var path = json.Serialize(new Uri(uiUrl).AbsolutePath);
         await ui.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(@"
+          window.addEventListener('error', e => window.__smokeError = e.message);
           if (window === window.top && location.origin === " + trusted + @" && location.pathname.startsWith(" + path + @")) {
             Object.defineProperty(window, '__OMNI_DESKTOP__', { value: Object.freeze({ version: 1 }), writable: false });
           }");

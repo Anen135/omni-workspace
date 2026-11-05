@@ -2,7 +2,7 @@ import { defineConfig } from 'vite';
 import { omniBridge } from './server/omni-bridge.mjs';
 
 export default defineConfig(({ mode }) => ({
-  base: mode === 'pages' ? '/omni-workspace/' : '/',
+  base: './',
   build: { outDir: mode === 'extension' ? 'dist-extension' : 'dist' },
   server: {
     host: '127.0.0.1', port: 5173, strictPort: true,

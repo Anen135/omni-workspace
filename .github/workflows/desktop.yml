@@ -29,5 +29,6 @@ jobs:
             desktop/bin/Release/net48/*.exe
             desktop/bin/Release/net48/*.dll
             desktop/bin/Release/net48/*.config
+            desktop/bin/Release/net48/ui/**
             LICENSE
             desktop/README.md

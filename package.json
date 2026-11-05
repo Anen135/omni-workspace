@@ -20,7 +20,7 @@
     "build": "tsc && vite build",
     "build:pages": "tsc && vite build --mode pages",
     "test:workspace-ui": "node tests/workspace-browser.mjs",
-    "desktop:build": "node desktop/build-agent.mjs && dotnet build desktop/Omni.Desktop.csproj -c Release",
+    "desktop:build": "npm run build:pages && node desktop/build-agent.mjs && dotnet build desktop/Omni.Desktop.csproj -c Release",
     "desktop:dev": "desktop\\bin\\Release\\net48\\Omni.Desktop.exe --dev",
     "preview": "vite preview --host 127.0.0.1",
     "test": "node --experimental-strip-types --test tests/*.test.mjs",

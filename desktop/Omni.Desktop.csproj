@@ -16,5 +16,6 @@
     <Reference Include="System.Net.Http" />
     <EmbeddedResource Include="../config/file-sources.json" LogicalName="file-sources.json" />
     <EmbeddedResource Include="generated/agent.js" LogicalName="agent.js" />
+    <Content Include="../dist/**/*"><Link>ui/%(RecursiveDir)%(Filename)%(Extension)</Link><CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory></Content>
   </ItemGroup>
 </Project>
