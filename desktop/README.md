@@ -41,3 +41,5 @@ npm run dev
 При запущенном dev-сервере: `Omni.Desktop.exe --dev --smoke-test`. Автотест открывает настоящую официальную страницу, не отправляя логин/пароль; проверяет мост UI, отклонение неизвестной команды и состояние официального окна. Результат без персональных данных сохраняется рядом с EXE в `smoke-result.json`. Окна теста прозрачные и закрываются автоматически. Не запускается обычным CI, поскольку требует Windows, WebView2 и сети.
 
 The production interface is packaged under `ui/` beside the executable and served through WebView2 virtual host `https://omni-workspace.example/`. Run `npm run desktop:build`; distribute the entire output including `ui/`. GitHub Pages is not used. The smoke test requires the local React interface to mount before exercising the native bridge.
+
+Use `Omni.Desktop.exe --smoke-test-local` for offline packaged-UI, bridge, canceled-navigation/reply, accepted-reload invalidation and in-place brand navigation checks. Existing `--smoke-test` also checks the official login page and requires network access. The result records `mode: "local"` or `mode: "online"`; local success does not verify official login.

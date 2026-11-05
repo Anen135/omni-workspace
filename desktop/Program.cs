@@ -14,7 +14,8 @@ internal static class Program {
     [STAThread] static void Main(string[] args) {
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
-        Application.Run(new Workspace(Array.IndexOf(args, "--dev") >= 0, Array.IndexOf(args, "--smoke-test") >= 0));
+        var localSmoke = Array.IndexOf(args, "--smoke-test-local") >= 0;
+        Application.Run(new Workspace(Array.IndexOf(args, "--dev") >= 0, localSmoke || Array.IndexOf(args, "--smoke-test") >= 0, localSmoke));
     }
 }
 
@@ -34,7 +35,7 @@ internal sealed class Workspace : Form {
     bool busy;
     int generation;
 
-    public Workspace(bool dev, bool smoke) {
+    public Workspace(bool dev, bool smoke, bool localSmoke) {
         uiUrl = dev ? "http://127.0.0.1:5173/" : PackagedUi;
         Text = "Omni Workspace — desktop prototype"; Width = 1440; Height = 950; MinimumSize = new Size(800, 600);
         var toolbar = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 40 };
@@ -51,8 +52,8 @@ internal sealed class Workspace : Form {
             try {
                 await InitializeUi();
                 if (smoke) {
-                    await SmokeTest();
-                    File.WriteAllText(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "smoke-result.json"), json.Serialize(new { success = true, uiBridge = true, officialState = smokeState }));
+                    await SmokeTest(localSmoke);
+                    File.WriteAllText(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "smoke-result.json"), json.Serialize(new { success = true, uiBridge = true, navigationReplies = true, brandNavigation = true, mode = localSmoke ? "local" : "online", officialState = smokeState }));
                 }
             } catch (Exception error) { if (smoke) { Environment.ExitCode = 1; File.WriteAllText(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "smoke-result.json"), json.Serialize(new { success = false, stage = smokeStage, errorType = error.GetType().Name, navigation = navigationStatus, ui = ui.CoreWebView2 == null ? null : await ui.ExecuteScriptAsync("JSON.stringify({href:location.href,ready:document.readyState,root:document.querySelector('#root')?.innerHTML.slice(0,200),error:window.__smokeError})") })); } else ShowFailure(); }
             finally { if (smoke) Close(); }
@@ -61,7 +62,7 @@ internal sealed class Workspace : Form {
     string smokeState;
     string smokeStage = "initialize-ui";
     string navigationStatus;
-    async Task SmokeTest() {
+    async Task SmokeTest(bool localSmoke) {
         smokeStage = "origin-policy";
         if (TrustedUi("https://omni-workspace.example/index.html.evil") || TrustedUi("https://omni-workspace.example/other.html")) throw new InvalidOperationException();
         if (TrustedUi("https://evil.test/omni-workspace/") || TrustedUi("https://anen135.github.io/other-project/") || TrustedOmni("https://omni.top-academy.ru.evil.test/")) throw new InvalidOperationException();
@@ -83,6 +84,46 @@ internal sealed class Workspace : Form {
         await ui.ExecuteScriptAsync("window.__smokeResult=null;window.chrome.webview.postMessage({id:'smoke',action:'execute-arbitrary-script',input:{}})");
         await Task.Delay(300);
         if (await ui.ExecuteScriptAsync("window.__smokeResult?.error?.code === 'DESKTOP_ERROR'") != "true") throw new InvalidOperationException();
+        smokeStage = "cancelled-ui-navigation";
+        var pendingEpoch = generation;
+        var originalUi = ui.Source.AbsoluteUri;
+        await ui.ExecuteScriptAsync("window.__smokeReplies=[];window.chrome.webview.addEventListener('message',e=>window.__smokeReplies.push(e.data.id))");
+        var blocked = new TaskCompletionSource<bool>();
+        EventHandler<CoreWebView2NavigationStartingEventArgs> blockedHandler = (s, e) => { blocked.TrySetResult(e.Cancel); };
+        ui.CoreWebView2.NavigationStarting += blockedHandler;
+        try {
+            ui.CoreWebView2.Navigate(uiUrl == PackagedUi ? "https://omni-workspace.example/forbidden-smoke.html" : "https://evil.test/");
+            if (await Task.WhenAny(blocked.Task, Task.Delay(10000)) != blocked.Task || !await blocked.Task) throw new InvalidOperationException("Forbidden navigation was not canceled");
+        } finally { ui.CoreWebView2.NavigationStarting -= blockedHandler; }
+        if (generation != pendingEpoch || ui.Source.AbsoluteUri != originalUi) throw new InvalidOperationException("Canceled navigation invalidated the current document");
+        Reply("smoke-pending", new { data = true }, pendingEpoch);
+        await WaitForSmokeUi("window.__smokeReplies.includes('smoke-pending')");
+        smokeStage = "accepted-ui-reload";
+        var reloaded = new TaskCompletionSource<bool>();
+        ulong reloadId = 0;
+        EventHandler<CoreWebView2NavigationStartingEventArgs> reloadStarting = (s, e) => { if (!e.Cancel) reloadId = e.NavigationId; };
+        EventHandler<CoreWebView2NavigationCompletedEventArgs> reloadCompleted = (s, e) => { if (e.NavigationId == reloadId) reloaded.TrySetResult(e.IsSuccess); };
+        ui.CoreWebView2.NavigationStarting += reloadStarting;
+        ui.CoreWebView2.NavigationCompleted += reloadCompleted;
+        try {
+            ui.CoreWebView2.Reload();
+            if (await Task.WhenAny(reloaded.Task, Task.Delay(10000)) != reloaded.Task || !await reloaded.Task) throw new InvalidOperationException("Reload failed");
+        } finally { ui.CoreWebView2.NavigationStarting -= reloadStarting; ui.CoreWebView2.NavigationCompleted -= reloadCompleted; }
+        if (generation == pendingEpoch) throw new InvalidOperationException("Accepted reload did not invalidate old replies");
+        await WaitForSmokeUi("!!document.querySelector('#root .app-shell')");
+        await ui.ExecuteScriptAsync("window.__smokeReplies=[];window.chrome.webview.addEventListener('message',e=>window.__smokeReplies.push(e.data.id))");
+        Reply("smoke-obsolete", new { data = true }, pendingEpoch);
+        Reply("smoke-current", new { data = true }, generation);
+        await WaitForSmokeUi("window.__smokeReplies.includes('smoke-current')");
+        if (await ui.ExecuteScriptAsync("window.__smokeReplies.includes('smoke-obsolete')") != "false") throw new InvalidOperationException("Obsolete reply reached the replacement document");
+        smokeStage = "brand-navigation";
+        var brandEpoch = generation;
+        await ui.ExecuteScriptAsync("document.querySelector('.sidebar nav button[title=\"Настройки\"]').click()");
+        await WaitForSmokeUi("!!document.querySelector('.sidebar nav button[title=\"Настройки\"].selected')");
+        await ui.ExecuteScriptAsync("window.__smokeMountedRoot=document.querySelector('#root .app-shell');document.querySelector('.sidebar .brand').click()");
+        await WaitForSmokeUi("!!document.querySelector('.sidebar nav button[title=\"Мой урок\"].selected')");
+        if (generation != brandEpoch || ui.Source.AbsoluteUri != originalUi || await ui.ExecuteScriptAsync("window.__smokeMountedRoot === document.querySelector('#root .app-shell')") != "true") throw new InvalidOperationException("Brand navigation replaced the mounted workspace");
+        if (localSmoke) return;
         smokeStage = "official-load";
         await OpenLogin();
         smokeStage = "official-status";
@@ -91,6 +132,14 @@ internal sealed class Workspace : Form {
         var data = parsed["data"] as Dictionary<string, object>;
         smokeState = data["state"] as string;
         if (smokeState != "login" && smokeState != "challenge" && smokeState != "ready") throw new InvalidOperationException();
+    }
+
+    async Task WaitForSmokeUi(string expression) {
+        for (var n = 0; n < 40; n++) {
+            if (await ui.ExecuteScriptAsync(expression) == "true") return;
+            await Task.Delay(250);
+        }
+        throw new InvalidOperationException("Local smoke condition timed out");
     }
 
     bool TrustedUi(string value) {
@@ -121,7 +170,7 @@ internal sealed class Workspace : Form {
             if (!File.Exists(Path.Combine(uiDirectory, "index.html"))) throw new InvalidOperationException("Packaged interface is missing");
             ui.CoreWebView2.SetVirtualHostNameToFolderMapping("omni-workspace.example", uiDirectory, CoreWebView2HostResourceAccessKind.DenyCors);
         }
-        ui.CoreWebView2.NavigationStarting += (s, e) => { generation++; if (!TrustedUi(e.Uri)) e.Cancel = true; };
+        ui.CoreWebView2.NavigationStarting += (s, e) => { if (!TrustedUi(e.Uri)) { e.Cancel = true; return; } generation++; };
         ui.CoreWebView2.WebMessageReceived += OnUiMessage;
         var trusted = json.Serialize(new Uri(uiUrl).GetLeftPart(UriPartial.Authority));
         var path = json.Serialize(new Uri(uiUrl).AbsolutePath);

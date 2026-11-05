@@ -10,7 +10,7 @@ export function WorkspaceSidebar({ account, tab, onNavigate, hasHomework = false
 }) {
   const homeworkNotice = useId();
   return <aside className="sidebar">
-    <a className="brand" href="/" aria-label="Omni Workspace"><BrandMark/>omni<span className="brand-dot">.</span></a>
+    <a className="brand" href="#lesson" aria-label="Omni Workspace" onClick={event => { event.preventDefault(); onNavigate('lesson'); }}><BrandMark/>omni<span className="brand-dot">.</span></a>
     <div className="workspace"><span className="workspace-icon"><GraduationCap size={20}/></span><div><strong>Академия TOP</strong><small>{account?.branch || 'Подключение к Omni'}</small></div></div>
     <div className="nav-label">МОЁ ПРОСТРАНСТВО</div>
     <nav aria-label="Разделы рабочего пространства">{workspaceTabs.map(({ key, icon: Icon, title }) => <button key={key} className={tab === key ? 'selected' : ''} title={title}
