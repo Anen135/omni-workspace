@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { homeworkGroupName, homeworkItems } from '../src/features/homework/homework.ts';
-import { saveHomeworkMarks } from '../extension/homework.mjs';
+import { saveHomeworkMarks } from '../shared/homework.mjs';
 import { BridgeError, validateInput } from '../server/bridge-protocol.mjs';
 
 const row = (id = 1, student = 10) => ({ id, id_domzad_teach: 100 + id, stud_stud: student,

@@ -12,7 +12,7 @@ concurrency:
 
 jobs:
   build:
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/desktop'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:

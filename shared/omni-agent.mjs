@@ -4,11 +4,11 @@ import { validateInput, BridgeError } from '../server/bridge-protocol.mjs';
 import { loadMaterialsCatalog, loadMethodPackage } from '../server/teaching-materials.mjs';
 import { loadTeacherDossier } from '../server/teacher-dossier.mjs';
 import { loadScheduleRange } from '../server/schedule-range.mjs';
-import { saveAttendance } from '../extension/attendance.mjs';
-import { lessonTheme } from '../extension/lesson-theme.mjs';
-import { saveLessonMark } from '../extension/lesson-mark.mjs';
-import { saveLessonReward } from '../extension/lesson-reward.mjs';
-import { saveHomeworkMarks } from '../extension/homework.mjs';
+import { saveAttendance } from './attendance.mjs';
+import { lessonTheme } from './lesson-theme.mjs';
+import { saveLessonMark } from './lesson-mark.mjs';
+import { saveLessonReward } from './lesson-reward.mjs';
+import { saveHomeworkMarks } from './homework.mjs';
 
 const origin = 'https://omni.top-academy.ru';
 export async function dispatch(action, input = {}) {
