@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { ArrowRight, ExternalLink, LogIn } from 'lucide-react';
+import { ExternalLink, LogIn } from 'lucide-react';
 import { LoginForm } from '../../features/auth/LoginForm';
 import { HelpTip } from '../../components/ui/HelpTip';
 
@@ -22,6 +22,5 @@ export function ConnectionCard({ busy, waiting, extension, changingAccount, conn
     <span className="lesson-icon"><LogIn size={26}/></span><div className="help-heading"><h2>{title}</h2><HelpTip label="О подключении к Omni">Сессия остаётся на этом компьютере. Демонстрация использует отдельные вымышленные данные.</HelpTip></div><p>{explanation}</p>
     {!changingAccount && (connectionForm ?? <LoginForm busy={busy} onLogin={onLogin}/>)}
     <button className="button secondary" disabled={busy && !connectionForm} onClick={onConnect}><ExternalLink size={17}/>Открыть официальный вход</button>
-    <button className="text-button" onClick={onDemo}>Пока посмотреть демонстрацию<ArrowRight size={15}/></button>
   </section>;
 }

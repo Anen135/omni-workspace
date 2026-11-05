@@ -17,7 +17,7 @@
 
 ## Ownership of workspace behavior
 
-- `LiveWorkspace` coordinates session state, drafts and explicit Save. `workspace-navigation.ts` owns read-only lesson/group/student opening; `WorkspaceShell` owns the shared page structure.
+- `LiveWorkspace` composes `useWorkspaceController` and `WorkspaceView`. The controller coordinates session state, drafts and explicit Save; the view owns workspace rendering and table composition. `workspace-navigation.ts` owns read-only lesson/group/student opening; `WorkspaceShell` owns the shared page structure.
 - `useStudentTableView` owns lesson table filters, sorting, pagination and selection.
 - `useTeachingMaterials`, `useTeacherDossier`, `useHomeworkHistory` and `useIncomeHistory` own feature loading and stale-response handling.
 - `HomeworkEditors` owns the review controls and hover preview; grading confirmation remains with the existing orchestrator.
