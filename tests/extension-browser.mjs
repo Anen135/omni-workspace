@@ -617,7 +617,7 @@ try {
     sidebar: getComputedStyle(node.querySelector('.sidebar')).backgroundColor,
   }));
   assert.match(appearance.font, /sans-serif/);
-  assert.equal(appearance.purple, '#6c4df6');
+  assert.equal(appearance.purple, '#3056d3');
   assert.equal(appearance.sidebar, 'rgb(255, 255, 255)');
   await official.getByRole('button', { name: 'Включить тёмную тему', exact: true }).click();
   assert.equal(await official.locator('#omni-workspace-root').getAttribute('data-omni-theme'), 'dark');
@@ -773,8 +773,10 @@ try {
   assert.equal(await lessonTable.getByRole('checkbox', { name: 'Выбрать ученика: Тестовый ученик А', exact: true }).isChecked(), false, 'remote refresh clears selection even when rows have the same IDs');
 
   await calendar.waitFor({ state: 'detached' });
-  const helpTip = ui.locator('.lesson-context .help-tip-trigger');
-  await helpTip.focus();
+  const helpTip = ui.locator('.reward-budget .help-tip-trigger');
+  await helpTip.scrollIntoViewIfNeeded();
+  await ui.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  await helpTip.evaluate(node => node.focus({ preventScroll: true }));
   await ui.getByRole('tooltip').waitFor();
   assert.equal(await ui.getByRole('tooltip').evaluate(node => node.getRootNode() instanceof ShadowRoot), true);
   assert.equal(await ui.getByRole('tooltip').evaluate(node => getComputedStyle(node).position), 'fixed');
@@ -1004,7 +1006,7 @@ try {
   assert.equal(lessonStudents[0].mark2, 7, 'mark write uses the visit created by the preceding attendance write');
   assert.equal(lessonStudents[0].prize, 1, 'reward write uses the visit created by preceding attendance');
   for (const [index, date, type, value] of [[0, '2026-09-29', 'Контрольная', '10'], [1, '2026-10-02', 'Работа на уроке', '11']]) {
-    await ui.getByRole('button', { name: 'Расписание', exact: true }).click();
+    await ui.locator('.sidebar').getByRole('button', { name: 'Расписание', exact: true }).click();
     await ui.getByRole('button', { name: 'Открыть урок', exact: true }).nth(index).click();
     await ui.locator('.lesson-context-date strong').filter({ hasText: date }).waitFor();
     const gradeLabel = `${type}: Тестовый ученик А`;
@@ -1015,12 +1017,12 @@ try {
     await ui.getByLabel('Присутствие: Тестовый ученик А', { exact: true }).selectOption(index === 0 ? '0' : '1');
     assert.equal(lessonWrites.length, writesBeforeLessonDraft, 'grades and attendance remain local until global Save');
     if (index === 0) {
-      await ui.getByRole('button', { name: 'Расписание', exact: true }).click();
+      await ui.locator('.sidebar').getByRole('button', { name: 'Расписание', exact: true }).click();
       await ui.getByRole('button', { name: 'Открыть урок', exact: true }).nth(1).click();
       await ui.locator('.lesson-context-date strong').filter({ hasText: '2026-10-02' }).waitFor();
       assert.equal(await ui.getByRole('button', { name: 'Контрольная: Тестовый ученик А', exact: true }).textContent(), '7', 'the past lesson draft must not leak into another lesson');
       assert.equal(await ui.getByLabel('Присутствие: Тестовый ученик А', { exact: true }).inputValue(), '2');
-      await ui.getByRole('button', { name: 'Расписание', exact: true }).click();
+      await ui.locator('.sidebar').getByRole('button', { name: 'Расписание', exact: true }).click();
       await ui.getByRole('button', { name: 'Открыть урок', exact: true }).nth(0).click();
       await ui.locator('.lesson-context-date strong').filter({ hasText: '2026-09-29' }).waitFor();
       assert.equal(await ui.getByRole('button', { name: gradeLabel, exact: true }).textContent(), value, 'returning to the original lesson restores its draft');

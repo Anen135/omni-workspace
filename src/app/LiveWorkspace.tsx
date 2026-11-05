@@ -1,3 +1,5 @@
+import { WorkspaceShell } from './components/WorkspaceShell';
+import { createWorkspaceNavigation } from './workspace-navigation';
 import type { WorkspaceConnectionProps } from './Workspace';
 import { UiTestPage } from '../features/ui-tests/UiTestPage';
 import { bufferRequest, type BufferedLessonDraft } from '../services/lesson-draft-buffer';
@@ -310,53 +312,7 @@ export function LiveWorkspace({ onDemo, connectionForm, connectionPending = fals
     return () => window.removeEventListener('beforeunload', warn);
   }, [attendanceSaving, homeworkSaving, hasDrafts]);
 
-  async function loadLesson(group?: string, lenta?: string, date = selectedDate) {
-    if (operation.current || !date) return;
-    const version = sessionVersion.current;
-    operation.current = true; setBusy(true); setError('');
-    try {
-      const result = await omniRequest<RemoteLesson>('lesson', {
-        date, ...(group ? { group } : {}), ...(lenta !== undefined && lenta !== '' ? { lenta } : {}),
-      });
-      if (version !== sessionVersion.current) return;
-      ensureAccount(result.account);
-      const loaded = record(result.presents);
-      if (loaded.cur_date !== date || group && String(loaded.cur_group) !== group || lenta !== undefined && lenta !== '' && String(loaded.cur_lenta) !== lenta) throw new Error('Omni вернул другое занятие. Выбранный урок не открыт — старые данные сохранены.');
-      reconcileDrafts(snapshot?.account.id || result.account.id, snapshot?.account.branch || '', loaded);
-      setLesson(result); if (tab === 'schedule' || date !== selectedDate) setTab('lesson');
-    } catch (reason) { if (version === sessionVersion.current) failed(reason); }
-    finally { operation.current = false; setBusy(false); }
-  }
-  async function openGroup(group: RemoteRecord, refresh = false) {
-    const id = label(group.id_tgroups);
-    if (!id || operation.current) return;
-    const version = sessionVersion.current;
-    operation.current = true; setBusy(true); setError(''); setGroupStudents(null);
-    setGroupId(id); setGroupName(label(group.name_tgroups));
-    try {
-      const result = await rosterCache!.read(id, { priority: 'foreground' }, refresh);
-      if (version !== sessionVersion.current) return;
-      ensureAccount(result.account); setGroupStudents({ data: result.students, error: null }); setGroupName(label(group.name_tgroups));
-    } catch (reason) {
-      if (version === sessionVersion.current) {
-        setGroupStudents({ data: null, error: reason instanceof Error ? reason.message : 'Не удалось загрузить студентов.' });
-        if (reason instanceof ConnectionError && ['AUTH_REQUIRED', 'ACCOUNT_CHANGED', 'CHALLENGE'].includes(reason.code)) failed(reason);
-      }
-    }
-    finally { operation.current = false; setBusy(false); }
-  }
-  async function openStudent(student: RemoteRecord) {
-    const id = label(student.id_stud);
-    if (!id || operation.current) return;
-    const version = sessionVersion.current;
-    operation.current = true; setBusy(true); setError('');
-    try {
-      const result = await omniRequest<{ account: { id: string }; details: Section; attendance: Section }>('student', { stud: id });
-      if (version !== sessionVersion.current) return;
-      ensureAccount(result.account); setDetail({ title: label(student.fio_stud) || 'Студент', student, sections: [result.details, result.attendance] });
-    } catch (reason) { if (version === sessionVersion.current) failed(reason); }
-    finally { operation.current = false; setBusy(false); }
-  }
+  const { loadLesson, openGroup, openStudent } = createWorkspaceNavigation({ operation, sessionVersion, selectedDate, tab, snapshot, rosterCache, setBusy, setError, ensureAccount, reconcileDrafts, setLesson, setTab, failed, setGroupStudents, setGroupId, setGroupName, setDetail });
   function exportSnapshot() {
     if (!snapshot) return;
     const data = { source: 'omni', snapshot, lesson, exportedAt: new Date().toISOString() };
@@ -748,13 +704,18 @@ export function LiveWorkspace({ onDemo, connectionForm, connectionPending = fals
   }
 
   const startup = isExtension() && !snapshot && !connectionForm && !changingAccount && (connectionPending || (!authNeeded && !waiting));
-  return <div className="app-shell live-workspace">
-    <WorkspaceSidebar account={snapshot?.account} tab={tab} onNavigate={setTab} hasHomework={reviewItems.some(item => item.canGrade)}/>
-    <main>
-      <WorkspaceHeader account={snapshot?.account} teachers={teachers} busy={busy} authNeeded={authNeeded}
+  return <WorkspaceShell navigation={<WorkspaceSidebar account={snapshot?.account} tab={tab} onNavigate={setTab} hasHomework={reviewItems.some(item => item.canGrade)}/>} header={<WorkspaceHeader account={snapshot?.account} teachers={teachers} busy={busy} authNeeded={authNeeded}
         extension={isExtension()} onRefresh={() => void refresh()}
-        onTeacherChange={id => void switchTeacher(id)} onAccountChange={() => void changeAccount()}/>
-      <div className="page-content">
+        onTeacherChange={id => void switchTeacher(id)} onAccountChange={() => void changeAccount()}/>} overlays={<>
+    {snapshot && materialsView?.context === draftKey && <LessonMaterialsDialog open contextToken={draftKey} account={snapshot.account}
+      currentLesson={materialLesson?.context === draftKey ? materialLesson.lesson : lesson} theme={materialsView.theme} busy={busy}
+      onClose={() => setMaterialsView(null)} onLoadCurrent={loadCurrentMaterials} onConnectionError={failed}/>}
+    {detail && <StudentDetailDialog dialogRef={dialog} detail={detail} onClose={() => setDetail(null)}/>}
+    {notice && <WorkspaceToast message={notice} onClose={() => setNotice('')}/>}
+    <WorkspaceQuickActions connected={!!snapshot} schedule={tab === 'schedule'} busy={busy}
+      onExport={exportSnapshot} onConnect={() => void connect()}/>
+</>}>
+
         <WorkspaceMobileNav tab={tab} onNavigate={setTab} onDemo={openDemo}/>
         {(!startup || tab === 'settings' || tab === 'help' || tab === 'ui-tests') && <WorkspacePageHeading tab={tab}>
           {tab === 'schedule' && snapshot && <ScheduleToolbar today={today} date={scheduleDates[0] || today}
@@ -823,14 +784,6 @@ export function LiveWorkspace({ onDemo, connectionForm, connectionPending = fals
           <div className="bottom-actions"><span><ShieldCheck size={17}/>{isExtension() ? 'Данные Omni · отметки посещаемости сохраняются на сервере' : 'Данные загружены из Omni · только чтение'}</span></div>
         </>}
         <footer className="page-footer"><span>omni workspace</span><span>Больше внимания ученикам.</span><span>Локальное подключение</span></footer>
-      </div>
-    </main>
-    {snapshot && materialsView?.context === draftKey && <LessonMaterialsDialog open contextToken={draftKey} account={snapshot.account}
-      currentLesson={materialLesson?.context === draftKey ? materialLesson.lesson : lesson} theme={materialsView.theme} busy={busy}
-      onClose={() => setMaterialsView(null)} onLoadCurrent={loadCurrentMaterials} onConnectionError={failed}/>}
-    {detail && <StudentDetailDialog dialogRef={dialog} detail={detail} onClose={() => setDetail(null)}/>}
-    {notice && <WorkspaceToast message={notice} onClose={() => setNotice('')}/>}
-    <WorkspaceQuickActions connected={!!snapshot} schedule={tab === 'schedule'} busy={busy}
-      onExport={exportSnapshot} onConnect={() => void connect()}/>
-  </div>;
+
+  </WorkspaceShell>;
 }
