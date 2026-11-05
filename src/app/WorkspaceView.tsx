@@ -34,7 +34,11 @@ import './workspace.css';
 
 const emptySection: Section = { data: null, error: null };
 
-export function WorkspaceView({ snapshot, tab, setTab, reviewItems, teachers, busy, authNeeded, refresh, switchTeacher, changeAccount, materialsView, draftKey, materialLesson, lesson, setMaterialsView, loadCurrentMaterials, failed, detail, dialog, setDetail, notice, setNotice, exportSnapshot, connect, openDemo, startup, today, scheduleDates, scheduleRange, week, weekForDate, error, setError, switchingTeacher, connectionInterval, setConnectionInterval, onNativeLogin, connectionForm, waiting, changingAccount, connectionState, login, onDemo, attendanceSaving, draft, hasTheme, presentData, attendanceReason, bufferedDrafts, saveLessonDraft, clearLessonDraft, selectedDate, lessonStudents, currentTheme, estimates, loadLessonThemes, stageTheme, dayLessons, loadLesson, loadPreviousLesson, stagePreviousLesson, lessonTableContext, stageBulk, stageFill, stageRewardAllocation, stageMark, stageReward, markAttendance, schedule, groupId, groups, groupName, groupStudents, openGroup, openStudent, sessionVersion, refreshHomework, studentAverages, averages, homeworkNeedsReload, gradeHomework, workspaceBusy, dossierRefreshKey, currentAccount, lastBranch, incomeGeneration, setIncomeBusy }: ReturnType<typeof useWorkspaceController>) {
+export function WorkspaceView(model: ReturnType<typeof useWorkspaceController>) {
+  const { snapshot, teachers, busy, authNeeded, refresh, switchTeacher, changeAccount, connect, startup, error, setError, switchingTeacher, connectionInterval, setConnectionInterval, onNativeLogin, connectionForm, waiting, changingAccount, connectionState, login, sessionVersion, workspaceBusy } = model.session;
+  const { reviewItems, refreshHomework, homeworkNeedsReload, gradeHomework } = model.homework;
+  const { materialsView, draftKey, materialLesson, lesson, setMaterialsView, loadCurrentMaterials, attendanceSaving, draft, hasTheme, presentData, attendanceReason, bufferedDrafts, saveLessonDraft, clearLessonDraft, selectedDate, lessonStudents, currentTheme, estimates, loadLessonThemes, stageTheme, dayLessons, loadLesson, loadPreviousLesson, stagePreviousLesson, lessonTableContext, stageBulk, stageFill, stageRewardAllocation, stageMark, stageReward, markAttendance } = model.lesson;
+  const { tab, setTab, failed, detail, dialog, setDetail, notice, setNotice, exportSnapshot, today, scheduleDates, scheduleRange, week, weekForDate, schedule, groupId, groups, groupName, groupStudents, openGroup, openStudent, studentAverages, averages, dossierRefreshKey, onIncomeLoading } = model.page;
   const studentTable = (items: RemoteRecord[]) => {
     const displayed = tab === 'lesson' && draft ? items.map(student => {
       const stud = label(student.id_stud);
@@ -54,7 +58,7 @@ export function WorkspaceView({ snapshot, tab, setTab, reviewItems, teachers, bu
       onExport={exportSnapshot} onConnect={() => void connect()}/>
 </>}>
 
-        <WorkspaceMobileNav tab={tab} onNavigate={setTab} onDemo={openDemo}/>
+        <WorkspaceMobileNav tab={tab} onNavigate={setTab}/>
         {(!startup || tab === 'settings' || tab === 'help' || tab === 'ui-tests') && <WorkspacePageHeading tab={tab}>
           {tab === 'schedule' && snapshot && <ScheduleToolbar today={today} date={scheduleDates[0] || today}
             range={scheduleRange} week={week} busy={busy} onWeekChange={value => void refresh(value)}
@@ -64,11 +68,11 @@ export function WorkspaceView({ snapshot, tab, setTab, reviewItems, teachers, bu
           onClose={() => setError('')} onRetry={() => void (authNeeded ? connect() : snapshot ? refresh() : connect())}/>}
         {switchingTeacher && <TeacherSwitchingState/>}
         {tab === 'settings' && <WorkspaceSettings interval={connectionInterval} onSave={setConnectionInterval}/>}
-        {tab === 'help' && <HelpPage onDemo={openDemo} onUiTests={() => setTab('ui-tests')}/>}
+        {tab === 'help' && <HelpPage onUiTests={() => setTab('ui-tests')}/>}
         {tab === 'ui-tests' && <UiTestPage onBack={() => setTab('help')}/>}
         {!snapshot && !switchingTeacher && tab !== 'help' && tab !== 'settings' && tab !== 'ui-tests' && (startup ? <WorkspaceStartup onNative={onNativeLogin || (() => void connect())}/> : <ConnectionCard connectionForm={connectionForm} busy={busy} waiting={waiting}
           extension={isExtension()} changingAccount={changingAccount} connectionState={connectionState}
-          onLogin={login} onConnect={onNativeLogin || (() => void connect())} onDemo={onDemo}/>)}
+          onLogin={login} onConnect={onNativeLogin || (() => void connect())}/>)}
         {snapshot && <>
           {tab === 'lesson' && <div className="lesson-workspace">
             {isExtension() && <LessonSaveBar busy={busy} saving={attendanceSaving} draft={draft} hasTheme={hasTheme}
@@ -113,7 +117,7 @@ export function WorkspaceView({ snapshot, tab, setTab, reviewItems, teachers, bu
             grading={isExtension() ? { busy, unavailable: homeworkNeedsReload ? 'Перед следующей оценкой нажмите «Обновить работы».' : undefined, onGrade: gradeHomework } : undefined}/>}
           <RetainedSection key={`dossier:${snapshot.account.id}:${snapshot.account.branch}:${sessionVersion.current}`} active={tab === 'dossier'}><TeacherDossier
             accountId={snapshot.account.id} accountName={snapshot.account.name} branch={snapshot.account.branch} schedule={snapshot.schedule} today={today} disabled={workspaceBusy} active={tab === 'dossier'} refreshKey={dossierRefreshKey} onConnectionError={failed}
-            onIncomeLoading={loading => { if (currentAccount.current === snapshot.account.id && lastBranch.current === (snapshot.account.branch || '') && sessionVersion.current === incomeGeneration) setIncomeBusy(loading); }}/></RetainedSection>
+            onIncomeLoading={onIncomeLoading}/></RetainedSection>
           <RetainedSection key={`materials:${snapshot.account.id}:${snapshot.account.branch}:${sessionVersion.current}`} active={tab === 'materials'}>
             <TeachingMaterials accountId={snapshot.account.id} active={tab === 'materials'} refreshKey={snapshot.groups} disabled={busy} onConnectionError={failed}/>
             <IssuedMaterialsPanel lesson={lesson} busy={busy} date={selectedDate} groupSelected={!!presentData.cur_group}

@@ -1361,7 +1361,7 @@ try {
   try {
     await ui.getByRole('alert').filter({ hasText: 'Omni отклонил переключение' }).waitFor();
   } catch (error) {
-    console.error('Rejected teacher switch fixture state:', JSON.stringify({ teacherId, alerts: await ui.getByRole('alert').allTextContents(), selected: await actAs.inputValue().catch(() => 'absent'), lastPaths: paths.slice(-8) }));
+    console.error('Rejected teacher switch fixture state:', JSON.stringify({ teacherId, alerts: await ui.getByRole('alert').allTextContents(), selected: await actAs.inputValue().catch(() => 'absent'), lastPaths: paths.slice(-8), errors, body: (await ui.locator('body').innerText()).slice(-1500), capabilities: await extensionMessage({action: 'capabilities', input: {}}, ui) }));
     await ui.screenshot({ path: 'tmp/rejected-teacher-switch-failure.png' });
     throw error;
   }

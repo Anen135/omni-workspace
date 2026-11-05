@@ -105,3 +105,5 @@ Desktop-оболочка и локальный сервер оставлены �
 ## Лицензия
 
 Copyright (C) 2026 Anen135 и участники проекта. GNU GPL version 3 only — [LICENSE](LICENSE). Программа предоставляется без гарантий; зависимости сохраняют собственные лицензии.
+
+Standalone variants: `desktop` packages its own UI; `demo-design` owns the manually dispatched GitHub Pages demo workflow. The manual Pages workflow explicitly checks out `demo-design`; extension sources are not published.
