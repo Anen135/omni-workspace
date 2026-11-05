@@ -1,6 +1,5 @@
 import { lazy, Suspense, useEffect, useState } from 'react';
 import { LiveWorkspace } from './LiveWorkspace';
-import { isDesktop } from '../services/desktop-client';
 
 const DemoApp = lazy(() => import('../demo/DemoApp'));
 
@@ -14,6 +13,6 @@ export function Workspace() {
   }, []);
 
   const preview = <Suspense fallback={<p role="status">Загружаю демонстрацию…</p>}><DemoApp/></Suspense>;
-  if (import.meta.env.MODE === 'pages' && !isDesktop()) return <><div className="pages-beta-notice" role="note">Бета-тест · демонстрация на вымышленных данных. Вход в Omni доступен в desktop-приложении или при локальном запуске.</div>{preview}</>;
+  if (import.meta.env.MODE === 'pages' && true) return <><div className="pages-beta-notice" role="note">Бета-тест · демонстрация на вымышленных данных. Вход в Omni доступен в desktop-приложении или при локальном запуске.</div>{preview}</>;
   return demo ? <><div className="demo-return"><button onClick={() => { if (import.meta.env.MODE !== 'extension') location.hash = ''; setDemo(false); }}>← Вернуться к реальному Omni</button></div>{preview}</> : <LiveWorkspace onDemo={() => { if (import.meta.env.MODE !== 'extension') location.hash = 'demo'; setDemo(true); }}/>;
 }

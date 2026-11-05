@@ -3,7 +3,6 @@ import { createPortal } from 'react-dom';
 import { ChevronDown, ChevronUp, ExternalLink } from 'lucide-react';
 import { materialLink } from '../../features/materials/teaching-materials';
 import './file-preview.css';
-import { desktopRequest, isDesktop } from '../../services/desktop-client';
 import { extensionRequest, isExtension } from '../../services/extension-client';
 const PdfPreview = lazy(() => import('./PdfPreview'));
 
@@ -91,8 +90,8 @@ function AcademyPreview({ url, title, compact }: { url: string; title: string; c
     setFile(null); setError('');
     void (async () => {
       try {
-        if (isDesktop() || isExtension()) {
-          const result = await (isExtension() ? extensionRequest<{ type: string; base64: string }>('file-preview', { url }) : desktopRequest<{ type: string; base64: string }>('file-preview', { url }));
+        if (isExtension()) {
+          const result = await extensionRequest<{ type: string; base64: string }>('file-preview', { url });
           if (controller.signal.aborted) return;
           const bytes = Uint8Array.from(atob(result.base64), value => value.charCodeAt(0));
           objectUrl = URL.createObjectURL(new Blob([bytes], { type: result.type }));
