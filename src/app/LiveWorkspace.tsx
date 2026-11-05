@@ -752,7 +752,7 @@ export function LiveWorkspace({ onDemo, connectionForm, connectionPending = fals
     <WorkspaceSidebar account={snapshot?.account} tab={tab} onNavigate={setTab} hasHomework={reviewItems.some(item => item.canGrade)}/>
     <main>
       <WorkspaceHeader account={snapshot?.account} teachers={teachers} busy={busy} authNeeded={authNeeded}
-        desktop={false} extension={isExtension()} onRefresh={() => void refresh()}
+        extension={isExtension()} onRefresh={() => void refresh()}
         onTeacherChange={id => void switchTeacher(id)} onAccountChange={() => void changeAccount()}/>
       <div className="page-content">
         <WorkspaceMobileNav tab={tab} onNavigate={setTab} onDemo={openDemo}/>

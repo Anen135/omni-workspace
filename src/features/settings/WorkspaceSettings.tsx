@@ -1,14 +1,7 @@
 import { useState } from 'react';
 
-export const connectionIntervalKey = 'omni.connection-check-seconds';
-export const connectionIntervals = [15, 30, 60, 120, 300] as const;
-
-export function readConnectionInterval(): number {
-  try {
-    const value = Number(localStorage.getItem(connectionIntervalKey));
-    return connectionIntervals.some(interval => interval === value) ? value : 60;
-  } catch { return 60; }
-}
+import { connectionIntervals, saveConnectionInterval } from './connection-settings';
+export { connectionIntervalKey, connectionIntervals, readConnectionInterval } from './connection-settings';
 
 export function WorkspaceSettings({ interval, onSave }: { interval: number; onSave: (value: number) => void }) {
   const [value, setValue] = useState(interval);
@@ -19,7 +12,7 @@ export function WorkspaceSettings({ interval, onSave }: { interval: number; onSa
     <form onSubmit={event => {
       event.preventDefault();
       try {
-        localStorage.setItem(connectionIntervalKey, String(value));
+        saveConnectionInterval(value);
         onSave(value);
         setMessage('Настройки сохранены.');
       } catch { setMessage('Не удалось сохранить настройки в браузере.'); }
