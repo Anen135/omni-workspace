@@ -69,7 +69,7 @@ export function createWorkspaceSession({ week, operation, sessionVersion, setBus
         } else failed(reason);
       }
     }
-    finally { operation.current = false; setBusy(false); }
+    finally { if (version === sessionVersion.current) { operation.current = false; setBusy(false); } }
   }
   async function connect() {
     if (operation.current) return;
@@ -82,46 +82,72 @@ export function createWorkspaceSession({ week, operation, sessionVersion, setBus
       if (!state.connected) setWaiting(true);
       else { operation.current = false; await refresh(); }
     } catch (reason) { if (version === sessionVersion.current) failed(reason); }
-    finally { operation.current = false; setBusy(false); }
+    finally { if (version === sessionVersion.current) { operation.current = false; setBusy(false); } }
   }
   async function login(username: string, password: string) {
     if (operation.current) return;
+    const version = sessionVersion.current;
     operation.current = true; setBusy(true); setError(''); setWaiting(false);
     try {
       await omniRequest('login', { username, password });
+      if (version !== sessionVersion.current) return;
       operation.current = false;
       await refresh();
-    } catch (reason) { failed(reason); }
-    finally { password = ''; operation.current = false; setBusy(false); }
+    } catch (reason) { if (version === sessionVersion.current) failed(reason); }
+    finally { password = ''; if (version === sessionVersion.current) { operation.current = false; setBusy(false); } }
   }
   async function changeAccount() {
     if (operation.current || !window.confirm(`Выйти из текущего аккаунта Omni и войти в другой? Это изменит общую сессию Omni в этом профиле браузера.${hasDrafts ? ' Локальные черновики уроков будут удалены.' : ''}`)) return;
+    const version = sessionVersion.current;
     operation.current = true; setBusy(true); setError(''); setWaiting(false); setChangingAccount(true);
     setLessonDrafts({});
     setSnapshot(null); setLesson(null); setGroupStudents(null); setGroupName(''); setGroupId(''); setDetail(null); setNotice('');
     currentAccount.current = ''; lastBranch.current = ''; setWeek(0);
     try {
       await omniRequest('switch-account');
+      if (version !== sessionVersion.current) return;
       setConnectionState('login'); setAuthNeeded(true); setWaiting(true);
-    } catch (reason) { failed(reason); }
-    finally { operation.current = false; setBusy(false); }
+    } catch (reason) { if (version === sessionVersion.current) failed(reason); }
+    finally { if (version === sessionVersion.current) { operation.current = false; setBusy(false); } }
   }
   async function switchTeacher(teacherId: string) {
     if (!snapshot || operation.current || teacherId === snapshot.account.id) return;
     if (hasDrafts && !window.confirm('При смене преподавателя черновики уроков будут удалены. Продолжить?')) return;
     setLessonDrafts({});
+    const version = sessionVersion.current;
     const accountId = snapshot.account.id;
     operation.current = true; setBusy(true); setSwitchingTeacher(true); setError('');
     setSnapshot(null); setLesson(null); setGroupStudents(null); setGroupName(''); setGroupId(''); setDetail(null); setNotice('');
     currentAccount.current = ''; lastBranch.current = ''; setWeek(0);
     try {
       const result = await omniRequest<{ account: { id: string } }>('switch-teacher', { teacherId, accountId });
+      if (version !== sessionVersion.current) return;
       if (result.account.id !== teacherId) throw new ConnectionError('ACCOUNT_CHANGED', 'Omni не подтвердил выбранного преподавателя. Обновите подключение.');
       operation.current = false;
       await refresh(0);
-    } catch (reason) { failed(reason); }
-    finally { operation.current = false; setBusy(false); setSwitchingTeacher(false); }
+    } catch (reason) { if (version === sessionVersion.current) failed(reason); }
+    finally { if (version === sessionVersion.current) { operation.current = false; setBusy(false); setSwitchingTeacher(false); } }
   }
 
-return { refresh, connect, login, changeAccount, switchTeacher };
+  function watchInitialStatus() {
+    let cancelled = false;
+    const version = sessionVersion.current;
+    void omniRequest<{ connected: boolean; state?: string }>('status').then(state => {
+      if (cancelled || version !== sessionVersion.current) return;
+      if (state.connected) void refresh();
+      else {
+        setConnectionState(state.state || 'loading');
+        setAuthNeeded(state.state === 'login');
+        setWaiting(true);
+      }
+    }).catch(reason => {
+      if (cancelled || version !== sessionVersion.current) return;
+      if (isExtension() && reason instanceof ConnectionError && reason.code === 'BUSY') {
+        setConnectionState('loading'); setWaiting(true);
+      } else { setAuthNeeded(true); failed(reason); }
+    });
+    return () => { cancelled = true; };
+  }
+
+return { refresh, connect, login, changeAccount, switchTeacher, watchInitialStatus };
 }

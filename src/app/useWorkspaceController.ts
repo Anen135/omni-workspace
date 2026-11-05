@@ -127,15 +127,21 @@ export function useWorkspaceController({ connectionForm, connectionPending = fal
     return Math.round((monday(chosen).getTime() - monday(now).getTime()) / 604800000);
   }
 
+  function invalidateWorkspaceSession() {
+    // New generations own their UI lock; the request queue still serializes transport.
+    sessionVersion.current++;
+    invalidatePendingOmniRequests();
+    operation.current = false;
+    setBusy(false); setIncomeBusy(false); setAttendanceSaving(false); setHomeworkSaving(false);
+    setSwitchingTeacher(false); setChangingAccount(false);
+    setHomeworkSaved({}); setHomeworkNeedsReload(false); setLessonDrafts({});
+    setSnapshot(null); setLesson(null); setGroupStudents(null); setGroupName(''); setGroupId(''); setDetail(null); setNotice('');
+    currentAccount.current = ''; lastBranch.current = ''; setWeek(0);
+    setAuthNeeded(true);
+  }
   function failed(reason: unknown) {
     setError(reason instanceof Error ? reason.message : 'Не удалось загрузить данные.');
-    if (reason instanceof ConnectionError && ['AUTH_REQUIRED', 'ACCOUNT_CHANGED', 'CHALLENGE'].includes(reason.code)) {
-      invalidatePendingOmniRequests();
-      setIncomeBusy(false);
-      setLessonDrafts({});
-      setAuthNeeded(true); setSnapshot(null); setLesson(null); setGroupStudents(null); setDetail(null);
-      currentAccount.current = ''; lastBranch.current = '';
-    }
+    if (reason instanceof ConnectionError && ['AUTH_REQUIRED', 'ACCOUNT_CHANGED', 'CHALLENGE'].includes(reason.code)) invalidateWorkspaceSession();
   }
   function ensureAccount(account: { id: string }) {
     if (currentAccount.current && currentAccount.current !== account.id) throw new ConnectionError('ACCOUNT_CHANGED', 'Аккаунт сменился. Обновите подключение.');
@@ -154,35 +160,18 @@ export function useWorkspaceController({ connectionForm, connectionPending = fal
       if (result.account.branch !== undefined && result.account.branch !== branch || attendanceDraftKey(accountId, branch, record(result.presents)) !== context) throw new Error('Omni вернул материалы другого занятия. Обновите урок.');
       setMaterialLesson({ context, lesson: result });
     } catch (reason) { if (version === sessionVersion.current) { failed(reason); throw reason; } }
-    finally { operation.current = false; setBusy(false); }
+    finally { if (version === sessionVersion.current) { operation.current = false; setBusy(false); } }
   }
   const attendanceReason = draft?.needsReload ? 'Перед следующей правкой загрузите урок заново.' : attendanceUnavailable(presentData);
   const { storeDraft, reconcileDrafts, stageMark, stageBulk, stageFill, stageRewardAllocation, stageReward, loadPreviousLesson, stagePreviousLesson, loadLessonThemes, stageTheme, markAttendance, clearLessonDraft, saveLessonDraft } = createWorkspaceLessonDraft({ week, setLessonDrafts, snapshot, operation, attendanceReason, lessonStudents, draftKey, averages, draft, studentAverages, setNotice, presentData, selectedDate, sessionVersion, setBusy, setError, failed, ensureAccount, bufferedDrafts, setBufferedDrafts, hasTheme, attemptedBuffers, setAttendanceSaving, setSnapshot, setLesson, setGroupStudents, setGroupId, setGroupName, setDetail, setRosterRevision });
-  const { refresh, connect, login, changeAccount, switchTeacher } = createWorkspaceSession({ week, operation, sessionVersion, setBusy, setError, currentAccount, lastBranch, draft, presentData, ensureAccount, draftKey, setLessonDrafts, setGroupStudents, setGroupName, setGroupId, setDetail, reconcileDrafts, setSnapshot, setChangingAccount, setLesson, setWeek, setAuthNeeded, setWaiting, setHomeworkSaved, setHomeworkNeedsReload, snapshot, setConnectionState, failed, hasDrafts, setNotice, setSwitchingTeacher });
+  const { refresh, connect, login, changeAccount, switchTeacher, watchInitialStatus } = createWorkspaceSession({ week, operation, sessionVersion, setBusy, setError, currentAccount, lastBranch, draft, presentData, ensureAccount, draftKey, setLessonDrafts, setGroupStudents, setGroupName, setGroupId, setDetail, reconcileDrafts, setSnapshot, setChangingAccount, setLesson, setWeek, setAuthNeeded, setWaiting, setHomeworkSaved, setHomeworkNeedsReload, snapshot, setConnectionState, failed, hasDrafts, setNotice, setSwitchingTeacher });
   useEffect(() => {
     return onExtensionSessionChange(() => {
-      invalidatePendingOmniRequests();
-      setIncomeBusy(false);
-      setHomeworkSaved({}); setHomeworkNeedsReload(false);
-      setLessonDrafts({});
-      sessionVersion.current++;
-      setSnapshot(null); setLesson(null); setGroupStudents(null); setGroupName(''); setGroupId(''); setDetail(null); setNotice('');
-      currentAccount.current = ''; lastBranch.current = ''; setWeek(0);
-      setError(''); setAuthNeeded(true); setWaiting(true); setConnectionState('loading');
+      invalidateWorkspaceSession();
+      setError(''); setWaiting(true); setConnectionState('loading');
     });
   }, []);
-  useEffect(() => {
-    let cancelled = false;
-    const version = sessionVersion.current;
-    void omniRequest<{ connected: boolean }>('status').then(state => {
-      if (!cancelled && version === sessionVersion.current && state.connected) void refresh();
-    }).catch(reason => {
-      if (!cancelled && version === sessionVersion.current && isExtension() && reason instanceof ConnectionError && reason.code === 'BUSY') {
-        setConnectionState('loading'); setWaiting(true);
-      }
-    });
-    return () => { cancelled = true; };
-  }, []);
+  useEffect(watchInitialStatus, []);
   useEffect(() => {
     if (!waiting) return;
     const timer = setInterval(() => {

@@ -19,7 +19,7 @@ export function createWorkspaceNavigation({ operation, sessionVersion, selectedD
       reconcileDrafts(snapshot?.account.id || result.account.id, snapshot?.account.branch || '', loaded);
       setLesson(result); if (tab === 'schedule' || date !== selectedDate) setTab('lesson');
     } catch (reason) { if (version === sessionVersion.current) failed(reason); }
-    finally { operation.current = false; setBusy(false); }
+    finally { if (version === sessionVersion.current) { operation.current = false; setBusy(false); } }
   }
   async function openGroup(group: RemoteRecord, refresh = false) {
     const id = label(group.id_tgroups);
@@ -37,7 +37,7 @@ export function createWorkspaceNavigation({ operation, sessionVersion, selectedD
         if (reason instanceof ConnectionError && ['AUTH_REQUIRED', 'ACCOUNT_CHANGED', 'CHALLENGE'].includes(reason.code)) failed(reason);
       }
     }
-    finally { operation.current = false; setBusy(false); }
+    finally { if (version === sessionVersion.current) { operation.current = false; setBusy(false); } }
   }
   async function openStudent(student: RemoteRecord) {
     const id = label(student.id_stud);
@@ -49,7 +49,7 @@ export function createWorkspaceNavigation({ operation, sessionVersion, selectedD
       if (version !== sessionVersion.current) return;
       ensureAccount(result.account); setDetail({ title: label(student.fio_stud) || 'Студент', student, sections: [result.details, result.attendance] });
     } catch (reason) { if (version === sessionVersion.current) failed(reason); }
-    finally { operation.current = false; setBusy(false); }
+    finally { if (version === sessionVersion.current) { operation.current = false; setBusy(false); } }
   }
   return { loadLesson, openGroup, openStudent };
 }

@@ -139,7 +139,7 @@ export function createWorkspaceLessonDraft({ week, setLessonDrafts, snapshot, op
     } catch (reason) {
       if (version === sessionVersion.current && reason instanceof ConnectionError && ['AUTH_REQUIRED', 'ACCOUNT_CHANGED', 'CHALLENGE'].includes(reason.code)) failed(reason);
       throw reason;
-    } finally { operation.current = false; setBusy(false); }
+    } finally { if (version === sessionVersion.current) { operation.current = false; setBusy(false); } }
   }
   function stagePreviousLesson(source: PreviousLessonData, selection: CopySelection) {
     if (!snapshot || operation.current || attendanceReason) return;
@@ -173,7 +173,7 @@ export function createWorkspaceLessonDraft({ week, setLessonDrafts, snapshot, op
     } catch (reason) {
       if (version === sessionVersion.current) failed(reason);
       throw reason;
-    } finally { operation.current = false; setBusy(false); }
+    } finally { if (version === sessionVersion.current) { operation.current = false; setBusy(false); } }
   }
   async function stageTheme(choice: ThemeChoice) {
     if (operation.current || attendanceReason) throw new Error('Перечитайте урок перед изменением темы.');
@@ -200,14 +200,16 @@ export function createWorkspaceLessonDraft({ week, setLessonDrafts, snapshot, op
     });
   }
   async function clearLessonDraft() {
+    const version = sessionVersion.current;
     const buffered = bufferedDrafts.find(entry => entry.key === draftKey);
     if (buffered) {
       try {
         const claimed = await bufferRequest({ op: 'claim', key: buffered.key, revision: buffered.revision, manual: true });
         if (!claimed) return;
         await bufferRequest({ op: 'remove', key: claimed.key, revision: claimed.revision });
+        if (version !== sessionVersion.current) return;
         setBufferedDrafts(current => current.filter(entry => entry.key !== draftKey));
-      } catch (reason) { setError(reason instanceof Error ? reason.message : 'Не удалось удалить буфер.'); return; }
+      } catch (reason) { if (version === sessionVersion.current) setError(reason instanceof Error ? reason.message : 'Не удалось удалить буфер.'); return; }
     }
     setLessonDrafts(current => { const next = { ...current }; delete next[draftKey]; return next; });
   }
@@ -229,6 +231,7 @@ export function createWorkspaceLessonDraft({ week, setLessonDrafts, snapshot, op
     attemptedBuffers.current.add(`${version}:${key}`);
     operation.current = true; setBusy(true); setAttendanceSaving(true); setError(''); setNotice('');
     function track(entry: BufferedLessonDraft | null) {
+      if (version !== sessionVersion.current) return;
       setBufferedDrafts(current => entry ? [...current.filter(item => item.key !== key), entry] : current.filter(item => item.key !== key));
     }
     async function checkpoint(state: 'ready' | 'uncertain' | 'review', release = false) {
@@ -303,8 +306,8 @@ export function createWorkspaceLessonDraft({ week, setLessonDrafts, snapshot, op
         }
         uncertain = false;
         await checkpoint('ready');
-        storeDraft(key, pending);
-        if (result.warning) { setError(result.warning); }
+        if (version === sessionVersion.current) storeDraft(key, pending);
+        if (version === sessionVersion.current && result.warning) { setError(result.warning); }
       }
       const changes: AttendanceChange[] = Object.values(pending.attendance);
       if (changes.length) {
@@ -324,7 +327,7 @@ export function createWorkspaceLessonDraft({ week, setLessonDrafts, snapshot, op
         }
         uncertain = false;
         await checkpoint('ready');
-        storeDraft(key, pending);
+        if (version === sessionVersion.current) storeDraft(key, pending);
       }
       for (const [markKey, change] of Object.entries(pending.marks)) {
         const matches = rows(fresh.students).filter(student => label(student.id_stud) === change.stud);
@@ -333,7 +336,7 @@ export function createWorkspaceLessonDraft({ week, setLessonDrafts, snapshot, op
         delete pending.marks[markKey];
         uncertain = false;
         await checkpoint('ready');
-        storeDraft(key, pending);
+        if (version === sessionVersion.current) storeDraft(key, pending);
       }
       // Release allocated coins first, so a redistribution cannot exceed the
       // limit temporarily even when its final draft fits within five coins.
@@ -347,9 +350,10 @@ export function createWorkspaceLessonDraft({ week, setLessonDrafts, snapshot, op
         delete pending.rewards![stud];
         uncertain = false;
         await checkpoint('ready');
-        storeDraft(key, pending);
+        if (version === sessionVersion.current) storeDraft(key, pending);
       }
       if (envelope) await bufferRequest({ op: 'remove', key, revision: envelope.revision });
+      if (version !== sessionVersion.current) return;
       track(null);
       storeDraft(key, emptyLessonDraft());
       if (key === draftKey) { setGroupStudents(null); setGroupId(''); setGroupName(''); setDetail(null); }
@@ -366,7 +370,7 @@ export function createWorkspaceLessonDraft({ week, setLessonDrafts, snapshot, op
         storeDraft(key, { ...pending, needsReload: true });
         failed(reason);
       }
-    } finally { operation.current = false; setBusy(false); setAttendanceSaving(false); setRosterRevision(value => value + 1); }
+    } finally { if (version === sessionVersion.current) { operation.current = false; setBusy(false); setAttendanceSaving(false); setRosterRevision(value => value + 1); } }
   }
 
 return { storeDraft, reconcileDrafts, stageMark, stageBulk, stageFill, stageRewardAllocation, stageReward, loadPreviousLesson, stagePreviousLesson, loadLessonThemes, stageTheme, markAttendance, clearLessonDraft, saveLessonDraft };

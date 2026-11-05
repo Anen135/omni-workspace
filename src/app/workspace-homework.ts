@@ -34,7 +34,7 @@ export function createWorkspaceHomework({ snapshot, operation, sessionVersion, s
       setSnapshot(current => current?.account.id === accountId && (current.account.branch || '') === branch ? { ...current, newHomework: result.newHomework } : current);
       setHomeworkSaved({}); setHomeworkNeedsReload(false);
     } catch (reason) { if (version === sessionVersion.current) failed(reason); }
-    finally { operation.current = false; setBusy(false); }
+    finally { if (version === sessionVersion.current) { operation.current = false; setBusy(false); } }
   }
   async function gradeHomework(items: HomeworkReviewItem[], mark: number, response?: HomeworkResponseDraft): Promise<{ confirmedKeys: string[] }> {
     if (!snapshot || operation.current || homeworkNeedsReload) throw new Error('Обновите список работ перед сохранением.');
@@ -63,7 +63,7 @@ export function createWorkspaceHomework({ snapshot, operation, sessionVersion, s
     } catch (reason) {
       if (version === sessionVersion.current) { setHomeworkNeedsReload(true); failed(reason); }
       throw reason;
-    } finally { operation.current = false; setBusy(false); setHomeworkSaving(false); setRosterRevision(value => value + 1); }
+    } finally { if (version === sessionVersion.current) { operation.current = false; setBusy(false); setHomeworkSaving(false); setRosterRevision(value => value + 1); } }
   }
 
 return { refreshHomework, gradeHomework };
