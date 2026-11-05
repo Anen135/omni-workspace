@@ -2,10 +2,10 @@ import { Save, Upload } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { DatePickerPopover } from '../../components/DatePickerPopover';
 import { label, rows, type Account, type RemoteRecord } from '../../services/omni-client';
-import type { LessonDraft } from '../../features/lesson/lesson-draft';
-import type { presentLessons } from '../../features/lesson/present-lessons';
+import type { LessonDraft } from './lesson-draft';
+import type { presentLessons } from './present-lessons';
 import { HelpTip } from '../../components/ui/HelpTip';
-import '../../features/lesson/lesson-materials.css';
+import './lesson-materials.css';
 
 export function LessonBanner({ account, fetchedAt, date, students, theme, draft, children, estimate }: {
   account: Account; fetchedAt: string; date: string; students: RemoteRecord[]; theme: string; draft?: LessonDraft;

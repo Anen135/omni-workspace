@@ -65,7 +65,7 @@ try {
   await page.evaluate(() => document.activeElement.blur());
   await page.waitForFunction(() => document.querySelector('.sidebar').getBoundingClientRect().width === 72);
   assert.equal(await page.locator('.lesson-banner').count(), 1);
-  await page.getByRole('button', { name: 'Расписание', exact: true }).click();
+  await sidebar.getByRole('button', { name: 'Расписание', exact: true }).click();
   assert.equal(await page.locator('.lesson-banner').count(), 0);
   assert.equal(await page.getByRole('button', { name: 'Предыдущая неделя', exact: true }).count(), 1);
   assert.equal(await page.locator('.schedule-day-label').count(), 7);
