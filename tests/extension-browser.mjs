@@ -48,22 +48,22 @@ try {
   let ignoreReward = false;
   let rejectQueueRead = false;
   let nextScheduleHold = null;
-  function holdNextSchedule() {
+  const holdNextSchedule = function() {
     let start, release;
     const started = new Promise(resolve => { start = resolve; });
     const released = new Promise(resolve => { release = resolve; });
     nextScheduleHold = { start, released };
     return { started, release };
-  }
+  };
   let rejectRoster = false;
   let nextRosterHold = null;
-  function holdNextRoster(delayMs = 400) {
+  const holdNextRoster = function(delayMs = 400) {
     let onStart, release;
     const started = new Promise(resolve => { onStart = resolve; });
     const released = new Promise(resolve => { release = resolve; });
     nextRosterHold = { delayMs, onStart, released };
     return { started, release };
-  }
+  };
   const lessonWrites = [];
   const lessonStudents = [{ id_stud: 101, fio_stud: 'Тестовый ученик А', was: null, id_vizit: null, theme: '', primary_teach: 0, prize: 0 }, { id_stud: 102, fio_stud: 'Тестовый ученик Б', was: 2, id_vizit: 9, theme: '', primary_teach: 0, prize: 0 }];
   let rejectCopySource = false;
@@ -817,10 +817,10 @@ try {
   await ui.locator('nav button').nth(0).click();
   const presence = ui.getByLabel('Присутствие: Тестовый ученик А', { exact: true });
   const reward = ui.getByLabel('Топкойны: Тестовый ученик А', { exact: true });
-  async function setReward(level) {
+  const setReward = async function(level) {
     await reward.press('Home');
     for (let step = 0; step < level; step++) await reward.press('ArrowRight');
-  }
+  };
   const lessonSave = ui.getByRole('button', { name: 'Сохранить', exact: true });
   const dayPairs = ui.getByLabel('Пара выбранного дня', { exact: true });
   assert.equal(await lessonSave.count(), 0, 'Save is absent before an actionable draft exists');

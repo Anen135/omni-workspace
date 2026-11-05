@@ -65,13 +65,13 @@ try {
     };
     window.showHomeworkAttachment('png');
   });
-  async function studentAttachment(quick = false) {
+  const studentAttachment = async function(quick = false) {
     const trigger = page.getByRole('button', { name: quick ? /^Превью работы:/ : 'Открыть работу', exact: !quick });
     if (quick) { await page.mouse.move(0, 0); await trigger.hover(); await page.locator('.homework-quick-preview').waitFor(); }
     else await trigger.click();
     if (quick) assert.equal(await page.locator('.homework-teacher-response').count(), 0, 'eye preview never opens full response editor');
     return page.locator('.homework-details > section').filter({ has: page.getByRole('heading', { name: 'Файл студента', exact: true }) });
-  }
+  };
   let attachment = await studentAttachment();
   await attachment.getByRole('button', { name: 'Превью', exact: true }).click();
   await page.waitForFunction(() => document.querySelector('.file-preview-full img')?.naturalWidth > 0);

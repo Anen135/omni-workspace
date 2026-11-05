@@ -31,10 +31,10 @@ try {
   const login = page.getByLabel('Логин Omni');
   const password = page.getByLabel('Пароль', { exact: true });
   await login.fill('fixture-user');
-  async function submit() {
+  const submit = async function() {
     await password.fill('fixture-password');
     await page.getByRole('button', { name: 'Войти в Omni', exact: true }).click();
-  }
+  };
   await submit();
   await page.getByRole('alert').filter({ hasText: 'Проверьте логин и пароль.' }).waitFor();
   assert.equal(await password.inputValue(), '');
