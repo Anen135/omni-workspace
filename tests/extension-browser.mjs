@@ -915,6 +915,11 @@ try {
   await ui.getByRole('alert').filter({ hasText: 'Omni не подтвердил выход' }).waitFor();
   await ui.getByRole('button', { name: 'Закрыть', exact: true }).click();
   assert.equal(await ui.getByRole('alert').filter({ hasText: 'Omni не подтвердил выход' }).count(), 0);
+  // The previous invalidation reconnects both tabs; a mounted root/warning alone
+  // does not mean the other tab's snapshot and roster read have settled.
+  await ui.locator('.act-as select:enabled').waitFor();
+  await secondUi.locator('.act-as select:enabled').waitFor();
+  await secondUi.locator('.average-loading').first().waitFor({ state: 'detached' });
   retainLogout = false;
   ui.once('dialog', dialog => dialog.accept());
   await ui.getByRole('button', { name: 'Сменить аккаунт', exact: true }).click();
