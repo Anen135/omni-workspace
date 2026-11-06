@@ -1384,6 +1384,11 @@ try {
   await ui.getByRole('alert').filter({ hasText: 'Omni не подтвердил выход' }).waitFor();
   await ui.getByRole('button', { name: 'Закрыть', exact: true }).click();
   assert.equal(await ui.getByRole('alert').filter({ hasText: 'Omni не подтвердил выход' }).count(), 0);
+  // The previous invalidation reconnects both tabs; a mounted root/warning alone
+  // does not mean the other tab's snapshot and roster read have settled.
+  await ui.locator('.act-as select:enabled').waitFor();
+  await secondUi.locator('.act-as select:enabled').waitFor();
+  await secondUi.locator('.average-loading').first().waitFor({ state: 'detached' });
   retainLogout = false;
   ui.once('dialog', dialog => dialog.accept());
   await ui.getByRole('button', { name: 'Сменить аккаунт', exact: true }).click();
@@ -1391,7 +1396,8 @@ try {
     console.error('Fictional logout fixture state:', JSON.stringify({ url: official.url(), secondUrl: secondUi.url(), signedIn, retainLogout, logoutRequests: paths.filter(path => path === '/auth/logout').length, alerts: await ui.getByRole('alert').allTextContents() }));
     throw error;
   });
-  await secondUi.waitForURL('https://omni.top-academy.ru/login/index');
+  // The configured 15s session poll needs an additional navigation/load budget.
+  await secondUi.waitForURL('https://omni.top-academy.ru/login/index', { timeout: 30000 });
   await secondUi.locator('input[type=password]').waitFor();
   await official.locator('#omni-workspace-root').waitFor({ state: 'detached' });
   await official.locator('input[type=password]').waitFor();
@@ -1400,7 +1406,8 @@ try {
   teacherId = 3; signedIn = true;
   await official.goto('https://omni.top-academy.ru/');
   await secondUi.goto('https://omni.top-academy.ru/');
-  await ui.locator('.act-as select').waitFor();
+  // Competing mount reads may defer this tab until its next 15s poll + snapshot.
+  await ui.locator('.act-as select').waitFor({ timeout: 30000 });
   assert.equal(await ui.getByRole('alert').filter({ hasText: 'Omni не подтвердил выход' }).count(), 0);
   assert.equal(await actAs.inputValue(), '3');
   await secondUi.locator('.act-as select').waitFor();
