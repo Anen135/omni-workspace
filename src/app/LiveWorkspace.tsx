@@ -153,15 +153,21 @@ export function LiveWorkspace({ connectionForm, connectionPending = false, onNat
     return Math.round((monday(chosen).getTime() - monday(now).getTime()) / 604800000);
   }
 
+  function invalidateWorkspaceSession() {
+    // New generations own their UI lock; the request queue still serializes transport.
+    sessionVersion.current++;
+    invalidatePendingOmniRequests();
+    operation.current = false;
+    setBusy(false); setIncomeBusy(false); setAttendanceSaving(false); setHomeworkSaving(false);
+    setSwitchingTeacher(false); setChangingAccount(false);
+    setHomeworkSaved({}); setHomeworkNeedsReload(false); setLessonDrafts({});
+    setSnapshot(null); setLesson(null); setGroupStudents(null); setGroupName(''); setGroupId(''); setDetail(null); setNotice('');
+    currentAccount.current = ''; lastBranch.current = ''; setWeek(0);
+    setAuthNeeded(true);
+  }
   function failed(reason: unknown) {
     setError(reason instanceof Error ? reason.message : 'Не удалось загрузить данные.');
-    if (reason instanceof ConnectionError && ['AUTH_REQUIRED', 'ACCOUNT_CHANGED', 'CHALLENGE'].includes(reason.code)) {
-      invalidatePendingOmniRequests();
-      setIncomeBusy(false);
-      setLessonDrafts({});
-      setAuthNeeded(true); setSnapshot(null); setLesson(null); setGroupStudents(null); setDetail(null);
-      currentAccount.current = ''; lastBranch.current = '';
-    }
+    if (reason instanceof ConnectionError && ['AUTH_REQUIRED', 'ACCOUNT_CHANGED', 'CHALLENGE'].includes(reason.code)) invalidateWorkspaceSession();
   }
   function ensureAccount(account: { id: string }) {
     if (currentAccount.current && currentAccount.current !== account.id) throw new ConnectionError('ACCOUNT_CHANGED', 'Аккаунт сменился. Обновите подключение.');
@@ -180,7 +186,7 @@ export function LiveWorkspace({ connectionForm, connectionPending = false, onNat
       if (result.account.branch !== undefined && result.account.branch !== branch || attendanceDraftKey(accountId, branch, record(result.presents)) !== context) throw new Error('Omni вернул материалы другого занятия. Обновите урок.');
       setMaterialLesson({ context, lesson: result });
     } catch (reason) { if (version === sessionVersion.current) { failed(reason); throw reason; } }
-    finally { operation.current = false; setBusy(false); }
+    finally { if (version === sessionVersion.current) { operation.current = false; setBusy(false); } }
   }
   async function refresh(nextWeek = week) {
     if (operation.current || !Number.isInteger(nextWeek) || Math.abs(nextWeek) > 52) return;
@@ -212,7 +218,7 @@ export function LiveWorkspace({ connectionForm, connectionPending = false, onNat
         } else failed(reason);
       }
     }
-    finally { operation.current = false; setBusy(false); }
+    finally { if (version === sessionVersion.current) { operation.current = false; setBusy(false); } }
   }
   async function connect() {
     if (operation.current) return;
@@ -225,67 +231,73 @@ export function LiveWorkspace({ connectionForm, connectionPending = false, onNat
       if (!state.connected) setWaiting(true);
       else { operation.current = false; await refresh(); }
     } catch (reason) { if (version === sessionVersion.current) failed(reason); }
-    finally { operation.current = false; setBusy(false); }
+    finally { if (version === sessionVersion.current) { operation.current = false; setBusy(false); } }
   }
   async function login(username: string, password: string) {
     if (operation.current) return;
+    const version = sessionVersion.current;
     operation.current = true; setBusy(true); setError(''); setWaiting(false);
     try {
       await omniRequest('login', { username, password });
+      if (version !== sessionVersion.current) return;
       operation.current = false;
       await refresh();
-    } catch (reason) { failed(reason); }
-    finally { password = ''; operation.current = false; setBusy(false); }
+    } catch (reason) { if (version === sessionVersion.current) failed(reason); }
+    finally { password = ''; if (version === sessionVersion.current) { operation.current = false; setBusy(false); } }
   }
   async function changeAccount() {
     if (operation.current || !window.confirm(`Выйти из текущего аккаунта Omni и войти в другой? Это изменит общую сессию Omni в этом профиле браузера.${hasDrafts ? ' Локальные черновики уроков будут удалены.' : ''}`)) return;
+    const version = sessionVersion.current;
     operation.current = true; setBusy(true); setError(''); setWaiting(false); setChangingAccount(true);
     setLessonDrafts({});
     setSnapshot(null); setLesson(null); setGroupStudents(null); setGroupName(''); setGroupId(''); setDetail(null); setNotice('');
     currentAccount.current = ''; lastBranch.current = ''; setWeek(0);
     try {
       await omniRequest('switch-account');
+      if (version !== sessionVersion.current) return;
       setConnectionState('login'); setAuthNeeded(true); setWaiting(true);
-    } catch (reason) { failed(reason); }
-    finally { operation.current = false; setBusy(false); }
+    } catch (reason) { if (version === sessionVersion.current) failed(reason); }
+    finally { if (version === sessionVersion.current) { operation.current = false; setBusy(false); } }
   }
   async function switchTeacher(teacherId: string) {
     if (!snapshot || operation.current || teacherId === snapshot.account.id) return;
     if (hasDrafts && !window.confirm('При смене преподавателя черновики уроков будут удалены. Продолжить?')) return;
     setLessonDrafts({});
+    const version = sessionVersion.current;
     const accountId = snapshot.account.id;
     operation.current = true; setBusy(true); setSwitchingTeacher(true); setError('');
     setSnapshot(null); setLesson(null); setGroupStudents(null); setGroupName(''); setGroupId(''); setDetail(null); setNotice('');
     currentAccount.current = ''; lastBranch.current = ''; setWeek(0);
     try {
       const result = await omniRequest<{ account: { id: string } }>('switch-teacher', { teacherId, accountId });
+      if (version !== sessionVersion.current) return;
       if (result.account.id !== teacherId) throw new ConnectionError('ACCOUNT_CHANGED', 'Omni не подтвердил выбранного преподавателя. Обновите подключение.');
       operation.current = false;
       await refresh(0);
-    } catch (reason) { failed(reason); }
-    finally { operation.current = false; setBusy(false); setSwitchingTeacher(false); }
+    } catch (reason) { if (version === sessionVersion.current) failed(reason); }
+    finally { if (version === sessionVersion.current) { operation.current = false; setBusy(false); setSwitchingTeacher(false); } }
   }
   useEffect(() => {
     return onExtensionSessionChange(() => {
-      invalidatePendingOmniRequests();
-      setIncomeBusy(false);
-      setHomeworkSaved({}); setHomeworkNeedsReload(false);
-      setLessonDrafts({});
-      sessionVersion.current++;
-      setSnapshot(null); setLesson(null); setGroupStudents(null); setGroupName(''); setGroupId(''); setDetail(null); setNotice('');
-      currentAccount.current = ''; lastBranch.current = ''; setWeek(0);
-      setError(''); setAuthNeeded(true); setWaiting(true); setConnectionState('loading');
+      invalidateWorkspaceSession();
+      setError(''); setWaiting(true); setConnectionState('loading');
     });
   }, []);
   useEffect(() => {
     let cancelled = false;
     const version = sessionVersion.current;
-    void omniRequest<{ connected: boolean }>('status').then(state => {
-      if (!cancelled && version === sessionVersion.current && state.connected) void refresh();
-    }).catch(reason => {
-      if (!cancelled && version === sessionVersion.current && isExtension() && reason instanceof ConnectionError && reason.code === 'BUSY') {
-        setConnectionState('loading'); setWaiting(true);
+    void omniRequest<{ connected: boolean; state?: string }>('status').then(state => {
+      if (cancelled || version !== sessionVersion.current) return;
+      if (state.connected) void refresh();
+      else {
+        setConnectionState(state.state || 'loading');
+        setAuthNeeded(state.state === 'login'); setWaiting(true);
       }
+    }).catch(reason => {
+      if (cancelled || version !== sessionVersion.current) return;
+      if (isExtension() && reason instanceof ConnectionError && reason.code === 'BUSY') {
+        setConnectionState('loading'); setWaiting(true);
+      } else { setAuthNeeded(true); failed(reason); }
     });
     return () => { cancelled = true; };
   }, []);
@@ -325,7 +337,7 @@ export function LiveWorkspace({ connectionForm, connectionPending = false, onNat
       reconcileDrafts(snapshot?.account.id || result.account.id, snapshot?.account.branch || '', loaded);
       setLesson(result); if (tab === 'schedule' || date !== selectedDate) setTab('lesson');
     } catch (reason) { if (version === sessionVersion.current) failed(reason); }
-    finally { operation.current = false; setBusy(false); }
+    finally { if (version === sessionVersion.current) { operation.current = false; setBusy(false); } }
   }
   async function openGroup(group: RemoteRecord, refresh = false) {
     const id = label(group.id_tgroups);
@@ -343,7 +355,7 @@ export function LiveWorkspace({ connectionForm, connectionPending = false, onNat
         if (reason instanceof ConnectionError && ['AUTH_REQUIRED', 'ACCOUNT_CHANGED', 'CHALLENGE'].includes(reason.code)) failed(reason);
       }
     }
-    finally { operation.current = false; setBusy(false); }
+    finally { if (version === sessionVersion.current) { operation.current = false; setBusy(false); } }
   }
   async function openStudent(student: RemoteRecord) {
     const id = label(student.id_stud);
@@ -355,7 +367,7 @@ export function LiveWorkspace({ connectionForm, connectionPending = false, onNat
       if (version !== sessionVersion.current) return;
       ensureAccount(result.account); setDetail({ title: label(student.fio_stud) || 'Студент', student, sections: [result.details, result.attendance] });
     } catch (reason) { if (version === sessionVersion.current) failed(reason); }
-    finally { operation.current = false; setBusy(false); }
+    finally { if (version === sessionVersion.current) { operation.current = false; setBusy(false); } }
   }
   function exportSnapshot() {
     if (!snapshot) return;
@@ -380,7 +392,7 @@ export function LiveWorkspace({ connectionForm, connectionPending = false, onNat
       setSnapshot(current => current?.account.id === accountId && (current.account.branch || '') === branch ? { ...current, newHomework: result.newHomework } : current);
       setHomeworkSaved({}); setHomeworkNeedsReload(false);
     } catch (reason) { if (version === sessionVersion.current) failed(reason); }
-    finally { operation.current = false; setBusy(false); }
+    finally { if (version === sessionVersion.current) { operation.current = false; setBusy(false); } }
   }
   async function gradeHomework(items: HomeworkReviewItem[], mark: number, response?: HomeworkResponseDraft): Promise<{ confirmedKeys: string[] }> {
     if (!snapshot || operation.current || homeworkNeedsReload) throw new Error('Обновите список работ перед сохранением.');
@@ -409,7 +421,7 @@ export function LiveWorkspace({ connectionForm, connectionPending = false, onNat
     } catch (reason) {
       if (version === sessionVersion.current) { setHomeworkNeedsReload(true); failed(reason); }
       throw reason;
-    } finally { operation.current = false; setBusy(false); setHomeworkSaving(false); setRosterRevision(value => value + 1); }
+    } finally { if (version === sessionVersion.current) { operation.current = false; setBusy(false); setHomeworkSaving(false); setRosterRevision(value => value + 1); } }
   }
   function storeDraft(key: string, next: LessonDraft) {
     setLessonDrafts(current => {
@@ -504,7 +516,7 @@ export function LiveWorkspace({ connectionForm, connectionPending = false, onNat
     } catch (reason) {
       if (version === sessionVersion.current && reason instanceof ConnectionError && ['AUTH_REQUIRED', 'ACCOUNT_CHANGED', 'CHALLENGE'].includes(reason.code)) failed(reason);
       throw reason;
-    } finally { operation.current = false; setBusy(false); }
+    } finally { if (version === sessionVersion.current) { operation.current = false; setBusy(false); } }
   }
   function stagePreviousLesson(source: PreviousLessonData, selection: CopySelection) {
     if (!snapshot || operation.current || attendanceReason) return;
@@ -538,7 +550,7 @@ export function LiveWorkspace({ connectionForm, connectionPending = false, onNat
     } catch (reason) {
       if (version === sessionVersion.current) failed(reason);
       throw reason;
-    } finally { operation.current = false; setBusy(false); }
+    } finally { if (version === sessionVersion.current) { operation.current = false; setBusy(false); } }
   }
   async function stageTheme(choice: ThemeChoice) {
     if (operation.current || attendanceReason) throw new Error('Перечитайте урок перед изменением темы.');
@@ -565,14 +577,16 @@ export function LiveWorkspace({ connectionForm, connectionPending = false, onNat
     });
   }
   async function clearLessonDraft() {
+    const version = sessionVersion.current;
     const buffered = bufferedDrafts.find(entry => entry.key === draftKey);
     if (buffered) {
       try {
         const claimed = await bufferRequest({ op: 'claim', key: buffered.key, revision: buffered.revision, manual: true });
         if (!claimed) return;
         await bufferRequest({ op: 'remove', key: claimed.key, revision: claimed.revision });
+        if (version !== sessionVersion.current) return;
         setBufferedDrafts(current => current.filter(entry => entry.key !== draftKey));
-      } catch (reason) { setError(reason instanceof Error ? reason.message : 'Не удалось удалить буфер.'); return; }
+      } catch (reason) { if (version === sessionVersion.current) setError(reason instanceof Error ? reason.message : 'Не удалось удалить буфер.'); return; }
     }
     setLessonDrafts(current => { const next = { ...current }; delete next[draftKey]; return next; });
   }
@@ -594,6 +608,7 @@ export function LiveWorkspace({ connectionForm, connectionPending = false, onNat
     attemptedBuffers.current.add(`${version}:${key}`);
     operation.current = true; setBusy(true); setAttendanceSaving(true); setError(''); setNotice('');
     function track(entry: BufferedLessonDraft | null) {
+      if (version !== sessionVersion.current) return;
       setBufferedDrafts(current => entry ? [...current.filter(item => item.key !== key), entry] : current.filter(item => item.key !== key));
     }
     async function checkpoint(state: 'ready' | 'uncertain' | 'review', release = false) {
@@ -668,8 +683,8 @@ export function LiveWorkspace({ connectionForm, connectionPending = false, onNat
         }
         uncertain = false;
         await checkpoint('ready');
-        storeDraft(key, pending);
-        if (result.warning) { setError(result.warning); }
+        if (version === sessionVersion.current) storeDraft(key, pending);
+        if (version === sessionVersion.current && result.warning) { setError(result.warning); }
       }
       const changes: AttendanceChange[] = Object.values(pending.attendance);
       if (changes.length) {
@@ -689,7 +704,7 @@ export function LiveWorkspace({ connectionForm, connectionPending = false, onNat
         }
         uncertain = false;
         await checkpoint('ready');
-        storeDraft(key, pending);
+        if (version === sessionVersion.current) storeDraft(key, pending);
       }
       for (const [markKey, change] of Object.entries(pending.marks)) {
         const matches = rows(fresh.students).filter(student => label(student.id_stud) === change.stud);
@@ -698,7 +713,7 @@ export function LiveWorkspace({ connectionForm, connectionPending = false, onNat
         delete pending.marks[markKey];
         uncertain = false;
         await checkpoint('ready');
-        storeDraft(key, pending);
+        if (version === sessionVersion.current) storeDraft(key, pending);
       }
       // Release allocated coins first, so a redistribution cannot exceed the
       // limit temporarily even when its final draft fits within five coins.
@@ -712,9 +727,10 @@ export function LiveWorkspace({ connectionForm, connectionPending = false, onNat
         delete pending.rewards![stud];
         uncertain = false;
         await checkpoint('ready');
-        storeDraft(key, pending);
+        if (version === sessionVersion.current) storeDraft(key, pending);
       }
       if (envelope) await bufferRequest({ op: 'remove', key, revision: envelope.revision });
+      if (version !== sessionVersion.current) return;
       track(null);
       storeDraft(key, emptyLessonDraft());
       if (key === draftKey) { setGroupStudents(null); setGroupId(''); setGroupName(''); setDetail(null); }
@@ -731,7 +747,7 @@ export function LiveWorkspace({ connectionForm, connectionPending = false, onNat
         storeDraft(key, { ...pending, needsReload: true });
         failed(reason);
       }
-    } finally { operation.current = false; setBusy(false); setAttendanceSaving(false); setRosterRevision(value => value + 1); }
+    } finally { if (version === sessionVersion.current) { operation.current = false; setBusy(false); setAttendanceSaving(false); setRosterRevision(value => value + 1); } }
   }
   const lessonTableContext = useMemo(() => ({ draftKey, students: presentData.students }), [draftKey, presentData.students]);
   const studentTable = (items: RemoteRecord[]) => {
