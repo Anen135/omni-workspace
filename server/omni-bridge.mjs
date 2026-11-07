@@ -239,7 +239,7 @@ export function createMiddleware(bridge) {
     response.setHeader('Cache-Control', 'no-store');
     response.setHeader('X-Content-Type-Options', 'nosniff');
     const send = (status, data) => { response.statusCode = status; response.end(JSON.stringify(data)); };
-    const host = request.headers.host;
+    const {host} = request.headers;
     if (!host || !/^(127\.0\.0\.1|localhost):\d+$/.test(host) ||
       (request.headers.origin && request.headers.origin !== `http://${host}`) ||
       request.headers['sec-fetch-site'] === 'cross-site' || request.headers['x-omni-client'] !== 'workspace') {

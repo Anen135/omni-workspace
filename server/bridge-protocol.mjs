@@ -43,7 +43,7 @@ export function validateInput(action, input) {
     // A response belongs to one identified submission and always accompanies an explicit grade.
     // Bound both strings so even JSON-escaped control characters fit the extension message limit.
     if (Object.hasOwn(input, 'response')) {
-      const response = input.response;
+      const {response} = input;
       if (input.items.length !== 1 || !response || typeof response !== 'object' || Array.isArray(response) ||
           Object.keys(response).some(key => !['comment', 'previousComment'].includes(key)) ||
           typeof response.comment !== 'string' || response.comment.length > 4000 ||

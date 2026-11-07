@@ -44,7 +44,7 @@ export function StudentTable({ items, busy, onOpen, attendance, marks, rewards, 
   const showRewards = !!rewards || items.some(item => Object.hasOwn(item, 'prize'));
   const rewardBudget = lessonRewardBudget(items);
   const canBulk = !!onBulkChange && !!(attendance || marks || rewards);
-  const reason = (row: Row, unavailable: string | undefined) => !validRow(row) ? 'У строки нет уникального ID ученика.' : unavailable || '';
+  const reason = (row: Row, unavailable: string | undefined) => validRow(row) ? unavailable || '' : 'У строки нет уникального ID ученика.'
   const numberValid = (value: string) => value.trim() !== '' && Number.isInteger(Number(value)) && Number(value) >= 1 && Number(value) <= 100 ? '' : 'Введите целую оценку от 1 до 100.';
   const fields: BulkField<Row>[] = [];
   if (marks) for (const [id, label] of [['mark4', 'Работа на уроке'], ['mark2', 'Контрольная']]) fields.push({ id, label,
@@ -55,7 +55,7 @@ export function StudentTable({ items, busy, onOpen, attendance, marks, rewards, 
     validate: value => ['0', '1', '2'].includes(value) ? '' : 'Выберите статус присутствия.', unavailableReason: row => reason(row, attendance.unavailable) });
   if (rewards) fields.push({ id: 'reward', label: 'Топкойны', input: { kind: 'select', options: [0, 1, 2, 3].map(value => ({ value: String(value), label: String(value) })) },
     validate: value => ['0', '1', '2', '3'].includes(value) ? '' : 'Выберите от 0 до 3 топкойнов.',
-    unavailableReason: row => reason(row, rewards.unavailable) || (rewardLevel(row.prize) === null ? 'Неизвестна текущая награда.' : ![1, 2].includes(attendanceStatus(row.was) ?? -1) ? 'Топкойны доступны присутствующим и опоздавшим.' : ''),
+    unavailableReason: row => reason(row, rewards.unavailable) || (rewardLevel(row.prize) === null ? 'Неизвестна текущая награда.' : [1, 2].includes(attendanceStatus(row.was) ?? -1) ? '' : 'Топкойны доступны присутствующим и опоздавшим.'),
   });
   const columns: TableColumn<Row>[] = [
     { id: 'student', heading: <button className="text-button" onClick={() => setAscending(!ascending)}>Ученик {ascending ? '↑' : '↓'}</button>, ariaSort: ascending ? 'ascending' : 'descending', cell: student => {
