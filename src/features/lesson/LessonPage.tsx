@@ -5,7 +5,8 @@ import { isExtension } from '../../services/extension-client';
 import { LessonBanner, LessonSaveBar, LessonSelectors } from './LessonOverview';
 import { LessonStudentsPanel } from './LessonStudentsPanel';
 import { StudentTable } from './StudentTable';
-import { attendanceUnavailable } from './attendance';
+import { attendanceLessonInfo, attendanceUnavailable } from './attendance';
+import { lessonTeacherType } from './lesson-access';
 import { LessonThemeEditor } from './LessonThemeEditor';
 import { PreviousLessonCopy } from './PreviousLessonCopy';
 
@@ -24,7 +25,6 @@ export type LessonPageProps = Pick<ComponentProps<typeof LessonBanner>, 'account
     attendanceReason: string;
     presentData: RemoteRecord;
     selectedDate: string;
-    today: string;
     lessonStudents: RemoteRecord[];
     currentTheme: string;
     dayLessons: SelectorProps['dayLessons'];
@@ -37,6 +37,7 @@ export type LessonPageProps = Pick<ComponentProps<typeof LessonBanner>, 'account
     onPreviewTheme: ThemeProps['onPreviewTheme'];
     onSchedule: () => void;
     loadLesson: (group?: string, slot?: string, date?: string) => void;
+    onRequestAccess?: () => void;
     loadPreviousLesson: CopyProps['onLoad'];
     stagePreviousLesson: CopyProps['onCopy'];
     stageBulk: TableProps['onBulkChange'];
@@ -48,7 +49,7 @@ export type LessonPageProps = Pick<ComponentProps<typeof LessonBanner>, 'account
     openStudent: TableProps['onOpen'];
   };
 
-export function LessonPage({ loadingIndicator, account, fetchedAt, busy, attendanceSaving, draft, hasTheme, presentData, attendanceReason, pendingUpload, saveLessonDraft, clearLessonDraft, selectedDate, lessonStudents, currentTheme, estimate, loadLessonThemes, stageTheme, onPreviewTheme, dayLessons, loadLesson, loadPreviousLesson, stagePreviousLesson, lessonTableContext, stageBulk, stageFill, stageRewardAllocation, stageMark, stageReward, markAttendance, draftKey, groupId, studentAverages, studentPhotos, studentAveragesLoading, studentAveragesError, openStudent, today, onSchedule, presentsError }: LessonPageProps) {
+export function LessonPage({ loadingIndicator, account, fetchedAt, busy, attendanceSaving, draft, hasTheme, presentData, attendanceReason, pendingUpload, saveLessonDraft, clearLessonDraft, selectedDate, lessonStudents, currentTheme, estimate, loadLessonThemes, stageTheme, onPreviewTheme, dayLessons, loadLesson, loadPreviousLesson, stagePreviousLesson, lessonTableContext, stageBulk, stageFill, stageRewardAllocation, stageMark, stageReward, markAttendance, draftKey, groupId, studentAverages, studentPhotos, studentAveragesLoading, studentAveragesError, openStudent, onSchedule, onRequestAccess, presentsError }: LessonPageProps) {
   const displayed = draft ? lessonStudents.map(student => {
     const stud = label(student.id_stud);
     return { ...student, ...(draft.attendance[stud] ? { was: draft.attendance[stud].was } : {}), ...(draft.marks[`${stud}:2`] ? { mark2: draft.marks[`${stud}:2`].mark } : {}), ...(draft.marks[`${stud}:4`] ? { mark4: draft.marks[`${stud}:4`].mark } : {}), ...(draft.rewards?.[stud] ? { prize: draft.rewards[stud].reward } : {}) };
@@ -60,11 +61,12 @@ export function LessonPage({ loadingIndicator, account, fetchedAt, busy, attenda
       onDiscard={() => { if (window.confirm('Удалить локальный черновик этого урока?')) clearLessonDraft(); }}/>}
     <LessonBanner account={account} fetchedAt={fetchedAt} date={selectedDate} students={lessonStudents} theme={currentTheme} draft={draft} estimate={estimate}>
       {isExtension() && <LessonThemeEditor key={draftKey} embedded contextKey={draftKey} busy={busy} unavailable={attendanceReason} currentTheme={currentTheme} draft={draft?.theme}
-        onLoad={loadLessonThemes} onSave={stageTheme} onPreviewTheme={onPreviewTheme}/>}
+        currentTeachType={lessonTeacherType(attendanceLessonInfo(presentData)?.primary_teach || 0)} onLoad={loadLessonThemes} onSave={stageTheme} onPreviewTheme={onPreviewTheme}/>}
     </LessonBanner>
-    <LessonSelectors date={selectedDate} today={today} presents={presentData} dayLessons={dayLessons}
-      busy={busy} onDatePick={date => void loadLesson(undefined, undefined, date)}
+    <LessonSelectors date={selectedDate} presents={presentData} dayLessons={dayLessons}
+      busy={busy}
       onSchedule={onSchedule} onSlotPick={slot => void loadLesson(undefined, slot)}>
+    {onRequestAccess && <button type="button" className="button secondary" disabled={busy} aria-haspopup="dialog" onClick={onRequestAccess}>Доступ за прошлый день</button>}
     {isExtension() && <>
       <PreviousLessonCopy key={`copy:${draftKey}`} busy={busy} unavailable={attendanceReason} students={lessonStudents}
         date={selectedDate} slot={label(presentData.cur_lenta)} dayLessons={dayLessons}

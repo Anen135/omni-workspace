@@ -179,7 +179,7 @@ export function createWorkspaceLessonDraft({ week, setLessonDrafts, snapshot, op
     if (operation.current || attendanceReason) throw new Error('Перечитайте урок перед изменением темы.');
     setLessonDrafts(current => {
       const next = current[draftKey] || emptyLessonDraft();
-      return { ...current, [draftKey]: { ...next, theme: { ...choice, previousTheme: next.theme ? next.theme.previousTheme : choice.previousTheme } } };
+      return { ...current, [draftKey]: { ...next, theme: { ...choice, previousTheme: next.theme ? next.theme.previousTheme : choice.previousTheme, ...(choice.teachType !== undefined ? { previousTeachType: next.theme?.previousTeachType ?? choice.previousTeachType } : {}) } } };
     });
     setNotice('Тема добавлена в черновик. Нажмите «Сохранить» в разделе «Мой урок».');
   }

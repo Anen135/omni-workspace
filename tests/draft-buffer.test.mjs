@@ -36,6 +36,18 @@ test('atomic revisions, ownership and private envelopes', async () => {
   assert.equal(second.reason.code, 'DRAFT_STALE');
   await rejects(f.buffer({ op: 'remove', key, revision: entry.revision }, doc()), 'DRAFT_STALE');
 });
+
+test('teacher-type drafts preserve legacy storage and require complete numeric baselines', async () => {
+  const theme = { theme: 'Topic', previousTheme: '', publicWeekId: null, issueHomework: false, issueLabwork: false };
+  assert.equal(validLessonDraft({ ...draft(), theme }), true);
+  const enriched = { ...draft(), theme: { ...theme, teachType: 1, previousTeachType: 0 } };
+  assert.equal(validLessonDraft(enriched), true);
+  for (const patch of [{ teachType: 1 }, { previousTeachType: 0 }, { teachType: 1, previousTeachType: null }, { teachType: '1', previousTeachType: 0 }]) assert.equal(validLessonDraft({ ...draft(), theme: { ...theme, ...patch } }), false);
+  const f = fixture();
+  const entry = await f.buffer({ op: 'put', key, draft: enriched }, doc());
+  assert.deepEqual((await f.buffer({ op: 'list' }, doc()))[0].draft.theme, enriched.theme);
+  assert.equal(entry.draft.theme.teachType, 1);
+});
 test('another live document is BUSY, vanished document can be claimed only with pinned proof', async () => {
   const f = fixture();
   const entry = await f.buffer({ op: 'put', key, draft: draft() }, doc());

@@ -1,6 +1,5 @@
 import { Save, Upload } from 'lucide-react';
 import type { ReactNode } from 'react';
-import { DatePickerPopover } from '../../components/DatePickerPopover';
 import { label, rows, type Account, type RemoteRecord } from '../../services/omni-client';
 import type { LessonDraft } from './lesson-draft';
 import type { presentLessons } from './present-lessons';
@@ -32,15 +31,15 @@ export function LessonSaveBar({ busy, saving, draft, hasTheme, unavailable, onSa
   </div>;
 }
 
-export function LessonSelectors({ date, today, presents, dayLessons, busy, onDatePick, onSchedule, onSlotPick, children }: {
-  children?: ReactNode; date: string; today: string; presents: RemoteRecord; dayLessons: ReturnType<typeof presentLessons>; busy: boolean;
-  onDatePick: (date: string) => void; onSchedule: () => void; onSlotPick: (slot: string) => void;
+export function LessonSelectors({ date, presents, dayLessons, busy, onSchedule, onSlotPick, children }: {
+  children?: ReactNode; date: string; presents: RemoteRecord; dayLessons: ReturnType<typeof presentLessons>; busy: boolean;
+  onSchedule: () => void; onSlotPick: (slot: string) => void;
 }) {
   const currentSlot = label(presents.cur_lenta);
   const group = rows(presents.groups).find(item => label(item.id_tgroups) === label(presents.cur_group));
   return <section className="lesson-context panel" aria-label="Выбор урока">
     <div className="lesson-context-row">
-      <div className="lesson-context-date"><span>Дата урока</span><div><DatePickerPopover unrestricted today={today} value={date || today} busy={busy} onPick={onDatePick}/><strong>{date || 'не выбрана'}</strong></div></div>
+      <div className="lesson-context-date"><span>Дата урока</span><div><strong>{date || 'не выбрана'}</strong></div></div>
       {dayLessons.length > 0 && <div className="lesson-context-slot" role="group" aria-label="Пары выбранного дня"><label>Пара<select aria-label="Пара выбранного дня" disabled={busy} value={dayLessons.some(item => item.slot === currentSlot) ? currentSlot : ''} onChange={event => onSlotPick(event.target.value)}><option value="" disabled>Выберите пару</option>{dayLessons.map(item => <option key={item.slot} value={item.slot}>{item.title}{item.time ? ` · ${item.time}` : ''}</option>)}</select></label></div>}
       <div className="lesson-context-current"><span>Группа: <strong>{label(group?.name_tgroups) || label(presents.cur_group) || '—'}</strong></span></div>
       <div className="lesson-context-actions"><button className="button secondary" disabled={busy} onClick={onSchedule}>Расписание</button>{children}</div>

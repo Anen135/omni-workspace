@@ -41,6 +41,11 @@ try {
   let rejectAttendance = false;
   let ignoreAttendance = false;
   let rejectTheme = false;
+  let rejectAccessRead = false;
+  let accessReadDelay = 0;
+  let ignoreAccessSend = false;
+  const accessWrites = [];
+  const accessHistory = [{ date_req: '2026-09-29', approve: 'Одобрено', zavuch_id: 4, fio_teach: 'Тестовый завуч', can_set: '1' }];
   let expireOnStartInfo = false;
   let lessonDate = '2026-09-30';
   let rejectMark = false;
@@ -194,13 +199,24 @@ try {
       data = rejectReward ? { error: 'Topcoins отклонены сервером' } : { success: true, total: 20 };
     }
     if (path === '/presents/get-methodpackage-themes') data = [{ public_week_id: 7, package_id: 5, week: 1, theme: 'Тестовая тема', has_homework: true, has_labwork: true }];
+    if (path === '/presents/get-data-request-zavuch') {
+      if (accessReadDelay) await new Promise(resolve => setTimeout(resolve, accessReadDelay));
+      if (rejectAccessRead) return route.fulfill({ status: 503, json: {} });
+      data = { dates: ['28-09-2026', '27-09-2026'], requests: accessHistory };
+    }
+    if (path === '/presents/send-request-zavuch') {
+      const input = request.postDataJSON();
+      accessWrites.push(input);
+      if (!ignoreAccessSend) accessHistory.push({ date_req: input.date.split('-').reverse().join('-'), approve: 'Ожидает одобрения', zavuch_id: 0, can_set: 0 });
+      data = ignoreAccessSend ? {} : { success: 'Запрос отправлен' };
+    }
     if (path === '/presents/set-theme') {
       lessonWrites.push('theme');
       const input = request.postDataJSON();
       assert.equal(input.schedule, 50); assert.equal(input.theme, 'Тестовая тема');
       assert.equal(input.public_week_id, 7); assert.equal(input.issue_homework, true); assert.equal(input.issue_labwork, false);
       assert.equal(paths.filter(path => path === '/presents/set-was').length, 0);
-      if (!rejectTheme) lessonStudents.forEach((student, index) => { student.theme = input.theme; student.public_week_id = 7; student.id_vizit = 80 + index; student.was = 0; });
+      if (!rejectTheme) lessonStudents.forEach((student, index) => { student.theme = input.theme; student.primary_teach = input.teach_type; student.public_week_id = 7; student.id_vizit = 80 + index; student.was = 0; });
       data = rejectTheme ? { success: false, message: 'Тестовый отказ темы' } : { success: true };
     }
     if (path === '/presents/set-was') {
@@ -236,6 +252,7 @@ try {
   });
   for (const page of context.pages()) await page.close();
   const official = await context.newPage();
+  await official.clock.setFixedTime(new Date('2026-09-30T09:00:00Z'));
   official.setDefaultTimeout(15000);
   const ui = official;
   const extensionMessage = async (message, tab = official) => {
@@ -282,6 +299,19 @@ try {
   await official.addInitScript(() => localStorage.setItem('omni.connection-check-seconds', '15'));
   await official.reload();
   await official.locator('#omni-workspace-root #root').waitFor();
+  // Playwright's page clock affects the MAIN world; the real extension UI uses
+  // ISOLATED. Freeze that world too so past/future-date assertions share a day.
+  await worker.evaluate(async () => {
+    const [tab] = await chrome.tabs.query({ url: 'https://omni.top-academy.ru/*' });
+    await chrome.scripting.executeScript({ target: { tabId: tab.id, frameIds: [0] }, world: 'ISOLATED', func: () => {
+      const NativeDate = Date;
+      const fixed = new NativeDate('2026-09-30T09:00:00Z').getTime();
+      globalThis.Date = class extends NativeDate {
+        constructor(...args) { super(...(args.length ? args : [fixed])); }
+        static now() { return fixed; }
+      };
+    } });
+  });
   if (process.env.OMNI_VISUAL_AUDIT_ONLY === '1') {
     await initialRoster.started; initialRoster.release();
     const table = ui.locator('.lesson-students');
@@ -341,7 +371,55 @@ try {
       await capture(name, 'invalid');
       await rewards.getByLabel('Минимальный балл для топкойнов').fill('7');
       await ui.keyboard.press('Escape');
+      await ui.getByRole('button', { name: 'Выбрать тему', exact: true }).click();
+      await ui.getByRole('radio', { name: 'Преподаватель на замене', exact: true }).check();
+      await capture(name, 'replacement-teacher');
+      await ui.getByLabel('Пара выбранного дня', { exact: true }).selectOption('4');
+      await ui.getByLabel('Пара выбранного дня', { exact: true }).selectOption('0');
+      const accessButton = ui.getByRole('button', { name: 'Доступ за прошлый день', exact: true });
+      accessReadDelay = 1200;
+      await accessButton.click();
+      const accessDialog = ui.getByRole('dialog', { name: 'Доступ к уроку за прошлый день', exact: true });
+      await accessDialog.getByRole('status').filter({ hasText: 'Загружаю данные Omni' }).waitFor();
+      await capture(name, 'lesson-access-loading');
+      await accessDialog.getByRole('region', { name: 'История запросов доступа', exact: true }).waitFor();
+      accessReadDelay = 0;
+      await capture(name, 'lesson-access');
+      assert.equal(await accessDialog.evaluate(node => node.scrollWidth <= node.clientWidth), true);
+      assert.equal(await accessDialog.getByRole('button', { name: 'Отправить запрос', exact: true }).isDisabled(), true);
+      for (const direction of ['Tab', 'Shift+Tab']) {
+        for (let index = 0; index < 7; index++) {
+          await ui.keyboard.press(direction);
+          const focus = await accessDialog.evaluate(node => ({ inside: node.contains(node.getRootNode().activeElement), active: node.getRootNode().activeElement?.outerHTML?.slice(0, 300), documentActive: document.activeElement?.tagName, hasFocus: document.hasFocus() }));
+          assert.equal(focus.inside, true, JSON.stringify({ direction, index, ...focus }));
+        }
+      }
+      await ui.keyboard.press('Escape');
+      assert.equal(await accessButton.evaluate(node => node === node.getRootNode().activeElement), true);
+      rejectAccessRead = true;
+      await accessButton.click();
+      await accessDialog.getByRole('alert').waitFor();
+      await capture(name, 'lesson-access-error');
+      rejectAccessRead = false;
+      await ui.keyboard.press('Escape');
+      if (name === 'desktop') {
+        await ui.getByRole('button', { name: 'Включить тёмную тему', exact: true }).click();
+        await accessButton.click();
+        await accessDialog.getByRole('region', { name: 'История запросов доступа', exact: true }).waitFor();
+        await capture(name, 'lesson-access-dark');
+        await ui.keyboard.press('Escape');
+        await ui.getByRole('button', { name: 'Включить светлую тему', exact: true }).click();
+        await ui.evaluate(() => { document.documentElement.style.zoom = '2'; });
+        await accessButton.click();
+        await accessDialog.getByRole('region', { name: 'История запросов доступа', exact: true }).waitFor();
+        await capture(name, 'lesson-access-zoom-200');
+        assert.equal(await accessDialog.evaluate(node => node.scrollWidth <= node.clientWidth), true);
+        assert.equal(await accessDialog.evaluate(node => { const box = node.getBoundingClientRect(); return box.top >= 0 && box.bottom <= innerHeight + 1; }), true, 'zoomed access dialog remains vertically inside the viewport');
+        await ui.keyboard.press('Escape');
+        await ui.evaluate(() => { document.documentElement.style.zoom = ''; });
+      }
       assert.deepEqual(lessonWrites, [], 'visual audit never sends mutations');
+      assert.deepEqual(accessWrites, [], 'visual audit never sends access requests');
     }
     assert.deepEqual(errors, []);
     await writeFile(`${directory}/report.json`, JSON.stringify(report, null, 2));
@@ -815,6 +893,59 @@ try {
   await ui.getByRole('link', { name: 'Расчёт дохода', exact: true }).click();
   assert.equal(await ui.locator('#help-2').evaluate(node => node.getBoundingClientRect().top < innerHeight), true);
   await ui.locator('nav button').nth(0).click();
+  {
+    const accessButton = ui.getByRole('button', { name: 'Доступ за прошлый день', exact: true });
+    const accessDialog = ui.getByRole('dialog', { name: 'Доступ к уроку за прошлый день', exact: true });
+    const currentLesson = await ui.locator('.lesson-context-date strong').innerText();
+    await ui.locator('.sidebar').getByRole('button', { name: 'Расписание', exact: true }).click();
+    await ui.getByRole('button', { name: 'Открыть урок', exact: true }).first().click();
+    await accessDialog.getByRole('button', { name: 'Открыть урок 29.09.2026', exact: true }).waitFor();
+    assert.equal(lessonDate, currentLesson, 'selecting a past day opens a request dialog before loading the lesson');
+    await ui.keyboard.press('Escape');
+    await ui.locator('nav button').nth(0).click();
+    assert.equal(await ui.locator('.lesson-context-date strong').innerText(), currentLesson, 'cancelling keeps the current lesson');
+    rejectAccessRead = true;
+    await accessButton.click();
+    await accessDialog.getByRole('alert').waitFor();
+    assert.equal(await accessDialog.getByRole('button', { name: 'Отправить запрос', exact: true }).count(), 0);
+    rejectAccessRead = false;
+    await accessDialog.getByRole('button', { name: 'Обновить историю', exact: true }).click();
+    await accessDialog.getByLabel('Причина запроса', { exact: true }).fill('Нужно исправить данные занятия');
+    assert.deepEqual(accessWrites, [], 'opening and editing access form never sends a request');
+    await accessDialog.getByRole('button', { name: 'Отправить запрос', exact: true }).click();
+    await accessDialog.getByRole('status').filter({ hasText: 'Запрос отправлен' }).waitFor();
+    assert.deepEqual(accessWrites, [{ date: '28-09-2026', message: 'Нужно исправить данные занятия' }]);
+    assert.equal(await accessDialog.getByRole('button', { name: 'Открыть урок 28.09.2026', exact: true }).count(), 0, 'pending is not approved');
+    ignoreAccessSend = true;
+    await accessDialog.getByLabel('Дата запроса', { exact: true }).selectOption('2026-09-27');
+    await accessDialog.getByLabel('Причина запроса', { exact: true }).fill('Проверка неопределённого результата');
+    await accessDialog.getByRole('button', { name: 'Отправить запрос', exact: true }).click();
+    await accessDialog.getByRole('alert').filter({ hasText: 'не подтвердил' }).waitFor();
+    await accessDialog.getByRole('button', { name: 'Обновить историю', exact: true }).click();
+    await accessDialog.getByLabel('Дата запроса', { exact: true }).selectOption('2026-09-27');
+    await accessDialog.getByLabel('Причина запроса', { exact: true }).fill('Повтор не должен уйти');
+    assert.equal(await accessDialog.getByRole('button', { name: 'Отправить запрос', exact: true }).isDisabled(), true);
+    await ui.keyboard.press('Escape');
+    await accessButton.click();
+    await accessDialog.getByLabel('Дата запроса', { exact: true }).selectOption('2026-09-27');
+    await accessDialog.getByLabel('Причина запроса', { exact: true }).fill('Повтор после закрытия');
+    assert.equal(await accessDialog.getByRole('button', { name: 'Отправить запрос', exact: true }).isDisabled(), true);
+    assert.equal(accessWrites.length, 2, 'refreshing/reopening never retries an uncertain send');
+    await ui.keyboard.press('Escape');
+    ignoreAccessSend = false;
+    assert.deepEqual(lessonWrites, [], 'access requests do not save lesson changes');
+    await accessButton.click();
+    await accessDialog.getByLabel('Причина запроса', { exact: true }).waitFor();
+    await worker.evaluate(async () => {
+      const revision = 'fixture-access-session-changed';
+      await chrome.storage.session.set({ sessionRevision: revision });
+      const tabs = await chrome.tabs.query({ url: 'https://omni.top-academy.ru/*' });
+      await Promise.all(tabs.map(tab => chrome.tabs.sendMessage(tab.id, { action: 'session-revision', revision }, { frameId: 0 })));
+    });
+    await accessDialog.waitFor({ state: 'detached' });
+    await accessButton.waitFor({ timeout: 30000 });
+    assert.equal(accessWrites.length, 2, 'session invalidation closes access data without sending');
+  }
   const presence = ui.getByLabel('Присутствие: Тестовый ученик А', { exact: true });
   const reward = ui.getByLabel('Топкойны: Тестовый ученик А', { exact: true });
   const setReward = async function(level) {
@@ -907,6 +1038,7 @@ try {
   await ui.mouse.move(700, 180);
   await ui.waitForFunction(() => document.querySelector('#omni-workspace-root')?.shadowRoot?.querySelector('.sidebar')?.getBoundingClientRect().width === 72);
   await ui.getByRole('button', { name: /^(Выбрать тему|Обновить список тем)$/ }).click();
+  await ui.getByRole('radio', { name: 'Преподаватель на замене', exact: true }).check();
   await ui.getByLabel('Тема из методпакета', { exact: true }).selectOption('7');
   await ui.getByRole('checkbox', { name: 'Выдать ДЗ из методпакета' }).check();
   ui.once('dialog', dialog => dialog.accept());
@@ -915,6 +1047,7 @@ try {
   await lessonSave.click();
   await ui.getByRole('status').filter({ hasText: 'Изменения урока сохранены в Omni' }).waitFor();
   assert.deepEqual(lessonWrites, ['theme', 'theme', 'attendance']);
+  assert.equal(lessonStudents[0].primary_teach, 1, 'replacement type is persisted through explicit Save and readback');
   assert.equal(await presence.inputValue(), '1');
   assert.equal(lessonStudents[0].id_vizit, 80); // Theme-created visit, not old draft metadata.
   await ui.locator('.lesson-banner').getByRole('heading', { name: 'Тестовая тема', exact: true }).waitFor();
@@ -992,6 +1125,8 @@ try {
   await ui.getByRole('button', { name: 'Загрузить урок', exact: true }).click();
   await ui.getByLabel('Присутствие: Тестовый ученик А', { exact: true }).waitFor();
   const beforeVisitCreation = lessonWrites.length;
+  const noticeClose = ui.getByRole('button', { name: 'Закрыть уведомление', exact: true });
+  if (await noticeClose.isVisible()) { await noticeClose.click(); await noticeClose.waitFor({ state: 'detached' }); }
   const firstGrade = 'Контрольная: Тестовый ученик А';
   await ui.getByRole('button', { name: firstGrade, exact: true }).click();
   await ui.getByRole('spinbutton', { name: firstGrade, exact: true }).fill('7');
@@ -1008,6 +1143,7 @@ try {
   for (const [index, date, type, value] of [[0, '2026-09-29', 'Контрольная', '10'], [1, '2026-10-02', 'Работа на уроке', '11']]) {
     await ui.locator('.sidebar').getByRole('button', { name: 'Расписание', exact: true }).click();
     await ui.getByRole('button', { name: 'Открыть урок', exact: true }).nth(index).click();
+    if (index === 0) await ui.getByRole('dialog', { name: 'Доступ к уроку за прошлый день', exact: true }).getByRole('button', { name: 'Открыть урок 29.09.2026', exact: true }).click();
     await ui.locator('.lesson-context-date strong').filter({ hasText: date }).waitFor();
     const gradeLabel = `${type}: Тестовый ученик А`;
     await ui.getByRole('button', { name: gradeLabel, exact: true }).click();
@@ -1024,6 +1160,7 @@ try {
       assert.equal(await ui.getByLabel('Присутствие: Тестовый ученик А', { exact: true }).inputValue(), '2');
       await ui.locator('.sidebar').getByRole('button', { name: 'Расписание', exact: true }).click();
       await ui.getByRole('button', { name: 'Открыть урок', exact: true }).nth(0).click();
+      await ui.getByRole('dialog', { name: 'Доступ к уроку за прошлый день', exact: true }).getByRole('button', { name: 'Открыть урок 29.09.2026', exact: true }).click();
       await ui.locator('.lesson-context-date strong').filter({ hasText: '2026-09-29' }).waitFor();
       assert.equal(await ui.getByRole('button', { name: gradeLabel, exact: true }).textContent(), value, 'returning to the original lesson restores its draft');
       assert.equal(await ui.getByLabel('Присутствие: Тестовый ученик А', { exact: true }).inputValue(), '0');
@@ -1417,7 +1554,7 @@ try {
   assert.equal(status.data.connected, true);
   assert.deepEqual(errors, []);
   assert.equal(requests.some(url => url.startsWith('chrome-extension://') || /localhost|127\.0\.0\.1/.test(url)), false);
-  console.log('PASS: same-tab UI mount, native login/challenge preservation, Shadow DOM styling/calendar, students/contact search/profile/history, attendance drafts, topic save, marks, previous-lesson copy, materials/PDF, teacher/account switching, logout-warning recovery and second-tab invalidation. All data fictional.');
+  console.log('PASS: same-tab UI mount, native login/challenge preservation, Shadow DOM styling/calendar, students/contact search/profile/history, attendance drafts, topic/replacement-teacher save, past-day access requests and uncertainty/session guards, marks, previous-lesson copy, materials/PDF, teacher/account switching, logout-warning recovery and second-tab invalidation. All data fictional.');
   }
 } finally {
   await context?.close();

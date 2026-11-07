@@ -2,14 +2,15 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { CircleAlert } from 'lucide-react';
 import { label, record, type RemoteRecord } from '../../services/omni-client';
 import { attendanceLessonInfo } from './attendance';
+import { lessonTeacherType } from './lesson-access';
 import { HelpTip } from '../../components/ui/HelpTip';
 import './lesson-materials.css';
 
-export type ThemeChoice = { theme: string; publicWeekId: string | null; issueHomework: boolean; issueLabwork: boolean; previousTheme: string };
+export type ThemeChoice = { theme: string; publicWeekId: string | null; issueHomework: boolean; issueLabwork: boolean; previousTheme: string; teachType?: 0 | 1; previousTeachType?: 0 | 1 };
 export type ThemeData = { presents: RemoteRecord; themes: RemoteRecord[] };
-export function LessonThemeEditor({ busy, unavailable, currentTheme, draft, onLoad, onSave, embedded = false, onPreviewTheme, contextKey }: {
+export function LessonThemeEditor({ busy, unavailable, currentTheme, currentTeachType, draft, onLoad, onSave, embedded = false, onPreviewTheme, contextKey }: {
   busy: boolean; unavailable: string; currentTheme: string; draft?: ThemeChoice; onLoad: () => Promise<ThemeData>; onSave: (choice: ThemeChoice) => Promise<void>;
-  embedded?: boolean; onPreviewTheme?: (theme: RemoteRecord) => void; contextKey?: unknown;
+  embedded?: boolean; onPreviewTheme?: (theme: RemoteRecord) => void; contextKey?: unknown; currentTeachType?: 0 | 1 | null;
 }) {
   const context = useMemo(() => ({}), [contextKey]);
   const activeContext = useRef<object | null>(context);
@@ -25,6 +26,7 @@ export function LessonThemeEditor({ busy, unavailable, currentTheme, draft, onLo
   const [homework, setHomework] = useState(false);
   const [labwork, setLabwork] = useState(false);
   const [blocked, setBlocked] = useState(false);
+  const [teachType, setTeachType] = useState<0 | 1>(0);
   const selected = data?.themes.find(item => String(item.public_week_id) === selection);
   const isEvent = data?.presents.scheduleType === 'event';
   const permission = data?.presents.can_set_theme;
@@ -41,23 +43,31 @@ export function LessonThemeEditor({ busy, unavailable, currentTheme, draft, onLo
       setManual(draft?.theme || label(next.presents.scheduleType === 'event' ? record(next.presents.scheduleData).theme : info?.theme));
       setHomework(draft ? draft.issueHomework : !!saved && !!record(next.presents.homework).public_material_id);
       setLabwork(draft ? draft.issueLabwork : !!saved && !!record(next.presents.labwork).public_material_id);
+      setTeachType(draft?.teachType ?? lessonTeacherType(info?.primary_teach || 0) ?? 0);
       setBlocked(false);
     } catch { if (activeContext.current === context) setBlocked(true); }
   }
   async function save() {
     if (!data || blocked || busy || unavailable || denied || !theme.trim()) return;
     try {
-      await onSave({ theme, publicWeekId: selected ? String(selected.public_week_id) : null, issueHomework: homework, issueLabwork: labwork, previousTheme: label(attendanceLessonInfo(data.presents)?.theme) });
+      const previousTeachType = lessonTeacherType(attendanceLessonInfo(data.presents)?.primary_teach || 0);
+      if (previousTeachType === null) throw new Error('Неизвестный тип преподавателя.');
+      await onSave({ theme, publicWeekId: selected ? String(selected.public_week_id) : null, issueHomework: homework, issueLabwork: labwork, previousTheme: label(attendanceLessonInfo(data.presents)?.theme), teachType, previousTeachType });
       if (activeContext.current === context) setLoaded(null);
     } catch { if (activeContext.current === context) setBlocked(true); }
   }
   return <section className={(embedded ? 'lesson-theme-embedded' : 'panel') + ' lesson-theme-editor'} aria-label="Тема урока">
     <div className={embedded ? "lesson-theme-toolbar" : "panel-heading"}><div className="help-heading">{!embedded && <h2>Тема урока</h2>}<HelpTip label="О разделе «Тема урока»" icon={!currentTheme && !draft ? <CircleAlert size={16} aria-hidden="true"/> : undefined}>{!currentTheme && !draft && <>Тема ещё не сохранена. </>}{needsLesson ? unavailable : 'Выберите тему и добавьте её в черновик. Отправка в Omni — по кнопке «Сохранить».'}</HelpTip></div><button className="button secondary" disabled={busy || !!unavailable} onClick={() => void load()}>{data ? 'Обновить список тем' : 'Выбрать тему'}</button>{selected && onPreviewTheme && <button className="button secondary" type="button" disabled={busy || !!unavailable || !!denied} onClick={() => onPreviewTheme(selected)}>Материалы выбранной темы</button>}</div>
     {!embedded && !data && (draft || currentTheme) && <p className="attendance-help">{draft ? `Тема в черновике: ${draft.theme}` : `Текущая тема: ${currentTheme}`}</p>}
+    {!data && currentTeachType !== undefined && <span className="lesson-teacher-status">{(draft?.teachType ?? currentTeachType) === 1 ? 'Преподаватель на замене' : 'Основной преподаватель'}{draft?.teachType !== undefined && ' · в черновике'}</span>}
     {unavailable && !needsLesson && <p className="attendance-help">{unavailable}</p>}
     {data && <form onSubmit={event => { event.preventDefault(); void save(); }}>
       {denied && <p role="status">Omni не разрешает изменять тему этого занятия.</p>}
       <fieldset disabled={busy || !!unavailable || !!denied}>
+        <div className="lesson-teacher-options" role="group" aria-label="Преподаватель урока">
+          <label><input type="radio" name="lesson-teacher-type" checked={teachType === 0} onChange={() => setTeachType(0)}/>Основной преподаватель</label>
+          <label><input type="radio" name="lesson-teacher-type" checked={teachType === 1} onChange={() => setTeachType(1)}/>Преподаватель на замене</label>
+        </div>
         {!isEvent && <label>Тема из методпакета<select aria-label="Тема из методпакета" value={selection} onChange={event => { setSelection(event.target.value); setHomework(false); setLabwork(false); }}><option value="manual">Своя тема</option>{data.themes.map(item => <option key={String(item.public_week_id)} value={String(item.public_week_id)}>{label(item.theme)}</option>)}</select></label>}
         {!selected && <label>{isEvent ? 'Тема мероприятия' : 'Своя тема'}<input aria-label="Своя тема" value={manual} readOnly={isEvent} maxLength={2000} required onChange={event => setManual(event.target.value)}/></label>}
         {selected && <div className="theme-issue-options">

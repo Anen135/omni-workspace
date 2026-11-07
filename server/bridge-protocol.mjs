@@ -8,6 +8,15 @@ export class BridgeError extends Error {
 
 export function validateInput(action, input) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw new BridgeError('BAD_INPUT', 'Некорректный запрос.', 400);
+  if (action === 'lesson-access' || action === 'request-lesson-access') {
+    const fields = action === 'lesson-access' ? ['accountId'] : ['accountId', 'date', 'message'];
+    if (Object.keys(input).length !== fields.length || Object.keys(input).some(key => !fields.includes(key)) || typeof input.accountId !== 'string' || !/^[1-9]\d{0,11}$/.test(input.accountId)) throw new BridgeError('BAD_INPUT', 'Не указан аккаунт запроса.', 400);
+    if (action === 'request-lesson-access') {
+      validateInput('lesson', { date: input.date });
+      if (typeof input.message !== 'string' || !input.message.trim() || input.message.length > 2000 || /[\u0000-\u0008\u000b\u000c\u000e-\u001f]/.test(input.message)) throw new BridgeError('BAD_INPUT', 'Укажите причину запроса до 2000 символов.', 400);
+    }
+    return input;
+  }
   if (action === 'homework-history') {
     const fields = ['accountId', 'groupId', 'specKey', 'year', 'month', 'limit', 'offset'];
     const validId = value => typeof value === 'string' && /^[1-9]\d{0,11}$/.test(value);
@@ -61,9 +70,10 @@ export function validateInput(action, input) {
   }
   if (action === 'lesson-themes' || action === 'set-lesson-theme') {
     const common = ['accountId', 'date', 'group', 'lenta', 'schedule'];
-    const fields = action === 'lesson-themes' ? common : [...common, 'theme', 'publicWeekId', 'issueHomework', 'issueLabwork', 'previousTheme'];
+    const fields = action === 'lesson-themes' ? common : [...common, 'theme', 'publicWeekId', 'issueHomework', 'issueLabwork', 'previousTheme', 'teachType', 'previousTeachType'];
     if (Object.keys(input).some(key => !fields.includes(key)) || !['accountId', 'group', 'schedule'].every(key => typeof input[key] === 'string' && /^[1-9]\d{0,11}$/.test(input[key])) || typeof input.lenta !== 'string' || !/^\d{1,12}$/.test(input.lenta)) throw new BridgeError('BAD_INPUT', 'Не указан аккаунт или занятие.', 400);
     validateInput('lesson', { date: input.date, group: input.group, lenta: input.lenta });
+    if (action === 'set-lesson-theme' && (Object.hasOwn(input, 'teachType') || Object.hasOwn(input, 'previousTeachType')) && (![0, 1].includes(input.teachType) || ![0, 1].includes(input.previousTeachType))) throw new BridgeError('BAD_INPUT', 'Некорректный тип преподавателя.', 400);
     if (action === 'set-lesson-theme' && (typeof input.theme !== 'string' || !input.theme.trim() || input.theme.length > 2000 || typeof input.previousTheme !== 'string' || input.previousTheme.length > 2000 || !(input.publicWeekId === null || typeof input.publicWeekId === 'string' && /^[1-9]\d{0,11}$/.test(input.publicWeekId)) || typeof input.issueHomework !== 'boolean' || typeof input.issueLabwork !== 'boolean')) throw new BridgeError('BAD_INPUT', 'Некорректная тема занятия.', 400);
     return input;
   }

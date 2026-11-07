@@ -53,6 +53,8 @@ const actionCapabilities = new Map<string, string>([
   ['set-attendance', 'attendance'],
   ['lesson-themes', 'lessonTheme'],
   ['set-lesson-theme', 'lessonTheme'],
+  ['lesson-access', 'lessonAccess'],
+  ['request-lesson-access', 'lessonAccessRequest'],
   ['set-lesson-mark', 'lessonMark'],
   ['set-lesson-reward', 'lessonReward'],
   ['set-homework-marks', 'homeworkMarks'],
@@ -61,7 +63,7 @@ const actionCapabilities = new Map<string, string>([
 export async function extensionRequest<T>(action: string, input: unknown): Promise<T> {
   const runtime = (window.chrome as unknown as { runtime?: ExtensionRuntime })?.runtime;
   if (!isExtension() || !runtime) throw new Error('Откройте интерфейс через значок установленного расширения.');
-  const capability = actionCapabilities.get(action);
+  const capability = action === 'set-lesson-theme' && input && typeof input === 'object' && ('teachType' in input || 'previousTeachType' in input) ? 'lessonTeacherType' : actionCapabilities.get(action);
   if (capability) {
     const capabilities = await runtime.sendMessage({ action: 'capabilities', input: {} });
     const supported = capabilities?.data as Record<string, boolean> | undefined;

@@ -17,6 +17,7 @@ import { createWorkspaceHomework } from './workspace-homework';
 import { createWorkspaceLessonDraft } from './workspace-lesson-draft';
 import { createWorkspaceNavigation } from './workspace-navigation';
 import { createWorkspaceSession } from './workspace-session';
+import { useLessonAccess } from './useLessonAccess';
 
 const emptySection: Section = { data: null, error: null };
 
@@ -193,7 +194,12 @@ export function useWorkspaceController({ connectionForm, connectionPending = fal
     return () => window.removeEventListener('beforeunload', warn);
   }, [attendanceSaving, homeworkSaving, hasDrafts]);
 
-  const { loadLesson, openGroup, openStudent } = createWorkspaceNavigation({ operation, sessionVersion, selectedDate, tab, snapshot, rosterCache, setBusy, setError, ensureAccount, reconcileDrafts, setLesson, setTab, failed, setGroupStudents, setGroupId, setGroupName, setDetail });
+  const { loadLesson: loadLessonDirect, openGroup, openStudent } = createWorkspaceNavigation({ operation, sessionVersion, selectedDate, tab, snapshot, rosterCache, setBusy, setError, ensureAccount, reconcileDrafts, setLesson, setTab, failed, setGroupStudents, setGroupId, setGroupName, setDetail });
+  const lessonAccess = useLessonAccess({ accountId: snapshot?.account.id || '', branch: snapshot?.account.branch || '', generation: sessionVersion.current, operation, sessionVersion, setBusy, failed, loadLesson: loadLessonDirect });
+  function loadLesson(group?: string, slot?: string, date?: string) {
+    if (date && date < today) lessonAccess.open({ date, group, slot });
+    else void loadLessonDirect(group, slot, date);
+  }
   function exportSnapshot() {
     if (!snapshot) return;
     const data = { source: 'omni', snapshot, lesson, exportedAt: new Date().toISOString() };
@@ -209,7 +215,7 @@ export function useWorkspaceController({ connectionForm, connectionPending = fal
   return {
     session: { snapshot, teachers, busy, authNeeded, refresh, switchTeacher, changeAccount, connect, startup, error, setError, switchingTeacher, connectionInterval, setConnectionInterval, onNativeLogin, connectionForm, waiting, changingAccount, connectionState, login, sessionVersion, workspaceBusy },
     homework: { reviewItems, refreshHomework, homeworkNeedsReload, gradeHomework },
-    lesson: { materialsView, draftKey, materialLesson, lesson, setMaterialsView, loadCurrentMaterials, attendanceSaving, draft, hasTheme, presentData, attendanceReason, bufferedDrafts, saveLessonDraft, clearLessonDraft, selectedDate, lessonStudents, currentTheme, estimates, loadLessonThemes, stageTheme, dayLessons, loadLesson, loadPreviousLesson, stagePreviousLesson, lessonTableContext, stageBulk, stageFill, stageRewardAllocation, stageMark, stageReward, markAttendance },
+    lesson: { materialsView, draftKey, materialLesson, lesson, setMaterialsView, loadCurrentMaterials, attendanceSaving, draft, hasTheme, presentData, attendanceReason, bufferedDrafts, saveLessonDraft, clearLessonDraft, selectedDate, lessonStudents, currentTheme, estimates, loadLessonThemes, stageTheme, dayLessons, loadLesson, lessonAccess, loadPreviousLesson, stagePreviousLesson, lessonTableContext, stageBulk, stageFill, stageRewardAllocation, stageMark, stageReward, markAttendance },
     page: { tab, setTab, failed, detail, dialog, setDetail, notice, setNotice, exportSnapshot, today, scheduleDates, scheduleRange, week, weekForDate, schedule, groupId, groups, groupName, groupStudents, openGroup, openStudent, studentAverages, averages, dossierRefreshKey, onIncomeLoading },
   };
 }

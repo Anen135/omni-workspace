@@ -4,6 +4,7 @@ import { SectionView } from '../components/data/RemoteData';
 import { TeacherDossier } from '../features/dossier/TeacherDossier';
 import { HelpPage } from '../features/help/HelpPage';
 import { LessonPage } from '../features/lesson/LessonPage';
+import { LessonAccessDialog } from '../features/lesson/LessonAccessDialog';
 import { TeachingMaterials } from '../features/materials/TeachingMaterials';
 import { ScheduleView } from '../features/schedule/ScheduleView';
 import { WorkspaceSettings } from '../features/settings/WorkspaceSettings';
@@ -25,6 +26,7 @@ export function WorkspaceContent(model: ReturnType<typeof useWorkspaceController
   const { reviewItems, refreshHomework, homeworkNeedsReload, gradeHomework } = model.homework;
   const { lesson, setMaterialsView, bufferedDrafts, estimates, draftKey, presentData, selectedDate, loadLesson, attendanceSaving, draft, hasTheme, attendanceReason, saveLessonDraft, clearLessonDraft, lessonStudents, currentTheme, loadLessonThemes, stageTheme, dayLessons, loadPreviousLesson, stagePreviousLesson, lessonTableContext, stageBulk, stageFill, stageRewardAllocation, stageMark, stageReward, markAttendance } = model.lesson;
   const { tab, setTab, failed, today, scheduleDates, scheduleRange, week, weekForDate, schedule, groupId, groups, groupName, groupStudents, openGroup, openStudent, studentAverages, averages, dossierRefreshKey, onIncomeLoading } = model.page;
+  const access = model.lesson.lessonAccess;
   return <>
         <WorkspaceMobileNav tab={tab} onNavigate={setTab}/>
         {(!startup || tab === 'settings' || tab === 'help' || tab === 'ui-tests') && <WorkspacePageHeading tab={tab}>
@@ -43,7 +45,8 @@ export function WorkspaceContent(model: ReturnType<typeof useWorkspaceController
           onLogin={login} onConnect={onNativeLogin || (() => void connect())}/>)}
         {snapshot && <>
           {tab === 'lesson' && <LessonPage loadingIndicator={<WorkspaceLoading/>} account={snapshot.account} fetchedAt={snapshot.fetchedAt}
-            busy={busy} today={today} groupId={groupId} estimate={estimates.current}
+            busy={busy} groupId={groupId} estimate={estimates.current}
+            onRequestAccess={() => access.open()}
             draftKey={draftKey} presentData={presentData} selectedDate={selectedDate} loadLesson={loadLesson}
             attendanceSaving={attendanceSaving} draft={draft} hasTheme={hasTheme} attendanceReason={attendanceReason}
             saveLessonDraft={saveLessonDraft} clearLessonDraft={clearLessonDraft} lessonStudents={lessonStudents} currentTheme={currentTheme}
@@ -78,6 +81,7 @@ export function WorkspaceContent(model: ReturnType<typeof useWorkspaceController
             <IssuedMaterialsPanel lesson={lesson} busy={busy} date={selectedDate} groupSelected={!!presentData.cur_group}
               onLoad={() => void loadLesson(label(presentData.cur_group), label(presentData.cur_lenta))}/>
           </RetainedSection>
+          {access.target && <LessonAccessDialog key={`${snapshot.account.id}:${snapshot.account.branch}:${sessionVersion.current}`} target={access.target} busy={busy} blockedDates={access.blockedDates} canSend={isExtension()} onLoad={access.load} onSend={access.send} onOpen={access.openApproved} onClose={access.close}/>}
           <div className="bottom-actions"><span><ShieldCheck size={17}/>{isExtension() ? 'Данные Omni · отметки посещаемости сохраняются на сервере' : 'Данные загружены из Omni · только чтение'}</span></div>
         </>}
         <footer className="page-footer"><span>omni workspace</span><span>Больше внимания ученикам.</span><span>Локальное подключение</span></footer>

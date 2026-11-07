@@ -33,7 +33,7 @@ export function validLessonDraft(draft) {
   for (const [key, change] of Object.entries(draft.rewards || {})) {
     if (!fields(change, ['stud', 'reward', 'previousReward', 'visit']) || !id(change.stud) || key !== change.stud || ![1, 2, 3, 4].includes(change.reward) || ![null, '1', '2', '3'].includes(change.previousReward) || !nullableId(change.visit)) return false;
   }
-  if (draft.theme !== undefined && (!fields(draft.theme, ['theme', 'publicWeekId', 'issueHomework', 'issueLabwork', 'previousTheme']) || !text(draft.theme.theme, 2000) || !draft.theme.theme.trim() || !text(draft.theme.previousTheme, 2000) || !nullableId(draft.theme.publicWeekId) || typeof draft.theme.issueHomework !== 'boolean' || typeof draft.theme.issueLabwork !== 'boolean')) return false;
+  if (draft.theme !== undefined && (!fields(draft.theme, ['theme', 'publicWeekId', 'issueHomework', 'issueLabwork', 'previousTheme'], ['teachType', 'previousTeachType']) || !text(draft.theme.theme, 2000) || !draft.theme.theme.trim() || !text(draft.theme.previousTheme, 2000) || !nullableId(draft.theme.publicWeekId) || typeof draft.theme.issueHomework !== 'boolean' || typeof draft.theme.issueLabwork !== 'boolean' || (Object.hasOwn(draft.theme, 'teachType') || Object.hasOwn(draft.theme, 'previousTeachType')) && (![0, 1].includes(draft.theme.teachType) || ![0, 1].includes(draft.theme.previousTeachType)))) return false;
   return bytes(draft) <= 128 * 1024;
 }
 export function validateDraftBufferRequest(input) {
