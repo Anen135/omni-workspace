@@ -12,7 +12,7 @@ export function PreviousLessonCopy({ busy, unavailable, students, date, slot, da
   onLoad: (source: CopySource) => Promise<PreviousLessonData>; onCopy: (data: PreviousLessonData, selection: CopySelection) => void;
 }) {
   const [open, setOpen] = useState(false);
-  return <><button type="button" className="button secondary" disabled={busy || !!unavailable} title={unavailable} aria-haspopup="dialog" onClick={() => setOpen(true)}><Copy size={15}/>Скопировать с прошлой пары</button>
+  return <><button type="button" className="button secondary" disabled={busy || !!unavailable} title={unavailable} aria-label="Скопировать с прошлой пары" aria-haspopup="dialog" onClick={() => setOpen(true)}><Copy size={15}/><span className="lesson-copy-label">Скопировать с прошлой пары</span><span className="lesson-copy-label-short" aria-hidden="true">С прошлой пары</span></button>
     {open && <PreviousLessonCopyDialog busy={busy} unavailable={unavailable} students={students} date={date} slot={slot} dayLessons={dayLessons} onLoad={onLoad} onCopy={onCopy} onClose={() => setOpen(false)}/>}</>;
 }
 

@@ -40,3 +40,10 @@ No configured lint/formatter; fixtures do not prove live Omni/payments. Batch ne
 docs at completion; obtain approval for unrelated overwrites. Prefer KISS.
 Use `openai-docs` for Codex/OpenAI setup, `skill-creator` for skills, Figma skills
 for Figma, `imagegen` for bitmaps. [Activation](.codex/README.md) only for setup issues.
+
+## Frontend design
+- For significant UI work follow [design.md](design.md): task analysis → references → art direction → existing design system → implementation → visual audit → corrections. Small fixes use the affected slice, not a mandatory redesign ceremony.
+- Use available `frontend-skill` with its app/utility-copy guidance; Omni's teacher workflow and existing direction take precedence over landing-page imagery, heroes or ornamental motion. If unavailable, follow design.md directly.
+- Reuse tokens/components and record a short visual/content/interaction thesis before substantial implementation. Keep dense readable tables, clear actions and progressive disclosure; justify cards, icons, imagery and whitespace by user purpose.
+- Run `npm run test:visual` for the lesson baseline; adapt its fictional fixture for changed pages/states. Inspect desktop/tablet/mobile screenshots yourself, including interaction/error states; passing DOM assertions is not visual approval. Add dark mode/zoom/extension evidence when affected.
+- Report concrete visual defects, severity, evidence and corrections/remaining limits. Keep screenshots with fictional data under ignored tmp; never approve a pixel baseline merely because it was generated. Preserve functional/security checks from the engineering route above.

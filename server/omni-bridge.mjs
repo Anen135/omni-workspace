@@ -1,4 +1,5 @@
 import { loadHomeworkHistory } from './homework-history.mjs';
+import { lessonAccess } from './lesson-access.mjs';
 import { loadHomeworkQueue } from './homework-queue.mjs';
 import { chromium } from 'playwright';
 import { resolve } from 'node:path';
@@ -13,7 +14,7 @@ const readPaths = new Set([
   '/profile/get-profile', '/auth/get-start-info', '/auth/get-teach-list', '/students/get-groups-list',
   '/students/get-students', '/students/get-details-stud', '/students/get-stud-vizit',
   '/schedule/get-schedule', '/presents/get-presents', '/presents/get-materials',
-  '/presents/get-homework', '/homework/get-group-spec', '/homework/get-new-homeworks', '/homework/get-students', '/homework/get-homeworks',
+  '/presents/get-homework', '/presents/get-data-request-zavuch', '/homework/get-group-spec', '/homework/get-new-homeworks', '/homework/get-students', '/homework/get-homeworks',
   '/bind/get-public-form', '/bind/get-public-direction', '/bind/get-public-spec',
   '/bind/get-materials-type', '/bind/get-materials', '/bind/get-count-week',
   '/dossier/get-single-data', '/dossier/get-data-graphics', '/dossier/get-all-data',
@@ -31,7 +32,7 @@ export function createBridge() {
   let background = false;
   let lastLoginAttempt = 0;
 
-  async function attach(headless = false) {
+  const attach = async function(headless = false) {
     if (page && !page.isClosed()) return page;
     if (connecting) return connecting;
     connecting = (async () => {
@@ -58,9 +59,9 @@ export function createBridge() {
       return page;
     })().finally(() => { connecting = undefined; });
     return connecting;
-  }
+  };
 
-  async function status() {
+  const status = async function() {
     if (!page || page.isClosed()) return { connected: false, state: 'disconnected' };
     try {
       const current = new URL(page.url());
@@ -73,9 +74,9 @@ export function createBridge() {
       if (state.login || current.pathname.startsWith('/login')) return { connected: false, state: 'login' };
       return { connected: true, state: 'ready' };
     } catch { return { connected: false, state: 'loading' }; }
-  }
+  };
 
-  async function request(path, data = {}, switching = false, method = 'POST') {
+  const request = async function(path, data = {}, switching = false, method = 'POST') {
     if (!readPaths.has(path) && !(switching && path === '/auth/change-user')) throw new BridgeError('NOT_ALLOWED', 'Запрос не разрешён.', 400);
     const state = await status();
     if (!state.connected) throw new BridgeError(state.state === 'challenge' ? 'CHALLENGE' : 'AUTH_REQUIRED', 'Откройте окно Omni и завершите вход.', 401);
@@ -104,24 +105,24 @@ export function createBridge() {
     if (response.challenge) throw new BridgeError('CHALLENGE', 'Пройдите проверку браузера в окне Omni.', 401);
     if (response.invalid || response.status) throw new BridgeError('UPSTREAM_ERROR', `Omni не вернул данные${response.status ? ` (HTTP ${response.status})` : ''}. Повторите позже.`);
     return response.data;
-  }
+  };
 
   const read = (path, data, method) => request(path, data, false, method);
 
-  async function identity() {
+  const identity = async function() {
     const profile = await read('/profile/get-profile');
     const info = profile?.teach_info;
     if (!info?.id_teach || typeof info.fio_teach !== 'string') throw new BridgeError('SCHEMA_CHANGED', 'Не удалось распознать профиль Omni.');
     return { id: String(info.id_teach), name: info.fio_teach };
-  }
+  };
 
-  async function section(path, params, method) {
+  const section = async function(path, params, method) {
     try { return { data: await read(path, params, method), error: null }; }
     catch (error) {
       if (['AUTH_REQUIRED', 'ACCOUNT_CHANGED', 'CHALLENGE'].includes(error.code)) throw error;
       return { data: null, error: error.message };
     }
-  }
+  };
 
   const bridge = {
     async dispatch(action, input = {}) {
@@ -159,7 +160,8 @@ export function createBridge() {
           throw new BridgeError('LOGIN_UNAVAILABLE', loginErrors.LOGIN_UNAVAILABLE);
         } finally { input.password = ''; }
       }
-      if (['set-attendance', 'lesson-themes', 'set-lesson-theme', 'set-lesson-mark', 'set-lesson-reward', 'set-homework-marks'].includes(action)) throw new BridgeError('NOT_SUPPORTED', 'Изменяйте урок через расширение браузера.', 400);
+      if (['set-attendance', 'lesson-themes', 'set-lesson-theme', 'set-lesson-mark', 'set-lesson-reward', 'set-homework-marks', 'request-lesson-access'].includes(action)) throw new BridgeError('NOT_SUPPORTED', 'Изменяйте урок через расширение браузера.', 400);
+      if (action === 'lesson-access') return lessonAccess(action, input, { request: read, identity });
       if (action === 'homework-history') return loadHomeworkHistory(input, { identity, section });
       if (action === 'homework-queue') return loadHomeworkQueue(input, { identity, section });
       if (action === 'schedule-range') return loadScheduleRange(input, { identity, section });
@@ -239,7 +241,7 @@ export function createMiddleware(bridge) {
     response.setHeader('Cache-Control', 'no-store');
     response.setHeader('X-Content-Type-Options', 'nosniff');
     const send = (status, data) => { response.statusCode = status; response.end(JSON.stringify(data)); };
-    const host = request.headers.host;
+    const {host} = request.headers;
     if (!host || !/^(127\.0\.0\.1|localhost):\d+$/.test(host) ||
       (request.headers.origin && request.headers.origin !== `http://${host}`) ||
       request.headers['sec-fetch-site'] === 'cross-site' || request.headers['x-omni-client'] !== 'workspace') {

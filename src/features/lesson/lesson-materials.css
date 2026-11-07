@@ -8,6 +8,17 @@
 .lesson-estimate > strong { color: var(--text, #192132); font-size: 20px; font-weight: 600; white-space: nowrap; }
 .lesson-theme-embedded { min-width: 0; flex: 1 1 360px; }
 .lesson-theme-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.lesson-teacher-status { display: inline-block; margin-top: 10px; color: var(--muted); font-size: 12px; }
+.lesson-teacher-options { display: flex; flex-wrap: wrap; gap: 12px 24px; flex-basis: 100%; }
+.lesson-theme-editor .lesson-teacher-options label { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; }
+.lesson-theme-editor .lesson-teacher-options input[type=radio] { width: auto; margin: 0; padding: 0; }
+.lesson-access-dialog { width: min(760px, calc(100% - 32px)); max-height: min(85dvh, calc(100% - 32px)); overflow: auto; }
+.lesson-access-dialog p { line-height: 1.5; }
+.lesson-access-dialog fieldset { border: 0; padding: 0; margin: 16px 0; display: grid; gap: 16px; min-width: 0; }
+.lesson-access-dialog fieldset label { display: grid; gap: 8px; }
+.lesson-access-dialog select, .lesson-access-dialog textarea { width: 100%; min-width: 0; box-sizing: border-box; font: inherit; color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 10px; }
+.lesson-access-dialog .button { white-space: normal; }
+.lesson-access-dialog [role="alert"] { color: var(--omni-danger-text, #b42318); }
 .lesson-theme-embedded form { margin-top: 14px; }
 .lesson-workspace .lesson-theme-editor.lesson-theme-embedded form { padding: 0; }
 .lesson-materials-dialog { width: min(980px, calc(100% - 32px)); max-height: 85dvh; padding: 0; overflow: auto; }

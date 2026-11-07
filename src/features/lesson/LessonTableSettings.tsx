@@ -1,3 +1,4 @@
+import { HelpTip } from '../../components/ui/HelpTip';
 import { useEffect, useId, useRef } from 'react';
 import type { TableSort } from '../../components/data/table-sort';
 import { LessonTableFilters } from './LessonTableFilters';
@@ -44,8 +45,7 @@ export function LessonTableSettings({ fields, sorts, onChange, onReset, onClose,
     <div className="lesson-table-settings-heading"><h2 id={title}>Настройки таблицы</h2><button type="button" className="button secondary" onClick={onClose} autoFocus>Закрыть</button></div>
     <p className="table-bulk-help" role="status">По фильтрам и поиску: {matchingCount} из {totalCount}.</p>
     <LessonTableFilters fields={filterFields} groups={filterGroups} onChange={onFiltersChange}/>
-    <h3>Сортировка</h3>
-    <p className="table-bulk-help">Критерии применяются сверху вниз, на всех страницах. Пустые значения — в конце. Присутствие: отсутствует → присутствует → опоздал.</p>
+    <div className="help-heading"><h3>Сортировка</h3><HelpTip label="О порядке сортировки">Критерии применяются сверху вниз, на всех страницах. Пустые значения — в конце. Присутствие: отсутствует → присутствует → опоздал. Заголовок столбца делает его первым критерием, сохраняя остальные.</HelpTip></div>
     <ol className="lesson-sort-list">
       {sorts.map((sort, index) => <li key={index} className="table-bulk-controls">
         <label>Поле {index + 1}<select aria-label={`Поле сортировки ${index + 1}`} value={sort.columnId} onChange={event => onChange(sorts.map((item, i) => i === index ? { ...item, columnId: event.target.value } : item))}>
@@ -67,6 +67,6 @@ export function LessonTableSettings({ fields, sorts, onChange, onReset, onClose,
       }}>Добавить критерий</button>
       <button type="button" className="button secondary" onClick={onReset}>Сбросить сортировку</button>
     </div>
-    <p className="table-bulk-help">Изменения применяются сразу. Заголовок столбца делает его первым критерием, сохраняя остальные.</p>
+    <p className="table-bulk-help">Изменения применяются сразу.</p>
   </dialog>;
 }

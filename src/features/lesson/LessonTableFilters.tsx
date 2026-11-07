@@ -1,3 +1,4 @@
+import { HelpTip } from '../../components/ui/HelpTip';
 import { useId } from 'react';
 import { lessonFilterError, lessonFilterOperators, newLessonFilter, type LessonFilterCondition, type LessonFilterField, type LessonFilterGroups } from './lesson-table-filter';
 
@@ -9,8 +10,7 @@ export function LessonTableFilters({ fields, groups, onChange }: {
     onChange(groups.map((items, g) => g === group ? items.map((item, i) => i === index ? condition : item) : items));
   }
   return <section className="lesson-table-filters" aria-label="Фильтры таблицы">
-    <h3>Фильтры</h3>
-    <p className="table-bulk-help">Внутри группы должны выполняться все условия (И). Достаточно любой группы (ИЛИ). Поиск по имени применяется дополнительно. Изменение фильтров очищает выбор учеников.</p>
+    <div className="help-heading"><h3>Фильтры</h3><HelpTip label="О правилах фильтрации">Внутри группы должны выполняться все условия (И). Достаточно любой группы (ИЛИ). Поиск по имени применяется дополнительно. Изменение фильтров очищает выбор учеников.</HelpTip></div>
     {groups.map((group, g) => <fieldset key={g} className="lesson-filter-group"><legend>{g > 0 ? 'ИЛИ · ' : ''}Группа {g + 1} · И</legend>
       {group.map((condition, i) => {
         const field = fields.find(field => field.id === condition.fieldId);

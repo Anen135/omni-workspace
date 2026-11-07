@@ -113,6 +113,15 @@ try {
   await dynamics.getByLabel('Показатель динамики', { exact: true }).selectOption('average_attendance');
   await dynamics.getByText('сентябрь 2026 г.', { exact: true }).waitFor();
   assert.equal(await dynamics.getByText('82,5 %', { exact: true }).count(), 1);
+  // The composed workspace retains visited pages and their local state between tabs.
+  const readsBeforeReturn = calls;
+  await dossier.evaluate(node => { window.retainedDossierNode = node; });
+  await page.locator('.sidebar').getByRole('button', { name: 'Настройки', exact: true }).click();
+  assert.equal(await dossier.isVisible(), false);
+  await page.locator('.sidebar').getByRole('button', { name: 'Досье преподавателя', exact: true }).click();
+  assert.equal(await dossier.evaluate(node => node === window.retainedDossierNode), true, 'returning to a visited tab preserves its DOM ownership');
+  assert.equal(await dynamics.getByLabel('Показатель динамики', { exact: true }).inputValue(), 'average_attendance', 'returning preserves local filters');
+  assert.equal(calls, readsBeforeReturn, 'returning to a visited dossier does not reload it');
   const subjects = dossier.getByRole('region', { name: 'Предметы преподавателя', exact: true });
   assert.equal(await subjects.locator('tbody tr').count(), 20);
   await dossier.getByRole('button', { name: 'Следующие записи: Предметы преподавателя', exact: true }).click();

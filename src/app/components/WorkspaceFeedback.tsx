@@ -25,7 +25,7 @@ export function TeacherSwitchingState() {
   return <section className="panel connection-card" role="status"><LoaderCircle className="spin" size={26}/><h2>Переключаю преподавателя…</h2><p>Загружаю его расписание, группы и домашние задания.</p></section>;
 }
 
-export function WorkspaceStartup({ onNative }: { onNative: () => void }) {
+export function WorkspaceStartup() {
   const [slow, setSlow] = useState(false);
   useEffect(() => {
     const timer = window.setTimeout(() => setSlow(true), 3000);
@@ -34,8 +34,7 @@ export function WorkspaceStartup({ onNative }: { onNative: () => void }) {
   return <section className="workspace-startup" aria-label="Загрузка Omni Workspace" role="status" aria-live="polite">
     <div className="workspace-startup-brand"><BrandMark size={48}/><strong>omni<span>.</span></strong></div>
     <LoaderCircle className="spin" size={28} aria-hidden="true"/>
-    {slow && <div className="workspace-startup-recovery"><p>Загрузка занимает больше времени, чем обычно.</p>
-      <button type="button" className="button secondary" onClick={onNative}>Открыть официальный вход</button></div>}
+    {slow && <div className="workspace-startup-recovery"><p>Загрузка идёт дольше чем обычно.</p></div>}
   </section>;
 }
 

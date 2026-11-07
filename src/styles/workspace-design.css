@@ -1,0 +1,155 @@
+/* Visual reference: demo-design/src/styles/redesign.css and its lesson screen.
+   Keep the live workspace's composition, controls and responsive behavior. */
+:root:not([data-omni-theme="dark"]),
+:host(:not([data-omni-theme="dark"])) {
+  --omni-background: #f5f4ef;
+  --omni-surface: #fff;
+  --omni-surface-muted: #f5f4ef;
+  --omni-skeleton-highlight: #eeeee7;
+  --omni-text: #252b29;
+  --omni-muted: #535e57;
+  --omni-border: #ccd1c9;
+  --omni-primary-soft: #edf1fc;
+  --omni-accent-text: #3056d3;
+  --omni-accent-fill: #3056d3;
+  --omni-accent-hover: #2446b7;
+  --omni-focus: #3056d3;
+  --omni-success-soft: #eff8f3;
+  --omni-success-text: #286448;
+  --omni-success-border: #dbeee3;
+  --omni-warning-soft: #fbf3e7;
+  --omni-warning-text: #845411;
+  --omni-warning-border: #efdfc8;
+  --omni-danger-soft: #fbefed;
+  --omni-danger-text: #963f35;
+  --omni-danger-border: #efd8d3;
+  --omni-info-soft: #edf1fc;
+  --omni-info-text: #3056d3;
+  --omni-pink-soft: #f9eaf0;
+  --omni-pink-text: #94516d;
+  --bg: var(--omni-background);
+}
+
+.app-shell.live-workspace {
+  --background: var(--omni-background);
+  --surface: var(--omni-surface);
+  --text: var(--omni-text);
+  --muted: var(--omni-muted);
+  --border: var(--omni-border);
+  --purple: var(--omni-accent-text);
+  --primary: var(--omni-accent-text);
+  --primary-soft: var(--omni-primary-soft);
+  --workspace-control-radius: 2px;
+  color: var(--text);
+  background: var(--background);
+}
+
+.live-workspace :is(.sidebar, .topbar) {
+  background: var(--surface);
+  border-color: var(--border);
+}
+.live-workspace .omni-brand-mark rect { fill: var(--omni-accent-fill); }
+.live-workspace .omni-brand-mark circle { fill: var(--omni-primary-soft); }
+.live-workspace .sidebar nav button { color: var(--muted); }
+.live-workspace .sidebar nav button:is(:hover, .selected) {
+  color: var(--purple);
+  background: var(--primary-soft);
+}
+.live-workspace .sidebar .profile { border-color: var(--border); }
+.live-workspace .topbar-workspace strong { color: var(--text); font-weight: 600; }
+.live-workspace .topbar-workspace small { color: var(--muted); }
+.live-workspace .compact-heading h1 { font-size: 27px; font-weight: 600; line-height: 1.4; letter-spacing: -.025em; }
+
+.live-workspace .panel {
+  border-color: var(--border);
+  border-radius: 2px;
+  background: var(--surface);
+  box-shadow: 0 3px 7px rgb(45 50 69 / 1%);
+}
+.live-workspace .panel-heading h2 { color: var(--text); font-size: 18px; font-weight: 600; }
+.live-workspace .lesson-workspace .lesson-banner.lesson-overview {
+  padding: 24px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: linear-gradient(110deg, var(--surface), var(--primary-soft));
+  box-shadow: 0 3px 8px rgb(53 49 67 / 1%);
+}
+.live-workspace .lesson-workspace .lesson-banner h2 { font-size: 20px; line-height: 1.4; font-weight: 600; letter-spacing: -.015em; }
+.live-workspace .lesson-overview-controls { border-color: var(--border); }
+.live-workspace .lesson-workspace :is(.lesson-meta, .lesson-time, .lesson-teacher-status) { color: var(--muted); }
+.live-workspace .lesson-estimate strong { font-size: 18px; color: var(--text); }
+
+.live-workspace .button {
+  border-radius: var(--workspace-control-radius);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+.live-workspace .button.secondary {
+  color: var(--muted);
+  background: var(--surface);
+  border-color: var(--border);
+  box-shadow: none;
+}
+.live-workspace .button.secondary:hover:not(:disabled) {
+  color: var(--purple);
+  border-color: var(--purple);
+  background: var(--primary-soft);
+}
+.live-workspace .button.primary {
+  background: var(--omni-accent-fill);
+  border-color: var(--omni-accent-fill);
+  color: #fff;
+  box-shadow: 0 3px 6px rgb(48 86 211 / 12%);
+}
+.live-workspace .button.primary:hover:not(:disabled) { background: var(--omni-accent-hover); border-color: var(--omni-accent-hover); }
+.live-workspace .button:disabled { cursor: not-allowed; }
+.live-workspace :is(input[type=text], input[type=search], input[type=number], input[type=date], select, textarea) {
+  border-radius: var(--workspace-control-radius);
+  border-color: var(--border);
+}
+.live-workspace :is(input[type=checkbox], input[type=radio]) { accent-color: var(--omni-accent-fill); }
+.live-workspace :is(.text-button, .data-table-sort):hover:not(:disabled) { color: var(--purple); }
+.live-workspace :is(button, input, select, textarea, [tabindex="0"]):focus-visible {
+  outline: 2px solid var(--omni-focus);
+  outline-offset: 3px;
+}
+
+.live-workspace .data-table { color: var(--text); }
+.live-workspace .data-table thead,
+.live-workspace .lesson-workspace .lesson-students thead { background: var(--omni-surface-muted); }
+.live-workspace .data-table th {
+  color: var(--muted);
+  border-color: var(--border);
+  font-weight: 500;
+}
+.live-workspace .lesson-workspace .lesson-students th { font-size: 12px; }
+.live-workspace .data-table td { border-color: var(--border); }
+.live-workspace .lesson-workspace .lesson-students td { height: 64px; }
+.live-workspace .data-table tbody tr:hover { background: var(--omni-surface-muted); }
+.live-workspace .data-table tbody tr.data-table-selected { background: var(--primary-soft); }
+.live-workspace .lesson-workspace .lesson-students .student-name { color: var(--text); font-size: 13px; }
+.live-workspace .attendance-select { border-color: var(--border); border-radius: 4px; }
+.live-workspace .attendance-select.attendance-1 { color: var(--omni-success-text); background: var(--omni-success-soft); border-color: var(--omni-success-border); }
+.live-workspace .attendance-select.attendance-2 { color: var(--omni-warning-text); background: var(--omni-warning-soft); border-color: var(--omni-warning-border); }
+.live-workspace .attendance-select.attendance-0 { color: var(--omni-danger-text); background: var(--omni-danger-soft); border-color: var(--omni-danger-border); }
+.live-workspace :is(.average-grade, .reward-editor) { color: var(--purple); }
+.live-workspace .table-bulk-editor { border-color: var(--border); }
+
+.live-workspace :is(.lesson-table-settings, .lesson-materials-dialog) {
+  color: var(--text);
+  background: var(--surface);
+  border-color: var(--border);
+  box-shadow: 0 24px 80px rgb(37 43 41 / 18%);
+}
+.live-workspace .lesson-table-settings h2 { font-size: 20px; font-weight: 600; letter-spacing: -.015em; }
+.live-workspace :is(.lesson-filter-group, .lesson-sort-list > li, .lesson-materials-heading) { border-color: var(--border); }
+.live-workspace :is(.workspace-popover-body, .workspace-drawer, .workspace-handle) { border-color: var(--border); }
+.live-workspace .workspace-toast { color: var(--text); background: var(--surface); border-color: var(--border); }
+.live-workspace .workspace-error-toast { color: var(--omni-danger-text); }
+
+@media (max-width: 760px) {
+  .live-workspace .lesson-workspace .lesson-banner.lesson-overview { padding: 18px 16px; }
+  .live-workspace .compact-heading h1 { font-size: 25px; }
+  .live-workspace .button { font-size: 12px; }
+}

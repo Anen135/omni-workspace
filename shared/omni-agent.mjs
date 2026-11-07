@@ -9,6 +9,7 @@ import { lessonTheme } from '../extension/lesson-theme.mjs';
 import { saveLessonMark } from '../extension/lesson-mark.mjs';
 import { saveLessonReward } from '../extension/lesson-reward.mjs';
 import { saveHomeworkMarks } from '../extension/homework.mjs';
+import { lessonAccess } from '../server/lesson-access.mjs';
 
 const origin = 'https://omni.top-academy.ru';
 export async function dispatch(action, input = {}) {
@@ -48,6 +49,7 @@ export async function dispatch(action, input = {}) {
     catch (error) { if (['AUTH_REQUIRED', 'ACCOUNT_CHANGED'].includes(error.code)) throw error; return { data: null, error: error.message }; }
   }
   if (action === 'set-attendance') return saveAttendance(input, { request: read, identity });
+  if (action === 'lesson-access' || action === 'request-lesson-access') return lessonAccess(action, input, { request: read, identity });
   if (action === 'set-lesson-mark') return saveLessonMark(input, { request: read, identity });
   if (action === 'set-lesson-reward') return saveLessonReward(input, { request: read, identity });
   if (action === 'set-homework-marks') return saveHomeworkMarks(input, { request: read, identity });

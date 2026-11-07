@@ -16,7 +16,7 @@ function fixture(options = {}) {
       assert.equal(path, '/presents/set-theme'); writes.push(data);
       if (options.timeout) throw new Error('Timeout');
       if (options.reject) return { success: false, message: 'Отказ' };
-      if (!options.noSave) presents.students = presents.students.map(student => ({ ...student, theme: data.theme, public_week_id: data.public_week_id, id_vizit: 88, was: 0 }));
+      if (!options.noSave) presents.students = presents.students.map(student => ({ ...student, theme: data.theme, primary_teach: options.ignoreTeachType ? student.primary_teach : data.teach_type, public_week_id: data.public_week_id, id_vizit: 88, was: 0 }));
       return options.partial ? { theme_saved: true, success: false } : { success: true };
     },
   };
@@ -42,6 +42,22 @@ test('manual topic works without issuing materials', async () => {
   const { deps, writes } = fixture();
   await lessonTheme('set-lesson-theme', { ...choice(), publicWeekId: null, theme: 'Своя тема', issueHomework: false }, deps);
   assert.equal(writes[0].public_week_id, null); assert.equal(writes[0].issue_homework, false);
+});
+
+test('replacement teacher stays explicit, baseline checked, and confirmed by readback', async () => {
+  const { deps, writes } = fixture();
+  const result = await lessonTheme('set-lesson-theme', { ...choice(), teachType: 1, previousTeachType: 0 }, deps);
+  assert.equal(writes[0].teach_type, 1); assert.equal(result.presents.students[0].primary_teach, 1);
+  for (const patch of [{ teachType: 1 }, { previousTeachType: 0 }, { teachType: 2, previousTeachType: 0 }, { teachType: '1', previousTeachType: 0 }]) assert.throws(() => validateMessage({ action: 'set-lesson-theme', input: { ...choice(), ...patch } }));
+  const stale = fixture({ presents: { students: [{ theme: '', primary_teach: '1' }] } });
+  await assert.rejects(lessonTheme('set-lesson-theme', { ...choice(), teachType: 1, previousTeachType: 0 }, stale.deps), { code: 'THEME_CONFLICT' });
+  assert.deepEqual(stale.writes, []);
+  const mismatch = fixture({ ignoreTeachType: true });
+  await assert.rejects(lessonTheme('set-lesson-theme', { ...choice(), teachType: 1, previousTeachType: 0 }, mismatch.deps), { code: 'THEME_UNCONFIRMED' });
+  assert.equal(mismatch.writes.length, 1);
+  const legacy = fixture({ presents: { students: [{ theme: '', primary_teach: '1' }] } });
+  await lessonTheme('set-lesson-theme', choice(), legacy.deps);
+  assert.equal(legacy.writes[0].teach_type, 1, 'legacy drafts preserve the saved teacher type');
 });
 test('theme save refuses stale account, lesson, theme, permissions and unavailable choices before writing', async () => {
   for (const [options, patch, code] of [

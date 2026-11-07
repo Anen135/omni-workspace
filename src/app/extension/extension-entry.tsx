@@ -8,6 +8,7 @@ import { Workspace } from '../Workspace';
 import { extensionRequest, onOfficialLoginRequired } from '../../services/extension-client';
 import { createPoller, type PollOutcome } from './poller';
 import theme from '../../styles/theme.css?inline';
+import workspaceDesign from '../../styles/workspace-design.css?inline';
 import styles from '../../styles/styles.css?inline';
 import pages from '../../styles/pages.css?inline';
 import help from '../../components/ui/help.css?inline';
@@ -108,7 +109,7 @@ function start() {
     host.id = hostId;
     const shadow = host.shadowRoot || host.attachShadow({ mode: 'open' });
     const style = document.createElement('style');
-    style.textContent = `:host{all:initial;display:block;position:fixed;inset:0;z-index:2147483647;overflow:auto;isolation:isolate;color-scheme:light} ${styles}\n${help}\n${pages}\n${live}\n${workspace}\n${navigation}\n${login}\n${schedule}\n${materials}\n${homework}\n${students}\n${dossier}\n${income}\n${preview}\n${table}\n${averageGrade}\n${rewardAllocation}\n${searchableSelect}\n${lessonMaterials}\n${theme}\n${authStyles}\n@media print{:host{position:static!important;overflow:visible!important;height:auto!important}}`;
+    style.textContent = `:host{all:initial;display:block;position:fixed;inset:0;z-index:2147483647;overflow:auto;isolation:isolate;color-scheme:light} ${styles}\n${help}\n${pages}\n${live}\n${workspace}\n${navigation}\n${login}\n${schedule}\n${materials}\n${homework}\n${students}\n${dossier}\n${income}\n${preview}\n${table}\n${averageGrade}\n${rewardAllocation}\n${searchableSelect}\n${lessonMaterials}\n${theme}\n${authStyles}\n${workspaceDesign}\n@media print{:host{position:static!important;overflow:visible!important;height:auto!important}}`;
     const container = document.createElement('div'); container.id = 'root';
     shadow.replaceChildren(style, container);
     conceal = bootstrap?.active ? bootstrap.conceal : document.createElement('style');

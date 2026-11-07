@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { chromium } from 'playwright';
 import { resolve } from 'node:path';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, mkdir, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 
 const profile = await mkdtemp(resolve(tmpdir(), 'omni-extension-test-'));
@@ -41,6 +41,11 @@ try {
   let rejectAttendance = false;
   let ignoreAttendance = false;
   let rejectTheme = false;
+  let rejectAccessRead = false;
+  let accessReadDelay = 0;
+  let ignoreAccessSend = false;
+  const accessWrites = [];
+  const accessHistory = [{ date_req: '2026-09-29', approve: 'Одобрено', zavuch_id: 4, fio_teach: 'Тестовый завуч', can_set: '1' }];
   let expireOnStartInfo = false;
   let lessonDate = '2026-09-30';
   let rejectMark = false;
@@ -48,22 +53,22 @@ try {
   let ignoreReward = false;
   let rejectQueueRead = false;
   let nextScheduleHold = null;
-  function holdNextSchedule() {
+  const holdNextSchedule = function() {
     let start, release;
     const started = new Promise(resolve => { start = resolve; });
     const released = new Promise(resolve => { release = resolve; });
     nextScheduleHold = { start, released };
     return { started, release };
-  }
+  };
   let rejectRoster = false;
   let nextRosterHold = null;
-  function holdNextRoster(delayMs = 400) {
+  const holdNextRoster = function(delayMs = 400) {
     let onStart, release;
     const started = new Promise(resolve => { onStart = resolve; });
     const released = new Promise(resolve => { release = resolve; });
     nextRosterHold = { delayMs, onStart, released };
     return { started, release };
-  }
+  };
   const lessonWrites = [];
   const lessonStudents = [{ id_stud: 101, fio_stud: 'Тестовый ученик А', was: null, id_vizit: null, theme: '', primary_teach: 0, prize: 0 }, { id_stud: 102, fio_stud: 'Тестовый ученик Б', was: 2, id_vizit: 9, theme: '', primary_teach: 0, prize: 0 }];
   let rejectCopySource = false;
@@ -194,13 +199,24 @@ try {
       data = rejectReward ? { error: 'Topcoins отклонены сервером' } : { success: true, total: 20 };
     }
     if (path === '/presents/get-methodpackage-themes') data = [{ public_week_id: 7, package_id: 5, week: 1, theme: 'Тестовая тема', has_homework: true, has_labwork: true }];
+    if (path === '/presents/get-data-request-zavuch') {
+      if (accessReadDelay) await new Promise(resolve => setTimeout(resolve, accessReadDelay));
+      if (rejectAccessRead) return route.fulfill({ status: 503, json: {} });
+      data = { dates: ['28-09-2026', '27-09-2026'], requests: accessHistory };
+    }
+    if (path === '/presents/send-request-zavuch') {
+      const input = request.postDataJSON();
+      accessWrites.push(input);
+      if (!ignoreAccessSend) accessHistory.push({ date_req: input.date.split('-').reverse().join('-'), approve: 'Ожидает одобрения', zavuch_id: 0, can_set: 0 });
+      data = ignoreAccessSend ? {} : { success: 'Запрос отправлен' };
+    }
     if (path === '/presents/set-theme') {
       lessonWrites.push('theme');
       const input = request.postDataJSON();
       assert.equal(input.schedule, 50); assert.equal(input.theme, 'Тестовая тема');
       assert.equal(input.public_week_id, 7); assert.equal(input.issue_homework, true); assert.equal(input.issue_labwork, false);
       assert.equal(paths.filter(path => path === '/presents/set-was').length, 0);
-      if (!rejectTheme) lessonStudents.forEach((student, index) => { student.theme = input.theme; student.public_week_id = 7; student.id_vizit = 80 + index; student.was = 0; });
+      if (!rejectTheme) lessonStudents.forEach((student, index) => { student.theme = input.theme; student.primary_teach = input.teach_type; student.public_week_id = 7; student.id_vizit = 80 + index; student.was = 0; });
       data = rejectTheme ? { success: false, message: 'Тестовый отказ темы' } : { success: true };
     }
     if (path === '/presents/set-was') {
@@ -236,6 +252,7 @@ try {
   });
   for (const page of context.pages()) await page.close();
   const official = await context.newPage();
+  await official.clock.setFixedTime(new Date('2026-09-30T09:00:00Z'));
   official.setDefaultTimeout(15000);
   const ui = official;
   const extensionMessage = async (message, tab = official) => {
@@ -282,7 +299,134 @@ try {
   await official.addInitScript(() => localStorage.setItem('omni.connection-check-seconds', '15'));
   await official.reload();
   await official.locator('#omni-workspace-root #root').waitFor();
-  if (process.env.OMNI_COPY_MODAL_ONLY === '1') {
+  // Playwright's page clock affects the MAIN world; the real extension UI uses
+  // ISOLATED. Freeze that world too so past/future-date assertions share a day.
+  await worker.evaluate(async () => {
+    const [tab] = await chrome.tabs.query({ url: 'https://omni.top-academy.ru/*' });
+    await chrome.scripting.executeScript({ target: { tabId: tab.id, frameIds: [0] }, world: 'ISOLATED', func: () => {
+      const NativeDate = Date;
+      const fixed = new NativeDate('2026-09-30T09:00:00Z').getTime();
+      globalThis.Date = class extends NativeDate {
+        constructor(...args) { super(...(args.length ? args : [fixed])); }
+        static now() { return fixed; }
+      };
+    } });
+  });
+  if (process.env.OMNI_VISUAL_AUDIT_ONLY === '1') {
+    await initialRoster.started; initialRoster.release();
+    const table = ui.locator('.lesson-students');
+    await table.locator('tbody tr').filter({ hasText: 'Тестовый ученик Б' }).locator('td:last-child').filter({ hasText: /^10\.5$/ }).waitFor();
+    const directory = 'tmp/visual-audit';
+    await mkdir(directory, { recursive: true });
+    const report = { page: 'Мой урок', fixture: 'fictional extension fixture', extensionVersion: manifest.version, platform: process.platform, node: process.version, browser: await ui.evaluate(() => navigator.userAgent), fonts: 'Google Fonts blocked; system fallback', screenshots: [], observations: [] };
+    const capture = async (name, state) => {
+      const file = `${name}-${state}.png`;
+      await ui.screenshot({ path: `${directory}/${file}`, animations: 'disabled', fullPage: state === 'default' });
+      report.screenshots.push({ file, viewport: ui.viewportSize(), state });
+    };
+    for (const [name, width, height] of [['desktop', 1440, 1000], ['tablet', 820, 1180], ['mobile', 390, 844]]) {
+      await ui.setViewportSize({ width, height });
+      await ui.evaluate(() => { const root = document.querySelector('#omni-workspace-root')?.shadowRoot; root?.activeElement?.blur(); });
+      await ui.locator('h1').first().scrollIntoViewIfNeeded();
+      await capture(name, 'default');
+      await table.scrollIntoViewIfNeeded();
+      await capture(name, 'workspace');
+      report.observations.push(await table.evaluate(node => ({
+        viewport: innerWidth,
+        tableScroll: node.querySelector('.table-scroll')?.scrollWidth > node.querySelector('.table-scroll')?.clientWidth,
+        documentOverflow: document.documentElement.scrollWidth > innerWidth,
+        smallText: [...node.querySelectorAll('button, th, td, label')].filter(el => parseFloat(getComputedStyle(el).fontSize) < 12).slice(0, 10).map(el => ({ text: el.textContent?.trim().slice(0, 55), size: getComputedStyle(el).fontSize })),
+      })));
+      const settingsPosition = () => table.getByRole('button', { name: /^Настройки таблицы/ }).evaluate(node => ({ x: node.offsetLeft, y: node.offsetTop }));
+      const originalSettingsPosition = await settingsPosition();
+      const search = table.getByLabel('Поиск ученика', { exact: true });
+      await search.focus(); await capture(name, 'focus');
+      await search.fill('Нет такого ученика'); await capture(name, 'empty');
+      await search.fill('');
+      await table.getByRole('checkbox', { name: 'Выбрать ученика: Тестовый ученик А', exact: true }).check();
+      await capture(name, 'selected');
+      assert.deepEqual(await settingsPosition(), originalSettingsPosition, 'selection must not shift table settings');
+      await table.getByRole('checkbox', { name: 'Выбрать ученика: Тестовый ученик А', exact: true }).uncheck();
+      const settingsButton = table.getByRole('button', { name: /^Настройки таблицы/ });
+      await settingsButton.hover(); await capture(name, 'hover');
+      await settingsButton.click();
+      const modal = ui.getByRole('dialog', { name: 'Настройки таблицы', exact: true });
+      await capture(name, 'settings');
+      assert.equal(await modal.evaluate(node => node.scrollWidth <= node.clientWidth), true);
+      const focusableCount = await modal.locator('button:enabled, input:enabled, select:enabled').count();
+      for (const direction of ['Tab', 'Shift+Tab']) {
+        for (let index = 0; index <= focusableCount; index++) {
+          await ui.keyboard.press(direction);
+          assert.equal(await modal.evaluate(node => node.contains(node.getRootNode().activeElement)), true);
+        }
+      }
+      await ui.keyboard.press('Escape');
+      assert.equal(await settingsButton.evaluate(node => node === node.getRootNode().activeElement), true);
+      const gear = table.getByRole('button', { name: 'Настройки распределения топкойнов', exact: true });
+      await gear.click();
+      const rewards = ui.getByRole('dialog', { name: 'Настройки распределения топкойнов', exact: true });
+      await rewards.getByLabel('Минимальный балл для топкойнов').fill('');
+      await rewards.getByRole('status').waitFor();
+      assert.equal(await table.getByRole('button', { name: 'Распределить топкойны', exact: true }).isDisabled(), true);
+      await capture(name, 'invalid');
+      await rewards.getByLabel('Минимальный балл для топкойнов').fill('7');
+      await ui.keyboard.press('Escape');
+      await ui.getByRole('button', { name: 'Выбрать тему', exact: true }).click();
+      await ui.getByRole('radio', { name: 'Преподаватель на замене', exact: true }).check();
+      await capture(name, 'replacement-teacher');
+      await ui.getByLabel('Пара выбранного дня', { exact: true }).selectOption('4');
+      await ui.getByLabel('Пара выбранного дня', { exact: true }).selectOption('0');
+      const accessButton = ui.getByRole('button', { name: 'Доступ за прошлый день', exact: true });
+      accessReadDelay = 1200;
+      await accessButton.click();
+      const accessDialog = ui.getByRole('dialog', { name: 'Доступ к уроку за прошлый день', exact: true });
+      await accessDialog.getByRole('status').filter({ hasText: 'Загружаю данные Omni' }).waitFor();
+      await capture(name, 'lesson-access-loading');
+      await accessDialog.getByRole('region', { name: 'История запросов доступа', exact: true }).waitFor();
+      accessReadDelay = 0;
+      await capture(name, 'lesson-access');
+      assert.equal(await accessDialog.evaluate(node => node.scrollWidth <= node.clientWidth), true);
+      assert.equal(await accessDialog.getByRole('button', { name: 'Отправить запрос', exact: true }).isDisabled(), true);
+      for (const direction of ['Tab', 'Shift+Tab']) {
+        for (let index = 0; index < 7; index++) {
+          await ui.keyboard.press(direction);
+          const focus = await accessDialog.evaluate(node => ({ inside: node.contains(node.getRootNode().activeElement), active: node.getRootNode().activeElement?.outerHTML?.slice(0, 300), documentActive: document.activeElement?.tagName, hasFocus: document.hasFocus() }));
+          assert.equal(focus.inside, true, JSON.stringify({ direction, index, ...focus }));
+        }
+      }
+      await ui.keyboard.press('Escape');
+      assert.equal(await accessButton.evaluate(node => node === node.getRootNode().activeElement), true);
+      rejectAccessRead = true;
+      await accessButton.click();
+      await accessDialog.getByRole('alert').waitFor();
+      await capture(name, 'lesson-access-error');
+      rejectAccessRead = false;
+      await ui.keyboard.press('Escape');
+      if (name === 'desktop') {
+        await ui.getByRole('button', { name: 'Включить тёмную тему', exact: true }).click();
+        await accessButton.click();
+        await accessDialog.getByRole('region', { name: 'История запросов доступа', exact: true }).waitFor();
+        await capture(name, 'lesson-access-dark');
+        await ui.keyboard.press('Escape');
+        await ui.getByRole('button', { name: 'Включить светлую тему', exact: true }).click();
+        await ui.evaluate(() => { document.documentElement.style.zoom = '2'; });
+        await accessButton.click();
+        await accessDialog.getByRole('region', { name: 'История запросов доступа', exact: true }).waitFor();
+        await capture(name, 'lesson-access-zoom-200');
+        assert.equal(await accessDialog.evaluate(node => node.scrollWidth <= node.clientWidth), true);
+        assert.equal(await accessDialog.evaluate(node => { const box = node.getBoundingClientRect(); return box.top >= 0 && box.bottom <= innerHeight + 1; }), true, 'zoomed access dialog remains vertically inside the viewport');
+        await ui.keyboard.press('Escape');
+        await ui.evaluate(() => { document.documentElement.style.zoom = ''; });
+      }
+      assert.deepEqual(lessonWrites, [], 'visual audit never sends mutations');
+      assert.deepEqual(accessWrites, [], 'visual audit never sends access requests');
+    }
+    assert.deepEqual(errors, []);
+    await writeFile(`${directory}/report.json`, JSON.stringify(report, null, 2));
+    const pictures = report.screenshots.map(item => `<figure><a href="${item.file}"><img loading="lazy" src="${item.file}" width="360"></a><figcaption>${item.file}</figcaption></figure>`).join('');
+    await writeFile(`${directory}/index.html`, `<!doctype html><meta charset="utf-8"><title>Omni visual audit</title><style>body{font:14px system-ui;background:#eee;padding:24px}main{display:flex;flex-wrap:wrap;gap:20px}figure{margin:0}img{max-width:100%;height:auto}</style><h1>Мой урок — fictional fixtures</h1><p>Chromium / desktop 1440 / tablet 820 / mobile 390. Screenshots require human/model inspection; no pixel baseline approved.</p><main>${pictures}</main>`);
+    console.log('PASS visual capture and interaction checks; inspect tmp/visual-audit/index.html and report.json. Visual quality is not automatically approved.');
+  } else if (process.env.OMNI_COPY_MODAL_ONLY === '1') {
     await initialRoster.started; initialRoster.release();
     const trigger = ui.locator('.lesson-context').getByRole('button', { name: 'Скопировать с прошлой пары', exact: true });
     const modal = ui.getByRole('dialog', { name: 'Скопировать с прошлой пары', exact: true });
@@ -551,7 +695,7 @@ try {
     sidebar: getComputedStyle(node.querySelector('.sidebar')).backgroundColor,
   }));
   assert.match(appearance.font, /sans-serif/);
-  assert.equal(appearance.purple, '#6c4df6');
+  assert.equal(appearance.purple, '#3056d3');
   assert.equal(appearance.sidebar, 'rgb(255, 255, 255)');
   await official.getByRole('button', { name: 'Включить тёмную тему', exact: true }).click();
   assert.equal(await official.locator('#omni-workspace-root').getAttribute('data-omni-theme'), 'dark');
@@ -707,8 +851,10 @@ try {
   assert.equal(await lessonTable.getByRole('checkbox', { name: 'Выбрать ученика: Тестовый ученик А', exact: true }).isChecked(), false, 'remote refresh clears selection even when rows have the same IDs');
 
   await calendar.waitFor({ state: 'detached' });
-  const helpTip = ui.locator('.lesson-context .help-tip-trigger');
-  await helpTip.focus();
+  const helpTip = ui.locator('.reward-budget .help-tip-trigger');
+  await helpTip.scrollIntoViewIfNeeded();
+  await ui.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  await helpTip.evaluate(node => node.focus({ preventScroll: true }));
   await ui.getByRole('tooltip').waitFor();
   assert.equal(await ui.getByRole('tooltip').evaluate(node => node.getRootNode() instanceof ShadowRoot), true);
   assert.equal(await ui.getByRole('tooltip').evaluate(node => getComputedStyle(node).position), 'fixed');
@@ -747,12 +893,65 @@ try {
   await ui.getByRole('link', { name: 'Расчёт дохода', exact: true }).click();
   assert.equal(await ui.locator('#help-2').evaluate(node => node.getBoundingClientRect().top < innerHeight), true);
   await ui.locator('nav button').nth(0).click();
+  {
+    const accessButton = ui.getByRole('button', { name: 'Доступ за прошлый день', exact: true });
+    const accessDialog = ui.getByRole('dialog', { name: 'Доступ к уроку за прошлый день', exact: true });
+    const currentLesson = await ui.locator('.lesson-context-date strong').innerText();
+    await ui.locator('.sidebar').getByRole('button', { name: 'Расписание', exact: true }).click();
+    await ui.getByRole('button', { name: 'Открыть урок', exact: true }).first().click();
+    await accessDialog.getByRole('button', { name: 'Открыть урок 29.09.2026', exact: true }).waitFor();
+    assert.equal(lessonDate, currentLesson, 'selecting a past day opens a request dialog before loading the lesson');
+    await ui.keyboard.press('Escape');
+    await ui.locator('nav button').nth(0).click();
+    assert.equal(await ui.locator('.lesson-context-date strong').innerText(), currentLesson, 'cancelling keeps the current lesson');
+    rejectAccessRead = true;
+    await accessButton.click();
+    await accessDialog.getByRole('alert').waitFor();
+    assert.equal(await accessDialog.getByRole('button', { name: 'Отправить запрос', exact: true }).count(), 0);
+    rejectAccessRead = false;
+    await accessDialog.getByRole('button', { name: 'Обновить историю', exact: true }).click();
+    await accessDialog.getByLabel('Причина запроса', { exact: true }).fill('Нужно исправить данные занятия');
+    assert.deepEqual(accessWrites, [], 'opening and editing access form never sends a request');
+    await accessDialog.getByRole('button', { name: 'Отправить запрос', exact: true }).click();
+    await accessDialog.getByRole('status').filter({ hasText: 'Запрос отправлен' }).waitFor();
+    assert.deepEqual(accessWrites, [{ date: '28-09-2026', message: 'Нужно исправить данные занятия' }]);
+    assert.equal(await accessDialog.getByRole('button', { name: 'Открыть урок 28.09.2026', exact: true }).count(), 0, 'pending is not approved');
+    ignoreAccessSend = true;
+    await accessDialog.getByLabel('Дата запроса', { exact: true }).selectOption('2026-09-27');
+    await accessDialog.getByLabel('Причина запроса', { exact: true }).fill('Проверка неопределённого результата');
+    await accessDialog.getByRole('button', { name: 'Отправить запрос', exact: true }).click();
+    await accessDialog.getByRole('alert').filter({ hasText: 'не подтвердил' }).waitFor();
+    await accessDialog.getByRole('button', { name: 'Обновить историю', exact: true }).click();
+    await accessDialog.getByLabel('Дата запроса', { exact: true }).selectOption('2026-09-27');
+    await accessDialog.getByLabel('Причина запроса', { exact: true }).fill('Повтор не должен уйти');
+    assert.equal(await accessDialog.getByRole('button', { name: 'Отправить запрос', exact: true }).isDisabled(), true);
+    await ui.keyboard.press('Escape');
+    await accessButton.click();
+    await accessDialog.getByLabel('Дата запроса', { exact: true }).selectOption('2026-09-27');
+    await accessDialog.getByLabel('Причина запроса', { exact: true }).fill('Повтор после закрытия');
+    assert.equal(await accessDialog.getByRole('button', { name: 'Отправить запрос', exact: true }).isDisabled(), true);
+    assert.equal(accessWrites.length, 2, 'refreshing/reopening never retries an uncertain send');
+    await ui.keyboard.press('Escape');
+    ignoreAccessSend = false;
+    assert.deepEqual(lessonWrites, [], 'access requests do not save lesson changes');
+    await accessButton.click();
+    await accessDialog.getByLabel('Причина запроса', { exact: true }).waitFor();
+    await worker.evaluate(async () => {
+      const revision = 'fixture-access-session-changed';
+      await chrome.storage.session.set({ sessionRevision: revision });
+      const tabs = await chrome.tabs.query({ url: 'https://omni.top-academy.ru/*' });
+      await Promise.all(tabs.map(tab => chrome.tabs.sendMessage(tab.id, { action: 'session-revision', revision }, { frameId: 0 })));
+    });
+    await accessDialog.waitFor({ state: 'detached' });
+    await accessButton.waitFor({ timeout: 30000 });
+    assert.equal(accessWrites.length, 2, 'session invalidation closes access data without sending');
+  }
   const presence = ui.getByLabel('Присутствие: Тестовый ученик А', { exact: true });
   const reward = ui.getByLabel('Топкойны: Тестовый ученик А', { exact: true });
-  async function setReward(level) {
+  const setReward = async function(level) {
     await reward.press('Home');
     for (let step = 0; step < level; step++) await reward.press('ArrowRight');
-  }
+  };
   const lessonSave = ui.getByRole('button', { name: 'Сохранить', exact: true });
   const dayPairs = ui.getByLabel('Пара выбранного дня', { exact: true });
   assert.equal(await lessonSave.count(), 0, 'Save is absent before an actionable draft exists');
@@ -839,6 +1038,7 @@ try {
   await ui.mouse.move(700, 180);
   await ui.waitForFunction(() => document.querySelector('#omni-workspace-root')?.shadowRoot?.querySelector('.sidebar')?.getBoundingClientRect().width === 72);
   await ui.getByRole('button', { name: /^(Выбрать тему|Обновить список тем)$/ }).click();
+  await ui.getByRole('radio', { name: 'Преподаватель на замене', exact: true }).check();
   await ui.getByLabel('Тема из методпакета', { exact: true }).selectOption('7');
   await ui.getByRole('checkbox', { name: 'Выдать ДЗ из методпакета' }).check();
   ui.once('dialog', dialog => dialog.accept());
@@ -847,6 +1047,7 @@ try {
   await lessonSave.click();
   await ui.getByRole('status').filter({ hasText: 'Изменения урока сохранены в Omni' }).waitFor();
   assert.deepEqual(lessonWrites, ['theme', 'theme', 'attendance']);
+  assert.equal(lessonStudents[0].primary_teach, 1, 'replacement type is persisted through explicit Save and readback');
   assert.equal(await presence.inputValue(), '1');
   assert.equal(lessonStudents[0].id_vizit, 80); // Theme-created visit, not old draft metadata.
   await ui.locator('.lesson-banner').getByRole('heading', { name: 'Тестовая тема', exact: true }).waitFor();
@@ -924,6 +1125,8 @@ try {
   await ui.getByRole('button', { name: 'Загрузить урок', exact: true }).click();
   await ui.getByLabel('Присутствие: Тестовый ученик А', { exact: true }).waitFor();
   const beforeVisitCreation = lessonWrites.length;
+  const noticeClose = ui.getByRole('button', { name: 'Закрыть уведомление', exact: true });
+  if (await noticeClose.isVisible()) { await noticeClose.click(); await noticeClose.waitFor({ state: 'detached' }); }
   const firstGrade = 'Контрольная: Тестовый ученик А';
   await ui.getByRole('button', { name: firstGrade, exact: true }).click();
   await ui.getByRole('spinbutton', { name: firstGrade, exact: true }).fill('7');
@@ -938,8 +1141,9 @@ try {
   assert.equal(lessonStudents[0].mark2, 7, 'mark write uses the visit created by the preceding attendance write');
   assert.equal(lessonStudents[0].prize, 1, 'reward write uses the visit created by preceding attendance');
   for (const [index, date, type, value] of [[0, '2026-09-29', 'Контрольная', '10'], [1, '2026-10-02', 'Работа на уроке', '11']]) {
-    await ui.getByRole('button', { name: 'Расписание', exact: true }).click();
+    await ui.locator('.sidebar').getByRole('button', { name: 'Расписание', exact: true }).click();
     await ui.getByRole('button', { name: 'Открыть урок', exact: true }).nth(index).click();
+    if (index === 0) await ui.getByRole('dialog', { name: 'Доступ к уроку за прошлый день', exact: true }).getByRole('button', { name: 'Открыть урок 29.09.2026', exact: true }).click();
     await ui.locator('.lesson-context-date strong').filter({ hasText: date }).waitFor();
     const gradeLabel = `${type}: Тестовый ученик А`;
     await ui.getByRole('button', { name: gradeLabel, exact: true }).click();
@@ -949,13 +1153,14 @@ try {
     await ui.getByLabel('Присутствие: Тестовый ученик А', { exact: true }).selectOption(index === 0 ? '0' : '1');
     assert.equal(lessonWrites.length, writesBeforeLessonDraft, 'grades and attendance remain local until global Save');
     if (index === 0) {
-      await ui.getByRole('button', { name: 'Расписание', exact: true }).click();
+      await ui.locator('.sidebar').getByRole('button', { name: 'Расписание', exact: true }).click();
       await ui.getByRole('button', { name: 'Открыть урок', exact: true }).nth(1).click();
       await ui.locator('.lesson-context-date strong').filter({ hasText: '2026-10-02' }).waitFor();
       assert.equal(await ui.getByRole('button', { name: 'Контрольная: Тестовый ученик А', exact: true }).textContent(), '7', 'the past lesson draft must not leak into another lesson');
       assert.equal(await ui.getByLabel('Присутствие: Тестовый ученик А', { exact: true }).inputValue(), '2');
-      await ui.getByRole('button', { name: 'Расписание', exact: true }).click();
+      await ui.locator('.sidebar').getByRole('button', { name: 'Расписание', exact: true }).click();
       await ui.getByRole('button', { name: 'Открыть урок', exact: true }).nth(0).click();
+      await ui.getByRole('dialog', { name: 'Доступ к уроку за прошлый день', exact: true }).getByRole('button', { name: 'Открыть урок 29.09.2026', exact: true }).click();
       await ui.locator('.lesson-context-date strong').filter({ hasText: '2026-09-29' }).waitFor();
       assert.equal(await ui.getByRole('button', { name: gradeLabel, exact: true }).textContent(), value, 'returning to the original lesson restores its draft');
       assert.equal(await ui.getByLabel('Присутствие: Тестовый ученик А', { exact: true }).inputValue(), '0');
@@ -1293,7 +1498,7 @@ try {
   try {
     await ui.getByRole('alert').filter({ hasText: 'Omni отклонил переключение' }).waitFor();
   } catch (error) {
-    console.error('Rejected teacher switch fixture state:', JSON.stringify({ teacherId, alerts: await ui.getByRole('alert').allTextContents(), selected: await actAs.inputValue().catch(() => 'absent'), lastPaths: paths.slice(-8) }));
+    console.error('Rejected teacher switch fixture state:', JSON.stringify({ teacherId, alerts: await ui.getByRole('alert').allTextContents(), selected: await actAs.inputValue().catch(() => 'absent'), lastPaths: paths.slice(-8), errors, body: (await ui.locator('body').innerText()).slice(-1500), capabilities: await extensionMessage({action: 'capabilities', input: {}}, ui) }));
     await ui.screenshot({ path: 'tmp/rejected-teacher-switch-failure.png' });
     throw error;
   }
@@ -1349,7 +1554,7 @@ try {
   assert.equal(status.data.connected, true);
   assert.deepEqual(errors, []);
   assert.equal(requests.some(url => url.startsWith('chrome-extension://') || /localhost|127\.0\.0\.1/.test(url)), false);
-  console.log('PASS: same-tab UI mount, native login/challenge preservation, Shadow DOM styling/calendar, students/contact search/profile/history, attendance drafts, topic save, marks, previous-lesson copy, materials/PDF, teacher/account switching, logout-warning recovery and second-tab invalidation. All data fictional.');
+  console.log('PASS: same-tab UI mount, native login/challenge preservation, Shadow DOM styling/calendar, students/contact search/profile/history, attendance drafts, topic/replacement-teacher save, past-day access requests and uncertainty/session guards, marks, previous-lesson copy, materials/PDF, teacher/account switching, logout-warning recovery and second-tab invalidation. All data fictional.');
   }
 } finally {
   await context?.close();

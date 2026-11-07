@@ -1,3 +1,4 @@
+import { useStudentTableView } from './useStudentTableView';
 import { AverageGrade } from '../../components/ui/AverageGrade';
 import { useEffect, useState } from 'react';
 import { attendanceLabels, attendanceStatus, type AttendanceStatus } from './attendance';
@@ -36,50 +37,14 @@ type Props = {
 
 export function StudentTable({ items, busy, onOpen, attendance, marks, rewards, lessonView = false, studentAverages, studentPhotos,
   studentAveragesLoading = false, studentAveragesError, selectionContext = items, contextToken = '', draftRewardIds, onBulkChange, onFill, onRewardAllocation }: Props) {
-  const [query, setQuery] = useState('');
-  const [ascending, setAscending] = useState(true);
-  const [sorts, setSorts] = useState<readonly TableSort[]>(defaultLessonSort);
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [filterGroups, setFilterGroups] = useState<LessonFilterGroups>([]);
-  const [page, setPage] = useState(0);
-  const [selection, setSelection] = useState<{ context: unknown; keys: Set<string> } | null>(null);
-  const text = (value: unknown) => typeof value === 'string' || typeof value === 'number' ? String(value) : '';
-  useEffect(() => { setSorts(defaultLessonSort); setFilterGroups([]); setSettingsOpen(false); setPage(0); }, [contextToken]);
-  const sortFields = lessonSortFields(studentAverages, studentAveragesLoading || !!studentAveragesError)
-    .filter(field => field.id !== 'rewards' || !!rewards || items.some(item => Object.hasOwn(item, 'prize')));
-  const filterFields = lessonFilterFields(studentAverages, studentAveragesLoading || !!studentAveragesError)
-    .filter(field => sortFields.some(sortField => sortField.id === field.id));
-  const averageFilterUnavailable = filterGroups.some(group => group.some(condition => condition.fieldId === 'average'))
-    && (studentAveragesLoading || !!studentAveragesError);
-  const matchingFilters = lessonView ? averageFilterUnavailable ? [] : filterLessonRows(items, filterFields, filterGroups) : items;
-  const matching = matchingFilters.filter(item => text(item.fio_stud).toLocaleLowerCase('ru').includes(query.trim().toLocaleLowerCase('ru')));
-  const filtered = lessonView ? sortTableRowsByCriteria(matching, sortFields, sorts)
-    : matching.sort((a, b) => text(a.fio_stud).localeCompare(text(b.fio_stud), 'ru') * (ascending ? 1 : -1));
-  function changeSorts(next: readonly TableSort[]) { setSorts(next); setPage(0); }
-  function changeFilters(next: LessonFilterGroups) { setFilterGroups(next); setPage(0); setSelection(null); }
-  const last = Math.max(0, Math.ceil(filtered.length / 25) - 1);
-  const current = Math.min(page, last);
+  const { query, setQuery, ascending, setAscending, sorts, settingsOpen, setSettingsOpen, filterGroups, setPage, setSelection, sortFields, filterFields, averageFilterUnavailable, filtered, changeSorts, changeFilters, last, current, validRow, eligibleKeys, selectedKeys, selected } = useStudentTableView({ items, lessonView, showRewards: !!rewards, studentAverages, studentAveragesLoading, studentAveragesError, selectionContext, contextToken });
+  const text = (value: unknown) => typeof value === "string" || typeof value === "number" ? String(value) : "";
   const averageGrade = (student: Row) => studentAverages?.get(studentId(student)) || studentRow(student).values.average;
   const average = lessonView || items.some(item => !!averageGrade(item));
   const showRewards = !!rewards || items.some(item => Object.hasOwn(item, 'prize'));
   const rewardBudget = lessonRewardBudget(items);
-  const validRow = (row: Row) => !!studentId(row) && items.filter(item => studentId(item) === studentId(row)).length === 1;
-  const eligibleKeys = new Set(filtered.filter(validRow).map(studentId));
-  const selectedKeys = new Set(selection && selection.context === selectionContext ? [...selection.keys].filter(key => eligibleKeys.has(key)) : []);
-  const eligibleSignature = JSON.stringify([...eligibleKeys].sort());
-  useEffect(() => {
-    // A local edit can hide a selected row. It must not become selected again later.
-    const available = new Set<string>(JSON.parse(eligibleSignature));
-    setSelection(current => {
-      if (!current || current.context !== selectionContext) return null;
-      const keys = new Set([...current.keys].filter(key => available.has(key)));
-      return keys.size === current.keys.size ? current : { ...current, keys };
-    });
-  }, [eligibleSignature, selectionContext]);
-  useEffect(() => { setPage(page => Math.min(page, last)); }, [last]);
-  const selected = filtered.filter(row => validRow(row) && selectedKeys.has(studentId(row)));
   const canBulk = !!onBulkChange && !!(attendance || marks || rewards);
-  const reason = (row: Row, unavailable: string | undefined) => !validRow(row) ? 'У строки нет уникального ID ученика.' : unavailable || '';
+  const reason = (row: Row, unavailable: string | undefined) => validRow(row) ? unavailable || '' : 'У строки нет уникального ID ученика.'
   const numberValid = (value: string) => value.trim() !== '' && Number.isInteger(Number(value)) && Number(value) >= 1 && Number(value) <= 100 ? '' : 'Введите целую оценку от 1 до 100.';
   const fields: BulkField<Row>[] = [];
   if (marks) for (const [id, label] of [['mark4', 'Работа на уроке'], ['mark2', 'Контрольная']]) fields.push({ id, label,
@@ -90,7 +55,7 @@ export function StudentTable({ items, busy, onOpen, attendance, marks, rewards, 
     validate: value => ['0', '1', '2'].includes(value) ? '' : 'Выберите статус присутствия.', unavailableReason: row => reason(row, attendance.unavailable) });
   if (rewards) fields.push({ id: 'reward', label: 'Топкойны', input: { kind: 'select', options: [0, 1, 2, 3].map(value => ({ value: String(value), label: String(value) })) },
     validate: value => ['0', '1', '2', '3'].includes(value) ? '' : 'Выберите от 0 до 3 топкойнов.',
-    unavailableReason: row => reason(row, rewards.unavailable) || (rewardLevel(row.prize) === null ? 'Неизвестна текущая награда.' : ![1, 2].includes(attendanceStatus(row.was) ?? -1) ? 'Топкойны доступны присутствующим и опоздавшим.' : ''),
+    unavailableReason: row => reason(row, rewards.unavailable) || (rewardLevel(row.prize) === null ? 'Неизвестна текущая награда.' : [1, 2].includes(attendanceStatus(row.was) ?? -1) ? '' : 'Топкойны доступны присутствующим и опоздавшим.'),
   });
   const columns: TableColumn<Row>[] = [
     { id: 'student', heading: <button className="text-button" onClick={() => setAscending(!ascending)}>Ученик {ascending ? '↑' : '↓'}</button>, ariaSort: ascending ? 'ascending' : 'descending', cell: student => {
@@ -134,10 +99,11 @@ export function StudentTable({ items, busy, onOpen, attendance, marks, rewards, 
   }
   return <>
     <div className="workspace-table-tools lesson-table-toolbar">
-      <div className="lesson-table-view-tools"><input type="search" aria-label="Поиск ученика" placeholder="Поиск ученика" value={query} onChange={event => { setQuery(event.target.value); setPage(0); setSelection(null); }}/>{(query || filterGroups.length > 0) && <span role="status">Найдено: {filtered.length}</span>}{selected.length > 0 && <span>Выбрано: {selected.length}</span>}
+      <div className="lesson-table-view-tools"><input type="search" aria-label="Поиск ученика" placeholder="Поиск ученика" value={query} onChange={event => { setQuery(event.target.value); setPage(0); setSelection(null); }}/>
       {lessonView && <button type="button" className="button secondary" aria-haspopup="dialog" onClick={() => setSettingsOpen(true)}>Настройки таблицы{customSort ? ` · сортировок: ${sorts.length}` : ''}{filterGroups.length ? ` · фильтров: ${filterGroups.flat().length}` : ''}</button>}
       {lessonView && customSort && <button type="button" className="text-button" onClick={() => changeSorts(defaultLessonSort)}>Сбросить сортировку</button>}
       {lessonView && filterGroups.length > 0 && <button type="button" className="text-button" onClick={() => changeFilters([])}>Сбросить фильтры</button>}
+      <div className="lesson-table-summary" aria-live="polite">{(query || filterGroups.length > 0) && <span role="status">Найдено: {filtered.length}</span>}{selected.length > 0 && <span>Выбрано: {selected.length}</span>}</div>
       </div><div className="lesson-table-actions">
       {attendance && <button className="button secondary" title={attendance.unavailable || 'Вся группа, включая скрытых поиском учеников'} disabled={busy || !!attendance.unavailable || items.every(row => attendanceStatus(row.was) === 1)} onClick={attendance.onAll}>Все присутствуют</button>}
       {rewards && <span className="reward-budget"><span role="status">Топкойны: {rewardBudget.used === null ? '?' : rewardBudget.used} / {LESSON_REWARD_LIMIT}</span><HelpTip label="О бюджете топкойнов">Бюджет всего урока, включая скрытых учеников и черновик. {rewardBudget.used === null ? 'Количество неизвестно; увеличение недоступно.' : `Осталось: ${rewardBudget.remaining}.`}</HelpTip></span>}

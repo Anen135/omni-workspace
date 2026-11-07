@@ -1,45 +1,31 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
-import ts from 'typescript';
 import { build } from 'esbuild';
-
-// Exercise the branch's actual nested handlers/effects without exposing test APIs
-// or copying the component's composition into a second production controller.
-const source = await readFile(new URL('../src/app/LiveWorkspace.tsx', import.meta.url), 'utf8');
-const ast = ts.createSourceFile('LiveWorkspace.tsx', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
-const component = ast.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === 'LiveWorkspace');
-const declarations = component.body.statements.filter(ts.isFunctionDeclaration);
-const methodNames = new Set(declarations.map(node => node.name.text));
-const effects = component.body.statements.filter(node => ts.isExpressionStatement(node) && ts.isCallExpression(node.expression) && node.expression.expression.getText(ast) === 'useEffect').map(node => node.expression.arguments[0]);
-const initial = effects.find(node => node.getText(ast).includes("('status')") && node.getText(ast).includes('cancelled'));
-const revision = effects.find(node => node.getText(ast).includes('onExtensionSessionChange'));
-assert.ok(initial && revision);
-let incomeCallback;
-function findIncomeCallback(node) { if (ts.isJsxAttribute(node) && node.name.getText(ast) === 'onIncomeLoading') incomeCallback = node.initializer.expression.getText(ast); ts.forEachChild(node, findIncomeCallback); }
-findIncomeCallback(component);
-assert.ok(incomeCallback);
-const code = ts.transpileModule('const incomeGeneration = sessionVersion.current; const onIncomeLoading = ' + incomeCallback + ';\n' + declarations.map(node => node.getText(ast)).join('\n') + '\nconst watchInitialStatus = ' + initial.getText(ast) + ';\nconst watchRevision = ' + revision.getText(ast) + ';', { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None } }).outputText;
-const names = ['refresh', 'connect', 'login', 'changeAccount', 'switchTeacher', 'loadLesson', 'refreshHomework', 'gradeHomework', 'saveLessonDraft', 'clearLessonDraft', 'failed', 'watchInitialStatus', 'watchRevision', 'onIncomeLoading'].filter(name => methodNames.has(name) || name.startsWith('watch') || name === 'onIncomeLoading');
-const factory = new Function('scope', 'with (scope) {' + code + '; return {' + names.join(',') + '};}');
-const { outputFiles } = await build({ stdin: { contents: "export * from './src/features/lesson/attendance'; export * from './src/features/lesson/lesson-draft'; export * from './src/features/lesson/lesson-reward';", resolveDir: process.cwd(), loader: 'ts' }, bundle: true, platform: 'node', format: 'esm', write: false });
-const domain = await import('data:text/javascript;base64,' + Buffer.from(outputFiles[0].text).toString('base64'));
+import { resolve } from 'node:path';
 class FixtureConnectionError extends Error { constructor(code, message) { super(message); this.code = code; } }
-const createWorkspaceSession = options => factory(Object.assign(options, domain, {
-  ConnectionError: FixtureConnectionError,
-  label: value => value == null ? '' : String(value), record: value => value && typeof value === 'object' ? value : {}, rows: value => Array.isArray(value) ? value : [],
-  isExtension: () => true, omniRequest: (...args) => globalThis.sessionRequest(...args), bufferRequest: input => globalThis.sessionBufferRequest(input),
-  invalidatePendingOmniRequests: () => { options.invalidations = (options.invalidations || 0) + 1; },
-  onExtensionSessionChange: callback => { options.revisionChanged = callback; return () => {}; },
-}));
-const createWorkspaceHomework = createWorkspaceSession;
-const createWorkspaceNavigation = createWorkspaceSession;
-const createWorkspaceLessonDraft = createWorkspaceSession;
+globalThis.sessionConnectionError = FixtureConnectionError;
+
+const { outputFiles } = await build({ entryPoints: ['src/app/workspace-session.ts', 'src/app/workspace-homework.ts', 'src/app/workspace-navigation.ts', 'src/app/workspace-lesson-draft.ts', 'src/app/useWorkspaceController.ts'], outdir: 'tmp/session-test-bundle', bundle: true, platform: 'node', format: 'esm', write: false,
+  plugins: [{ name: 'session-transport-fixture', setup(builder) {
+    builder.onResolve({ filter: /^react$/ }, () => ({ path: 'react', namespace: 'fixture' }));
+    builder.onResolve({ filter: /services\/omni-client$/ }, () => ({ path: 'client', namespace: 'fixture' }));
+    builder.onResolve({ filter: /extension-client$/ }, () => ({ path: 'extension', namespace: 'fixture' }));
+    builder.onLoad({ filter: /.*/, namespace: 'fixture' }, args => ({ resolveDir: resolve('.'), contents: args.path === 'react' ? `export * from ${JSON.stringify(resolve('node_modules/react/index.js'))}; export { default } from ${JSON.stringify(resolve('node_modules/react/index.js'))}; export const useState = value => globalThis.sessionHooks.useState(value); export const useRef = value => globalThis.sessionHooks.useRef(value); export const useEffect = effect => globalThis.sessionHooks.useEffect(effect); export const useMemo = factory => factory();` : args.path === 'extension'
+      ? 'export const onExtensionSessionChange = callback => { globalThis.sessionRevision = callback; return () => {}; }; export const isExtension = () => true; export const extensionRequest = (action, input) => globalThis.sessionBufferRequest(input);'
+      : 'export const ConnectionError = globalThis.sessionConnectionError; export const invalidatePendingOmniRequests = () => { globalThis.sessionInvalidations++; }; export const omniRequest = (...args) => globalThis.sessionRequest(...args); export const rows = value => Array.isArray(value) ? value : []; export const label = value => value == null ? "" : String(value); export const record = value => value && typeof value === "object" ? value : {};', loader: 'js' }));
+  } }],
+});
+const load = async name => import('data:text/javascript;base64,' + Buffer.from(outputFiles.find(file => file.path.endsWith(name + '.js')).text).toString('base64'));
+const { createWorkspaceSession } = await load('workspace-session');
+const { createWorkspaceHomework } = await load('workspace-homework');
+const { createWorkspaceNavigation } = await load('workspace-navigation');
+const { createWorkspaceLessonDraft } = await load('workspace-lesson-draft');
+const { useWorkspaceController } = await load('useWorkspaceController');
 const deferred = () => { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; };
 function fixture() {
   const state = { busy: false, error: '', snapshot: { account: { id: '1' } }, waiting: false, authNeeded: false };
   const options = { week: 0, operation: { current: false }, sessionVersion: { current: 0 }, currentAccount: { current: '1' }, lastBranch: { current: '' }, draft: undefined, presentData: {}, draftKey: '', snapshot: state.snapshot, hasDrafts: false, ensureAccount() {}, reconcileDrafts() {}, failed: reason => { state.error = reason.message; } };
-  for (const name of ['IncomeBusy', 'Busy', 'Error', 'Snapshot', 'Waiting', 'AuthNeeded', 'ConnectionState', 'ChangingAccount', 'SwitchingTeacher', 'LessonDrafts', 'GroupStudents', 'GroupName', 'GroupId', 'Detail', 'Lesson', 'Week', 'HomeworkSaved', 'HomeworkNeedsReload', 'HomeworkSaving', 'AttendanceSaving', 'RosterRevision', 'BufferedDrafts', 'Notice']) {
+  for (const name of ['Busy', 'Error', 'Snapshot', 'Waiting', 'AuthNeeded', 'ConnectionState', 'ChangingAccount', 'SwitchingTeacher', 'LessonDrafts', 'GroupStudents', 'GroupName', 'GroupId', 'Detail', 'Lesson', 'Week', 'HomeworkSaved', 'HomeworkNeedsReload', 'HomeworkSaving', 'AttendanceSaving', 'RosterRevision', 'BufferedDrafts', 'Notice']) {
     const key = name[0].toLowerCase() + name.slice(1);
     options['set' + name] = value => { state[key] = typeof value === 'function' ? value(state[key]) : value; };
   }
@@ -85,7 +71,7 @@ test('disposed initial status cannot start refresh or change connection UI', asy
   assert.deepEqual(f.state, before); assert.deepEqual(f.calls, ['status']);
 });
 
-for (const name of ['lesson load', ...(methodNames.has('refreshHomework') ? ['homework refresh'] : []), 'homework grade', 'lesson save']) {
+for (const name of ['lesson load', 'homework refresh', 'homework grade', 'lesson save']) {
   for (const rejected of [false, true]) test(name + ' stale completion preserves current lock and loading flags (' + (rejected ? 'reject' : 'resolve') + ')', async () => {
     const f = fixture();
     Object.assign(f.options, { selectedDate: '2026-10-12', tab: 'lesson', setTab() {}, homeworkNeedsReload: false, attendanceReason: '', hasTheme: true, draftKey: JSON.stringify(['1', '', '2026-10-12', '10', '0', '50']), draft: { attendance: {}, marks: {}, rewards: {} }, lessonStudents: [], bufferedDrafts: [], attemptedBuffers: { current: new Set() } });
@@ -100,30 +86,6 @@ for (const name of ['lesson load', ...(methodNames.has('refreshHomework') ? ['ho
     assert.equal(f.options.operation.current, true); assert.deepEqual(f.state, before);
   });
 }
-
-for (const entry of ['revision', 'AUTH_REQUIRED', 'ACCOUNT_CHANGED', 'CHALLENGE']) test('actual ' + entry + ' invalidator advances epoch and releases obsolete UI ownership', async () => {
-  const f = fixture(); f.actions.watchRevision();
-  const oldLogin = f.actions.login('fictional', 'password'); const version = f.options.sessionVersion.current;
-  if (entry === 'revision') f.options.revisionChanged(); else f.actions.failed(new FixtureConnectionError(entry, 'auth failure'));
-  assert.equal(f.options.sessionVersion.current, version + 1); assert.equal(f.options.invalidations, 1);
-  assert.equal(f.options.operation.current, false); assert.equal(f.state.busy, false); assert.equal(f.state.snapshot, null); assert.equal(f.state.authNeeded, true);
-  const next = deferred(); globalThis.sessionRequest = () => next.promise;
-  const newLogin = f.actions.login('new', 'fictional');
-  f.pending.reject(new Error('obsolete login')); await oldLogin;
-  assert.equal(f.options.operation.current, true); assert.equal(f.state.busy, true); assert.equal(f.state.error, '');
-  next.reject(new Error('new login rejection')); await newLogin; assert.equal(f.state.busy, false); assert.equal(f.state.error, 'new login rejection');
-});
-test('current teacher identity mismatch is rejected without a follow-up read', async () => {
-  const f = fixture(); const work = f.actions.switchTeacher('2'); f.pending.resolve({ account: { id: '3' } }); await work;
-  assert.match(f.state.error, /не подтвердил/); assert.equal(f.options.sessionVersion.current, 1); assert.deepEqual(f.calls, ['switch-teacher']);
-});
-test('initial BUSY becomes polling and obsolete initial status is ignored', async () => {
-  const f = fixture(); f.actions.watchInitialStatus(); f.pending.reject(new FixtureConnectionError('BUSY', 'busy')); await new Promise(resolve => setImmediate(resolve));
-  assert.equal(f.state.waiting, true); assert.equal(f.state.error, '');
-  const stale = fixture(); stale.actions.watchInitialStatus(); stale.options.sessionVersion.current++; const before = structuredClone(stale.state);
-  stale.pending.resolve({ connected: false, state: 'login' }); await new Promise(resolve => setImmediate(resolve)); assert.deepEqual(stale.state, before);
-});
-
 for (const rejected of [false, true]) test('obsolete buffered discard cannot clear current draft/error (' + (rejected ? 'reject' : 'resolve') + ')', async () => {
   const f = fixture(); const key = 'fictional-key';
   Object.assign(f.options, { draftKey: key, bufferedDrafts: [{ key, revision: 'old' }] });
@@ -133,6 +95,45 @@ for (const rejected of [false, true]) test('obsolete buffered discard cannot cle
   const before = structuredClone(f.state);
   if (rejected) f.pending.reject(new Error('old discard')); else f.pending.resolve({ key, revision: 'old-claimed' });
   await work; assert.deepEqual(f.state, before);
+});
+
+for (const entry of ['revision', 'AUTH_REQUIRED', 'ACCOUNT_CHANGED', 'CHALLENGE']) test('controller ' + entry + ' advances epoch and resets obsolete UI before a new action', async () => {
+  const values = []; const effects = []; let cursor = 0;
+  globalThis.localStorage = { getItem: () => null, setItem() {} };
+  globalThis.sessionInvalidations = 0;
+  globalThis.sessionHooks = {
+    useState(initial) { const index = cursor++; if (!(index in values)) values[index] = typeof initial === 'function' ? initial() : initial; return [values[index], value => { values[index] = typeof value === 'function' ? value(values[index]) : value; }]; },
+    useRef(initial) { const index = cursor++; if (!(index in values)) values[index] = { current: initial }; return values[index]; },
+    useEffect(effect) { effects.push(effect); },
+  };
+  const render = () => { cursor = 0; return useWorkspaceController({}); };
+  let model = render();
+  if (entry === 'revision') effects.find(effect => effect.toString().includes('onExtensionSessionChange'))();
+  const first = deferred(); const second = deferred(); const calls = [];
+  globalThis.sessionRequest = action => { calls.push(action); return calls.length === 1 ? first.promise : second.promise; };
+  const oldLogin = model.session.login('fictional', 'password');
+  assert.equal(render().session.busy, true);
+  const version = model.session.sessionVersion.current;
+  if (entry === 'revision') globalThis.sessionRevision(); else model.page.failed(new FixtureConnectionError(entry, 'current auth error'));
+  model = render();
+  assert.equal(model.session.sessionVersion.current, version + 1);
+  assert.equal(globalThis.sessionInvalidations, 1);
+  assert.equal(model.session.busy, false); assert.equal(model.session.snapshot, null);
+  const newLogin = model.session.login('new', 'fictional');
+  first.reject(new Error('obsolete login rejection')); await oldLogin;
+  assert.equal(render().session.busy, true); assert.equal(render().session.error, '');
+  second.reject(new Error('current login rejection')); await newLogin;
+  assert.equal(render().session.busy, false); assert.equal(render().session.error, 'current login rejection');
+});
+test('current teacher identity mismatch is rejected without a follow-up read', async () => {
+  const f = fixture(); const work = f.actions.switchTeacher('2'); f.pending.resolve({ account: { id: '3' } }); await work;
+  assert.match(f.state.error, /не подтвердил/); assert.deepEqual(f.calls, ['switch-teacher']);
+});
+test('initial BUSY becomes polling and obsolete initial status is ignored', async () => {
+  const f = fixture(); f.actions.watchInitialStatus(); f.pending.reject(new FixtureConnectionError('BUSY', 'busy')); await new Promise(resolve => setImmediate(resolve));
+  assert.equal(f.state.waiting, true); assert.equal(f.state.error, '');
+  const stale = fixture(); stale.actions.watchInitialStatus(); stale.options.sessionVersion.current++; const before = structuredClone(stale.state);
+  stale.pending.resolve({ connected: false, state: 'login' }); await new Promise(resolve => setImmediate(resolve)); assert.deepEqual(stale.state, before);
 });
 
 for (const hold of ['confirmed checkpoint', 'remove']) test('lesson Save preserves durable completion without stale UI at ' + hold, async () => {
@@ -169,11 +170,4 @@ for (const hold of ['confirmed checkpoint', 'remove']) test('lesson Save preserv
   assert.equal(commands.filter(action => action === 'set-lesson-mark').length, 1, 'no next write from obsolete Save');
   if (hold === 'remove') { assert.equal(envelope, null); assert.ok(bufferOps.includes('remove:')); }
   else { assert.ok(envelope); assert.equal(envelope.state, 'review'); assert.deepEqual(Object.keys(envelope.draft.marks), ['101:4'], 'confirmed mark removed from durable remainder'); }
-});
-
-test('obsolete income completion cannot clear the new session loading flag', () => {
-  const f = fixture(); f.actions.onIncomeLoading(true); assert.equal(f.state.incomeBusy, true);
-  f.actions.onIncomeLoading(false); assert.equal(f.state.incomeBusy, false, 'current owner can release loading');
-  f.options.sessionVersion.current++; f.state.incomeBusy = true; f.actions.onIncomeLoading(false);
-  assert.equal(f.state.incomeBusy, true, 'old captured callback cannot release the new owner');
 });

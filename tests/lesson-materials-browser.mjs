@@ -7,7 +7,7 @@ import { createServer } from 'vite';
 const fixture = `
 import React, { useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { LessonBanner } from '/src/app/components/LessonOverview';
+import { LessonBanner } from '/src/features/lesson/LessonOverview';
 import { LessonThemeEditor } from '/src/features/lesson/LessonThemeEditor';
 import { LessonMaterialsDialog } from '/src/features/lesson/LessonMaterialsDialog';
 import { attendanceDraftKey } from '/src/features/lesson/attendance';

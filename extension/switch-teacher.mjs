@@ -5,7 +5,7 @@ export async function switchTeacherInPage(input, verifyOnly = false) {
   try {
     if (location.origin !== 'https://omni.top-academy.ru' || location.pathname.startsWith('/login') || document.querySelector('input[type=password]')) fail('AUTH_REQUIRED', 'Завершите вход в Omni.');
     if (!input || !['teacherId', 'accountId'].every(key => typeof input[key] === 'string' && /^[1-9]\d{0,11}$/.test(input[key]))) fail('BAD_INPUT', 'Некорректный преподаватель.');
-    async function request(path, data = {}) {
+    const request = async function(path, data = {}) {
       const response = await fetch(path, { method: 'POST', credentials: 'same-origin', signal: AbortSignal.timeout(20000), headers: {
         'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest',
         'X-CSRF-Token': document.querySelector('meta[name="csrf-token"]')?.content || '',
@@ -15,7 +15,7 @@ export async function switchTeacherInPage(input, verifyOnly = false) {
       if (response.status === 409) fail('ACCOUNT_CHANGED', 'Аккаунт изменился. Обновите данные.');
       if (!response.ok) fail('SWITCH_FAILED', 'Omni не выполнил переключение. Обновите данные.');
       return response.json();
-    }
+    };
     const profile = (await request('/profile/get-profile'))?.teach_info;
     if (!profile?.id_teach || typeof profile.fio_teach !== 'string') fail('SCHEMA_CHANGED', 'Не удалось распознать профиль Omni.');
     const account = { id: String(profile.id_teach), name: profile.fio_teach };

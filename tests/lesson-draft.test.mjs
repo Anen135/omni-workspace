@@ -24,6 +24,12 @@ const baseStudents = () => [
   { id_stud: 102, was: 2, id_vizit: 9, theme: 'Тема', mark2: 6, mark4: null },
 ];
 
+test('replacement-teacher baseline conflicts even when the lesson title is unchanged', () => {
+  const draft = { attendance: {}, marks: {}, theme: { theme: 'Тема', previousTheme: 'Тема', publicWeekId: null, issueHomework: false, issueLabwork: false, teachType: 1, previousTeachType: 0 } };
+  assert.equal(lessonDraftConflict(draft, presents([{ id_stud: 1, id_vizit: 2, theme: 'Тема', primary_teach: '0' }])), '');
+  assert.match(lessonDraftConflict(draft, presents([{ id_stud: 1, id_vizit: 2, theme: 'Тема', primary_teach: '1' }])), /Тип преподавателя/);
+});
+
 test('reconcile removes only values confirmed by the fresh lesson and preserves other expected baselines', () => {
   const draft = {
     attendance: {

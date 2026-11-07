@@ -1,5 +1,6 @@
 import { BridgeError, validateInput } from '../server/bridge-protocol.mjs';
 import { attendanceLessonInfo } from '../src/features/lesson/attendance.ts';
+import { lessonTeacherType } from '../src/features/lesson/lesson-access.ts';
 
 // Verified against Omni presentsCtrl.js getMethodpackageThemes / saveTheme.
 export async function lessonTheme(action, input, { request, identity }) {
@@ -22,6 +23,9 @@ export async function lessonTheme(action, input, { request, identity }) {
   const info = attendanceLessonInfo(before);
   if (!info || before.can_set_theme === false || before.can_set_theme === 0 || before.can_set_theme === '0') throw new BridgeError('THEME_UNAVAILABLE', 'Omni не разрешает изменить тему этого занятия.');
   if ((info.theme || '') !== input.previousTheme) throw new BridgeError('THEME_CONFLICT', 'Тема уже изменилась в Omni. Загрузите урок заново.');
+  const previousTeachType = lessonTeacherType(info.primary_teach || 0);
+  if (previousTeachType === null || input.previousTeachType !== undefined && previousTeachType !== input.previousTeachType) throw new BridgeError('THEME_CONFLICT', 'Тип преподавателя изменился в Omni. Загрузите урок заново.');
+  const teachType = input.teachType ?? previousTeachType;
   let theme = input.theme.trim();
   if (input.publicWeekId !== null) {
     const matches = themes.filter(row => String(row.public_week_id) === input.publicWeekId);
@@ -39,7 +43,7 @@ export async function lessonTheme(action, input, { request, identity }) {
       id_base_spec: before.cur_spec?.id_base_spec, public_week_id: input.publicWeekId === null ? null : Number(input.publicWeekId),
       issue_homework: input.issueHomework, issue_labwork: input.issueLabwork,
       schedule: before.cur_schedule, scheduleType: before.scheduleType,
-      teach_type: info.primary_teach || 0, numberParticipants: before.scheduleData?.number_participants || null,
+      teach_type: teachType, numberParticipants: before.scheduleData?.number_participants || null,
     });
   } catch (error) {
     if (['AUTH_REQUIRED', 'ACCOUNT_CHANGED', 'THEME_REJECTED'].includes(error.code)) throw error;
@@ -51,7 +55,7 @@ export async function lessonTheme(action, input, { request, identity }) {
     check(presents);
     const confirmedAccount = await account();
     const saved = attendanceLessonInfo(presents);
-    if (saved?.theme !== theme || input.publicWeekId !== null && String(saved.public_week_id) !== input.publicWeekId) throw new Error('Readback mismatch');
+    if (saved?.theme !== theme || lessonTeacherType(saved?.primary_teach || 0) !== teachType || input.publicWeekId !== null && String(saved.public_week_id) !== input.publicWeekId) throw new Error('Readback mismatch');
     return { account: confirmedAccount, presents, themes, warning: response.success ? '' : 'Тема сохранена, но Omni сообщил об ошибке выдачи материалов. Проверьте выданные материалы.' };
   } catch (error) {
     if (['AUTH_REQUIRED', 'ACCOUNT_CHANGED'].includes(error.code)) throw error;

@@ -13,3 +13,12 @@
 Точка у «ДЗ» означает наличие работ, доступных для проверки. Аватары используются в уроке, ДЗ и списке студентов; при отсутствии или ошибке фотографии отображаются инициалы. «Пример интерфейса» перенесён в справку и использует вымышленные данные.
 
 Массовые действия таблиц описаны в [отдельном руководстве](table-workflows.md).
+
+
+## Ownership of workspace behavior
+
+- `LiveWorkspace` composes `useWorkspaceController` and `WorkspaceView`. The controller composes subject models; `workspace-session`, `workspace-homework` and `workspace-lesson-draft` own session actions, homework confirmation and draft/Save actions respectively; `WorkspaceView` owns the shell and overlays, `WorkspaceContent` selects screens and retains account/session-scoped sections, and `LessonPage` owns lesson rendering, draft display projection and table composition. `workspace-navigation.ts` owns read-only lesson/group/student opening; `WorkspaceShell` owns the shared page structure.
+- `useStudentTableView` owns lesson table filters, sorting, pagination and selection.
+- `useTeachingMaterials`, `useTeacherDossier`, `useHomeworkHistory` and `useIncomeHistory` own feature loading and stale-response handling.
+- `HomeworkEditors` owns the review controls and hover preview; grading confirmation remains with the existing orchestrator.
+- `connection-settings` owns browser preference storage. Shared colors and shell dimensions belong to workspace CSS variables; feature styles retain their selector scope and extension injection order.

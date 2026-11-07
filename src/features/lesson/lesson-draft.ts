@@ -1,6 +1,7 @@
 import { attendanceStatus, attendanceVisit, attendanceLessonInfo, type AttendanceChange, type AttendanceStatus } from './attendance';
 import type { ThemeChoice } from './LessonThemeEditor';
 import { rewardMatches, rewardValue, type LessonReward } from './lesson-reward';
+import { lessonTeacherType } from './lesson-access';
 
 export type MarkChange = { stud: string; type: 2 | 4; mark: number; previousMark: string | null; visit: string | null };
 export type RewardChange = { stud: string; reward: LessonReward; previousReward: string | null; visit: string | null };
@@ -62,6 +63,7 @@ export function reconcileLessonDraft(draft: LessonDraft, presents: Record<string
 export function lessonDraftConflict(draft: LessonDraft, presents: Record<string, unknown>): string {
   const students = presents.students && typeof presents.students === 'object' ? Object.values(presents.students).filter((item): item is Record<string, unknown> => !!item && typeof item === 'object' && !Array.isArray(item)) : [];
   if (draft.theme && String(attendanceLessonInfo(presents)?.theme || '') !== draft.theme.previousTheme) return 'Тема уже изменилась в Omni. Проверьте урок и отмените устаревший черновик.';
+  if (draft.theme?.previousTeachType !== undefined && lessonTeacherType(attendanceLessonInfo(presents)?.primary_teach || 0) !== draft.theme.previousTeachType) return 'Тип преподавателя изменился в Omni. Проверьте урок и отмените устаревший черновик.';
   for (const change of Object.values(draft.attendance)) {
     const matches = students.filter(student => String(student.id_stud) === change.stud);
     if (matches.length !== 1 || attendanceStatus(matches[0].was) !== change.previousWas || attendanceVisit(matches[0].id_vizit) !== change.visit) return 'Посещаемость или запись ученика изменилась в Omni. Проверьте урок и отмените устаревший черновик.';
