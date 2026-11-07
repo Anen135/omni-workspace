@@ -55,15 +55,8 @@ if (location.origin === 'https://omni.top-academy.ru' && window.top === window &
       const dot = document.createElement('span'); dot.textContent = '.'; brand.append(dot);
       const spinner = document.createElement('div'); spinner.className = 'spinner'; spinner.setAttribute('aria-hidden', 'true');
       const status = document.createElement('p'); status.setAttribute('role', 'status'); status.textContent = 'Загружаем Omni Workspace…';
-      const escape = document.createElement('button'); escape.type = 'button'; escape.textContent = 'Открыть официальный вход';
-      escape.onclick = () => {
-        try { sessionStorage.setItem(nativeLoginKey, 'manual'); } catch { /* Restore without storage. */ }
-        release();
-        if (!location.pathname.startsWith('/login') && !hasLoginChallenge(document)) location.assign('/login/index');
-      };
-      status.hidden = true; status.className = 'startup-recovery-message'; status.setAttribute('role', 'presentation'); status.textContent = 'Загрузка занимает больше времени. Можно подождать или открыть обычный Omni.';
-      escape.hidden = true; escape.className = 'startup-native-escape';
-      logo.append(svg, brand); loader.append(logo, spinner, status, escape); main.append(loader); shadow.append(style, sidebar, header, main);
+      status.hidden = true; status.className = 'startup-recovery-message'; status.setAttribute('role', 'presentation'); status.textContent = 'Загрузка идёт дольше чем обычно.';
+      logo.append(svg, brand); loader.append(logo, spinner, status); main.append(loader); shadow.append(style, sidebar, header, main);
       conceal = document.createElement('style'); conceal.id = 'omni-workspace-conceal';
       conceal.textContent = 'html,body{overflow:hidden!important}body>:not(#omni-workspace-root){display:none!important}@media print{html,body{overflow:visible!important}}';
       globalThis.omniWorkspaceBootstrap = { host, conceal, get active() { return active; },
@@ -74,7 +67,7 @@ if (location.origin === 'https://omni.top-academy.ru' && window.top === window &
       delayedReveal = setTimeout(() => {
         if (!active || adopted || !revealPending) return;
         revealPending = false;
-        status.hidden = false; escape.hidden = false;
+        status.hidden = false;
       }, 3000);
       observer = new MutationObserver(() => { if (!adopted && hasLoginChallenge(document)) release(); });
       observer.observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['src', 'class', 'name'] });

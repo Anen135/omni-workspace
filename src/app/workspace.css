@@ -352,7 +352,7 @@
 .workspace-startup-brand { display: flex; align-items: center; gap: 12px; color: var(--text); }
 .workspace-startup-brand strong { font-size: 36px; letter-spacing: -2px; }
 .workspace-startup-brand strong span { color: var(--purple); }
-.workspace-startup-recovery p { margin: 0 0 16px; }
+.workspace-startup-recovery p { margin: 0; }
 @media (prefers-reduced-motion: reduce) { .workspace-startup .spin { animation: none; } }
 
 .lesson-copy .workspace-table-tools { padding: 12px 0; }

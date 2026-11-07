@@ -93,11 +93,12 @@ try {
   await page.locator('.outline-header').waitFor();
   await page.locator('.outline-sidebar').waitFor();
   assert.equal(await page.locator('.startup-recovery-message').isVisible(), false, 'early loader initially has no explanatory text');
-  assert.equal(await page.locator('.startup-native-escape').isVisible(), false, 'native recovery waits until loading is slow');
+  assert.equal(await page.locator('.startup-native-escape').count(), 0, 'early loader has no native recovery button');
   await mkdir('tmp', { recursive: true });
   await page.screenshot({ path: 'tmp/startup-immediate.png', animations: 'disabled' });
   await page.locator('.startup-recovery-message').waitFor();
-  await page.locator('.startup-native-escape').waitFor();
+  assert.equal(await page.locator('.startup-recovery-message').textContent(), 'Загрузка идёт дольше чем обычно.');
+  assert.equal(await page.locator('#omni-workspace-root button').count(), 0);
   await page.screenshot({ path: 'tmp/startup-slow.png', animations: 'disabled' });
   delayNative = false; releaseNative();
   await page.getByLabel('Логин Omni', { exact: true }).waitFor();
@@ -184,9 +185,10 @@ try {
       await page.getByRole('heading', { name: 'Настройки', exact: true }).waitFor();
       await page.locator('.sidebar').getByRole('button', { name: 'Мой урок', exact: true }).click();
       await page.locator('.workspace-startup').waitFor();
-      await page.getByRole('button', { name: 'Открыть официальный вход', exact: true }).waitFor();
+      await page.getByText('Загрузка идёт дольше чем обычно.', { exact: true }).waitFor();
+      assert.equal(await page.locator('.workspace-startup button').count(), 0);
       await page.screenshot({ path: 'tmp/startup-workspace-slow.png', animations: 'disabled' });
-      await page.getByRole('button', { name: 'Открыть официальный вход', exact: true }).click();
+      continue; // Missing CSRF keeps the text-only loading state until the document changes.
     }
     await page.locator('#native-login input[type=password]').first().waitFor();
     assert.equal(await page.locator('#omni-workspace-root').count(), 0, `${fallback} keeps native recovery usable`);

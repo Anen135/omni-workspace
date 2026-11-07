@@ -38,7 +38,7 @@ export function WorkspaceContent(model: ReturnType<typeof useWorkspaceController
         {tab === 'settings' && <WorkspaceSettings interval={connectionInterval} onSave={setConnectionInterval}/>}
         {tab === 'help' && <HelpPage onUiTests={() => setTab('ui-tests')}/>}
         {tab === 'ui-tests' && <UiTestPage onBack={() => setTab('help')}/>}
-        {!snapshot && !switchingTeacher && tab !== 'help' && tab !== 'settings' && tab !== 'ui-tests' && (startup ? <WorkspaceStartup onNative={onNativeLogin || (() => void connect())}/> : <ConnectionCard connectionForm={connectionForm} busy={busy} waiting={waiting}
+        {!snapshot && !switchingTeacher && tab !== 'help' && tab !== 'settings' && tab !== 'ui-tests' && (startup ? <WorkspaceStartup/> : <ConnectionCard connectionForm={connectionForm} busy={busy} waiting={waiting}
           extension={isExtension()} changingAccount={changingAccount} connectionState={connectionState}
           onLogin={login} onConnect={onNativeLogin || (() => void connect())}/>)}
         {snapshot && <>
