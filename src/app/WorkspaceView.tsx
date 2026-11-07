@@ -9,6 +9,7 @@ import { WorkspaceSidebar } from './components/WorkspaceSidebar';
 import { WorkspaceContent } from './WorkspaceContent';
 import './live.css';
 import './workspace.css';
+import '../styles/workspace-design.css';
 
 export function WorkspaceView(model: ReturnType<typeof useWorkspaceController>) {
   const { snapshot, teachers, busy, authNeeded, refresh, switchTeacher, changeAccount, connect } = model.session;

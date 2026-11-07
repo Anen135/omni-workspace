@@ -16,6 +16,8 @@
 .live-workspace main { min-width: 0; }
 .live-workspace .page-content { max-width: none; padding: 24px 32px; }
 .live-workspace .sidebar { width: 228px; }
+.live-workspace .sidebar { scrollbar-width: none; }
+.live-workspace .sidebar::-webkit-scrollbar { display: none; }
 .live-workspace .sidebar .workspace, .live-workspace .sidebar-tip { display: none; }
 .live-workspace .sidebar nav button { font-size: 14px; min-height: 42px; }
 .live-workspace .brand { margin-bottom: 24px; }
@@ -23,7 +25,8 @@
   .live-workspace .sidebar {
     width: var(--workspace-nav-width);
     padding-inline: 14px;
-    overflow: hidden;
+    overflow-x: hidden;
+    overflow-y: auto;
     z-index: 50;
     transition: width 160ms ease, box-shadow 160ms ease;
   }
